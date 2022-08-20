@@ -1,4 +1,4 @@
-
+#!/usr/bin/bash
 
 checkDependencies () { # "${dependencies[@]}"
 	local package

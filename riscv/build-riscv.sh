@@ -1,3 +1,5 @@
+#!/usr/bin/bash
+
 ENV_SCR=$(readlink -f "${BASH_SOURCE}")
 TOOLS_DIR=$(dirname $(dirname "${ENV_SCR}"))
 LOCAL_ROOT="${TOOLS_DIR}/riscv"
@@ -30,12 +32,12 @@ if [ -z  "$CPU2006_ROOT" ]; then
 fi
 
 export RISCV=$LOCAL_ROOT/riscv-tools/RV64G
-export PATH=$RISCV/bin:$PATH
+export PATH=$RISCV/bin:"${PATH}"
 export RV8_HOME=$LOCAL_ROOT/rv8
 export SPECKLE_ROOT=$LOCAL_ROOT/Speckle
 export SPEC_DIR=$CPU2006_ROOT
 
-NPROC=(`nproc --all`)
+NPROC=`nproc --all`
 updateGitRepo() {
 	URL=$1
 	BRANCH=$2
@@ -65,7 +67,28 @@ echo "Setting up riscv-tools..."
 URL=https://github.com/nus-comparch/riscv-tools.git
 BRANCH=sift
 FOLDER=riscv-tools
-updateGitRepo "$URL" "$BRANCH" "$FOLDER"
+git clone https://github.com/nus-comparch/riscv-tools.git -b sift
+pushd riscv-tools
+git submodule update --init --recursive riscv-fesvr
+git submodule update --init             riscv-gnu-toolchain
+
+pushd riscv-gnu-toolchain
+git submodule update --init --recursive riscv-binutils-gdb
+git submodule update --init --recursive riscv-dejagnu
+git submodule update --init --recursive riscv-gcc
+git submodule update --init --recursive riscv-glibc
+git submodule update --init --recursive riscv-newlib
+# git submodule update --init --recursive riscv-qemu
+popd
+
+git submodule update --init --recursive riscv-isa-sim
+git submodule update --init --recursive riscv-opcodes
+# git submodule update --init --recursive riscv-openocd
+git submodule update --init --recursive riscv-pk
+git submodule update --init --recursive riscv-tests
+popd
+
+# updateGitRepo "$URL" "$BRANCH" "$FOLDER"
 echo "####################################################################################"
 
 # 1c) rv8 simulator (that support sift generation)
