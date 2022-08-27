@@ -122,6 +122,12 @@ class RISCVDecoder : public Decoder
 
     /// Get the base register of the memory operand pointed by mem_idx
     virtual decoder_reg mem_base_reg (const DecodedInst * inst, unsigned int mem_idx) override;
+
+    /// Check if the base register of the memory operand pointed by mem_idx is also updated
+    virtual bool mem_base_upate(const DecodedInst* inst, unsigned int mem_idx) override;
+    /// Check if the memory operand pointed by mem_idx has an index register
+    virtual bool has_index_reg (const DecodedInst * inst, unsigned int mem_idx) override;
+
     /// Get the index register of the memory operand pointed by mem_idx
     virtual decoder_reg mem_index_reg (const DecodedInst * inst, unsigned int mem_idx) override;
 
@@ -170,6 +176,18 @@ class RISCVDecoder : public Decoder
     /// Get the value of the last register in the enumeration
     virtual decoder_reg last_reg() override;
 
+    /// Get the input register mapped. Some registers can be mapped onto the lower bits of others.
+    virtual uint32_t map_register(decoder_reg reg) override { return reg; };
+    ///Get the number of implicit registers that are read by the instruction
+    virtual unsigned int num_read_implicit_registers(const DecodedInst *inst) override { return 0; };
+
+    ///Get the idx implicit source register
+    virtual decoder_reg get_read_implicit_reg(const DecodedInst* inst, unsigned int idx) override { return 0; };
+    ///Get the number of implicit registers that are written by the instruction
+    virtual unsigned int num_write_implicit_registers(const DecodedInst *inst) override { return 0; };
+    ///Get the idx implicit destiny register
+    virtual decoder_reg get_write_implicit_reg(const DecodedInst *inst, unsigned int idx) override { return 0; };
+
     // /// Get the target architecture of the decoder
     // dl_arch get_arch();
 
@@ -192,7 +210,7 @@ class RISCVDecodedInst : public DecodedInst
     /// Get the instruction numerical Id
     virtual unsigned int inst_num_id() const override;
     /// Get an string with the disassembled instruction
-    virtual void disassembly_to_str(char *, int) const;
+    virtual std::string disassembly_to_str() const;
     /// Check if this instruction is a NOP
     virtual bool is_nop() const override;
     /// Check if this instruction is atomic
@@ -222,6 +240,9 @@ class RISCVDecodedInst : public DecodedInst
     // size_t & get_size();
     // const uint8_t * & get_code();
     // uint64_t & get_address();
+
+    virtual bool is_indirect_branch() const override;
+    virtual bool is_writeback() const override { return false; }
 
     private:
      riscv::decode rv8_dec;
