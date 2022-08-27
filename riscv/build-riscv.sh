@@ -67,6 +67,7 @@ echo "Setting up riscv-tools..."
 URL=https://github.com/nus-comparch/riscv-tools.git
 BRANCH=sift
 FOLDER=riscv-tools
+cd $LOCAL_ROOT
 git clone https://github.com/nus-comparch/riscv-tools.git -b sift
 pushd riscv-tools
 git submodule update --init --recursive riscv-fesvr
