@@ -620,13 +620,11 @@ void RISCVDecodedInst::set_disassembly()
     fmt++;
 	}
 
-  printf("generate disassembly = %s\n", args->c_str());
   m_disassembly = args->c_str();
 }
 
 std::string RISCVDecodedInst::disassembly_to_str() const
 {
-  printf("get disassembly = %s\n", this->m_disassembly.c_str());
   return this->m_disassembly;
 }
 

@@ -79,7 +79,7 @@ TraceThread::TraceThread(Thread *thread, SubsecondTime time_start, String tracef
    }
 
    thread->setVa2paFunc(_va2pa, (UInt64)this);
-   
+
 }
 
 TraceThread::~TraceThread()
@@ -381,7 +381,7 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
    //printf("PC: %lx Size: %d num_addresses=%d is_branch=%d\n", inst.sinst->addr, inst.sinst->size, inst.num_addresses, inst.is_branch);
    if (m_decoder_cache.count(inst.sinst->addr) == 0)
       m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
-   
+
    const dl::DecodedInst& dec_inst = *(m_decoder_cache[inst.sinst->addr]);
 
    OperandList list;
@@ -400,7 +400,7 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
 
    Instruction *instruction;
    if (inst.is_branch)
-     instruction = new BranchInstruction(list); 
+     instruction = new BranchInstruction(list);
 
    else
       instruction = new GenericInstruction(list);
@@ -409,8 +409,8 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
    instruction->setSize(inst.sinst->size);
    instruction->setAtomic(dec_inst.is_atomic());
    instruction->setDisassembly(dec_inst.disassembly_to_str().c_str());
-   printf("%s\n", instruction->getDisassembly().c_str());
-   
+   // printf("%s\n", instruction->getDisassembly().c_str());
+
    const std::vector<const MicroOp*> *uops = InstructionDecoder::decode(inst.sinst->addr, &dec_inst, instruction);
    instruction->setMicroOps(uops);
 
@@ -512,7 +512,7 @@ void TraceThread::handleCacheOnlyFunc(uint8_t icount, Sift::CacheOnlyType type, 
 
 const dl::DecodedInst* TraceThread::staticDecode(Sift::Instruction &inst)
 {
-   dl::DecodedInst *dec_inst = m_factory->CreateInstruction(Sim()->getDecoder(), inst.sinst->data, 
+   dl::DecodedInst *dec_inst = m_factory->CreateInstruction(Sim()->getDecoder(), inst.sinst->data,
                                                             inst.sinst->size, inst.sinst->addr);
    Sim()->getDecoder()->decode(dec_inst, (dl::dl_isa)inst.isa);
    return dec_inst;
@@ -522,7 +522,7 @@ void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruc
 {
    if (m_decoder_cache.count(inst.sinst->addr) == 0)
       m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
-   
+
    const dl::DecodedInst &dec_inst = *(m_decoder_cache[inst.sinst->addr]);
 
    // Warmup instruction caches
@@ -557,19 +557,19 @@ void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruc
             {
                UInt64 mem_address;
                // LDP ARM instructions, second element to be loaded, using the address of the first element
-               if (dec_inst.is_mem_pair() && ((int)mem_idx == (inst.num_addresses + 1)))  
+               if (dec_inst.is_mem_pair() && ((int)mem_idx == (inst.num_addresses + 1)))
                {
                   LOG_ASSERT_ERROR((int)mem_idx < (inst.num_addresses + 1), "Did not receive enough data addresses");
-                  
+
                   mem_address = inst.addresses[mem_idx - 1] + Sim()->getDecoder()->size_mem_op(&dec_inst, mem_idx);
                }
                else
                {
                   LOG_ASSERT_ERROR(mem_idx < inst.num_addresses, "Did not receive enough data addresses");
-                 
+
                   mem_address = inst.addresses[mem_idx];
                }
-               
+
                bool no_mapping = false;
                UInt64 pa = va2pa(mem_address, is_prefetch ? &no_mapping : NULL);
                if (no_mapping)
@@ -592,19 +592,19 @@ void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruc
             {
                UInt64 mem_address;
                // STP ARM instructions, second element to be stored, using the address of the first element
-               if (dec_inst.is_mem_pair() && ((int)mem_idx == (inst.num_addresses + 1)))  
+               if (dec_inst.is_mem_pair() && ((int)mem_idx == (inst.num_addresses + 1)))
                {
                   LOG_ASSERT_ERROR((int)mem_idx < (inst.num_addresses + 1), "Did not receive enough data addresses");
-                  
+
                   mem_address = inst.addresses[mem_idx - 1] + Sim()->getDecoder()->size_mem_op(&dec_inst, mem_idx);
                }
                else
                {
                   LOG_ASSERT_ERROR(mem_idx < inst.num_addresses, "Did not receive enough data addresses");
-                 
+
                   mem_address = inst.addresses[mem_idx];
                }
-               
+
                bool no_mapping = false;
                UInt64 pa = va2pa(mem_address, is_prefetch ? &no_mapping : NULL);
                if (no_mapping)
@@ -682,7 +682,7 @@ void TraceThread::addDetailedMemoryInfo(DynamicInstruction *dynins, Sift::Instru
 {
    UInt64 mem_address;
    // LDP/STP ARM instructions, second element to be ld/st, using the address of the first element
-   if (decoded_inst.is_mem_pair() && ((int)mem_idx == inst.num_addresses))  
+   if (decoded_inst.is_mem_pair() && ((int)mem_idx == inst.num_addresses))
    {
       assert((int)mem_idx < (inst.num_addresses + 1));
       mem_address = inst.addresses[mem_idx - 1] + Sim()->getDecoder()->size_mem_op(&decoded_inst, mem_idx);
@@ -692,7 +692,7 @@ void TraceThread::addDetailedMemoryInfo(DynamicInstruction *dynins, Sift::Instru
       assert(mem_idx < inst.num_addresses);
       mem_address = inst.addresses[mem_idx];
    }
-               
+
    bool no_mapping = false;
    UInt64 pa = va2pa(mem_address, is_prefetch ? &no_mapping : NULL);
 
