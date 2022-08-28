@@ -206,6 +206,7 @@ class RISCVDecodedInst : public DecodedInst
     riscv::inst_t * get_rv8_inst();
     riscv::decode * get_rv8_dec();
     void set_rv8_dec(riscv::decode d);
+    void set_disassembly();
 
     /// Get the instruction numerical Id
     virtual unsigned int inst_num_id() const override;
