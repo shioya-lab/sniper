@@ -111,4 +111,24 @@ LoopTracer::traceInstruction(const DynamicMicroOp *uop, uop_times_t *times)
       if (m_iter_instr > 100)
          m_active = false;
    }
+
+   static FILE *o3_fp = NULL;
+   static int instr_idx = 0;
+   if (o3_fp == NULL) {
+     o3_fp = fopen("o3_trace.out", "w");
+   }
+
+   {
+     uint64_t cycle_dispatch = SubsecondTime::divideRounded(times->dispatch, m_core->getDvfsDomain()->getPeriod());
+     uint64_t cycle_issue    = SubsecondTime::divideRounded(times->issue, m_core->getDvfsDomain()->getPeriod());
+     uint64_t cycle_done     = SubsecondTime::divideRounded(times->done, m_core->getDvfsDomain()->getPeriod());
+     uint64_t cycle_commit   = SubsecondTime::divideRounded(times->commit, m_core->getDvfsDomain()->getPeriod());
+     fprintf (o3_fp, "O3PipeView:fetch:%ld:0x%08lx:0:%d:%s\n", (cycle_dispatch-3)*500, (uint64_t)inst->getAddress(), ++instr_idx, inst->getDisassembly().c_str());
+     fprintf (o3_fp, "O3PipeView:decode:%ld\n",                (cycle_dispatch-2)*500);
+     fprintf (o3_fp, "O3PipeView:rename:%ld\n",                (cycle_dispatch-1)*500);
+     fprintf (o3_fp, "O3PipeView:dispatch:%ld\n",              (cycle_dispatch  )*500);
+     fprintf (o3_fp, "O3PipeView:issue:%ld\n",                 (cycle_issue     )*500);
+     fprintf (o3_fp, "O3PipeView:complete:%ld\n",              (cycle_done      )*500);
+     fprintf (o3_fp, "O3PipeView:retire:%ld:store:0\n",        (cycle_commit    )*500);
+   }
 }
