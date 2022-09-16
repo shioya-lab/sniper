@@ -20,13 +20,13 @@
 
 // using namespace riscv;
 
-static unsigned int instructionLatencies[rv_op_last]; 
+static unsigned int instructionLatencies[rv_op_last];
 static unsigned int bypassLatencies[DynamicMicroOpBoomV1::UOP_BYPASS_SIZE];
 
 CoreModelBoomV1::CoreModelBoomV1()
 {
       // https://github.com/ucb-bar/riscv-boom/blob/master/src/main/scala/exu/execute.scala
-   int dfmaLatency = 4; 
+   int dfmaLatency = 4;
    int imulLatency = 3;
    for (unsigned int i = 0 ; i < rv_op_last ; i++)
    {
