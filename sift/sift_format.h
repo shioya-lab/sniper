@@ -67,7 +67,7 @@ namespace Sift
       struct {
          uint8_t type:4;   // 0
          uint8_t size:4;   // 1-15
-         uint8_t num_addresses:2;
+         uint8_t num_addresses;
          uint8_t is_branch:1;
          uint8_t taken:1;
          uint8_t is_predicate:1;

@@ -10,7 +10,7 @@
 
 namespace Sift
 {
-   const uint32_t MAX_DYNAMIC_ADDRESSES = 2;
+   const uint32_t MAX_DYNAMIC_ADDRESSES = 32;
 
    typedef enum
    {
