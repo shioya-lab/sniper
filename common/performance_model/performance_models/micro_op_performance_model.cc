@@ -328,8 +328,8 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
 
    }
 
-   if(do_squashing > 0)
-      doSquashing(m_current_uops);
+   // if(do_squashing > 0)
+   //    doSquashing(m_current_uops);
 
    // Make sure there was an Operand/MemoryInfo for each MicroOp
    // This should detect mismatches between decoding as done by fillOperandListMemOps and InstructionDecoder
