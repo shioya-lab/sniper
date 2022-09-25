@@ -188,6 +188,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
   unsigned int num_memory_operands = 0;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const char *format = rv_inst_format[dec->op];
+
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
     || format == rv_fmt_frd_offset_rs1 /* flw, fld, flq, c.fld, c.flw, c.fldsp, c.flwsp */
     || format == rv_fmt_rs2_offset_rs1  /* sb, sh, sw, sd, sq, c.sw, c.swsp, c.sd, c.sdsp, c.sq, c.sqsp */
@@ -196,6 +197,9 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
     || format == rv_fmt_aqrl_rd_rs2_rs1 /* amoswap.d */
     || format == rv_fmt_aqrl_rd_rs2_rs1 /* amoswap.q */) {
      num_memory_operands++;
+  } else if (dec->op == rv_op_vle8_v ||
+             dec->op == rv_op_vse8_v) {
+    num_memory_operands = 16;
   }
   return num_memory_operands;
 }
@@ -204,7 +208,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
 /// Get the base register of the memory operand pointed by mem_idx
 Decoder::decoder_reg RISCVDecoder::mem_base_reg (const DecodedInst * inst, unsigned int mem_idx)
 {
-  assert(mem_idx == 0);
+  // assert(mem_idx == 0);
   Decoder::decoder_reg reg;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
 
@@ -246,7 +250,10 @@ bool RISCVDecoder::op_read_mem(const DecodedInst * inst, unsigned int mem_idx)
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
     || format == rv_fmt_frd_offset_rs1 /* flw, fld, flq, c.fld, c.flw, c.fldsp, c.flwsp */ ) {
      res = true;
+  } else if (dec->op == rv_op_vle8_v) {
+    res = true;
   }
+
   return res;
 }
 
@@ -260,6 +267,8 @@ bool RISCVDecoder::op_write_mem(const DecodedInst * inst, unsigned int mem_idx)
   if (format == rv_fmt_rs2_offset_rs1  /* sb, sh, sw, sd, sq, c.sw, c.swsp, c.sd, c.sdsp, c.sq, c.sqsp */
     || format == rv_fmt_frs2_offset_rs1  /* fsw, fsd, fsq, c.fsd, c.fsw, c.fsdsp, c.fswsp */ ) {
      res = true;
+  } else if (dec->op == rv_op_vse8_v) {
+    res = true;
   }
   return res;
 }
