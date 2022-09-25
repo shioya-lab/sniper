@@ -256,6 +256,8 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
       send_va2pa(addresses[i]);
 
    // Try as simple instruction
+   fprintf (stderr, "Address / Last Address check %016lx, %016lx\n", addr, last_address);
+
    if (addr == last_address && !is_predicate)
    {
       #if VERBOSE > 2
@@ -303,8 +305,10 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
       ninstrext++;
    }
 
-   for(int i = 0; i < num_addresses; ++i)
+   for(int i = 0; i < num_addresses; ++i) {
+      fprintf(stderr, "  A%016lx\n", addresses[i]);
       output->write(reinterpret_cast<char*>(&addresses[i]), sizeof(uint64_t));
+   }
 
    last_address += size;
 

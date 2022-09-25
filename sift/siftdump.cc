@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
          if (inst.num_addresses > 0) {
             printf("                 -- addr");
             for(int i = 0; i < inst.num_addresses; ++i)
-               printf(" %08" PRIx64, inst.addresses[i]);
+               printf(" %016lx", inst.addresses[i]);
             printf("\n");
          }
          if (inst.is_branch)
