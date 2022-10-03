@@ -670,7 +670,14 @@ bool RISCVDecodedInst::is_prefetch() const
 /// Check if this instruction is serializing (all previous instructions must have been executed)
 bool RISCVDecodedInst::is_serializing() const
 {
-  return false;
+  bool res = false;
+  riscv::decode dec = this->rv8_dec;
+  switch (dec.op) {
+    case rv_op_vsetvli:     /* VSETVLI Instruction */
+      res = true;
+      break;
+  }
+  return res;
 }
 
 /// Check if this instruction is a conditional branch
@@ -711,8 +718,9 @@ bool RISCVDecodedInst::is_barrier() const
   bool res = false;
   riscv::decode dec = this->rv8_dec;
   switch (dec.op) {
-    case rv_op_fence:		  /* Fence */
+    case rv_op_fence:		/* Fence */
     case rv_op_fence_i:		/* Fence Instruction */
+    case rv_op_vsetvli:     /* VSETVLI Instruction */
       res = true;
       break;
   }
