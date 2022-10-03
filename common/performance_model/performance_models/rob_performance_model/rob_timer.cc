@@ -19,7 +19,7 @@
 #include <iomanip>
 
 // Define to get per-cycle printout of dispatch, issue, writeback stages
-//#define DEBUG_PERCYCLE
+#define DEBUG_PERCYCLE
 //#define STOP_PERCYCLE
 
 // Define to not skip any cycles, but assert that the skip logic is working fine
@@ -452,6 +452,8 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
    SubsecondTime next_event = SubsecondTime::MaxTime();
    SubsecondTime *cpiFrontEnd = NULL;
 
+   static SubsecondTime missed_icache = SubsecondTime::MaxTime();
+
    if (frontend_stalled_until <= now)
    {
       uint32_t instrs_dispatched = 0, uops_dispatched = 0;
@@ -491,10 +493,14 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                #endif
                frontend_stalled_until = now + uop.getICacheLatency();
                in_icache_miss = true;
+               entry->fetch = now;
+               missed_icache = now;
                // Don't dispatch this instruction yet
                cpiFrontEnd = &m_cpiInstructionCache[uop.getICacheHitWhere()];
                break;
             }
+         } else {
+           missed_icache = now;
          }
 
          if (m_rs_entries_used == rsEntries)
@@ -503,6 +509,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
+         entry->fetch = missed_icache;
          entry->dispatched = now;
          ++m_num_in_rob;
          ++m_rs_entries_used;
@@ -864,6 +871,34 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (entry->uop->isLast())
          instructionsExecuted++;
+
+      static FILE *o3_fp = NULL;
+      if (o3_fp == NULL) {
+        o3_fp = fopen("o3_trace.out", "w");
+      }
+
+      {
+
+        uint64_t cycle_fetch    = SubsecondTime::divideRounded(entry->fetch,      m_core->getDvfsDomain()->getPeriod());
+        uint64_t cycle_dispatch = SubsecondTime::divideRounded(entry->dispatched, m_core->getDvfsDomain()->getPeriod());
+        uint64_t cycle_issue    = SubsecondTime::divideRounded(entry->issued,     m_core->getDvfsDomain()->getPeriod());
+        uint64_t cycle_done     = SubsecondTime::divideRounded(entry->done,       m_core->getDvfsDomain()->getPeriod());
+        uint64_t cycle_commit   = SubsecondTime::divideRounded(times.commit,      m_core->getDvfsDomain()->getPeriod());
+
+        cycle_fetch = cycle_fetch == 0 ? 4 : cycle_fetch;
+        Instruction *inst = entry->uop->getMicroOp()->getInstruction();
+        fprintf (o3_fp, "O3PipeView:fetch:%ld:0x%08lx:0:%ld:%s\n",
+                 (cycle_fetch-3)*500,
+                 (uint64_t)inst->getAddress(),
+                 entry->uop->getSequenceNumber(),
+                 inst->getDisassembly().c_str());
+        fprintf (o3_fp, "O3PipeView:decode:%ld\n",                (cycle_dispatch-2)*500);
+        fprintf (o3_fp, "O3PipeView:rename:%ld\n",                (cycle_dispatch-1)*500);
+        fprintf (o3_fp, "O3PipeView:dispatch:%ld\n",              (cycle_dispatch  )*500);
+        fprintf (o3_fp, "O3PipeView:issue:%ld\n",                 (cycle_issue     )*500);
+        fprintf (o3_fp, "O3PipeView:complete:%ld\n",              (cycle_done      )*500);
+        fprintf (o3_fp, "O3PipeView:retire:%ld:store:0\n",        (cycle_commit    )*500);
+      }
 
       entry->free();
       rob.pop();

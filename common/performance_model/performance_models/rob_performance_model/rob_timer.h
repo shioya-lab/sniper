@@ -36,6 +36,7 @@ private:
          UInt64 getAddressProducer(size_t idx) const { return addressProducers.at(idx); }
 
          DynamicMicroOp *uop;
+         SubsecondTime fetch;
          SubsecondTime dispatched;
          SubsecondTime ready;    // Once all dependencies are resolved, cycle number that this uop becomes ready for issue
          SubsecondTime readyMax; // While some but not all dependencies are resolved, keep the time of the latest known resolving dependency
