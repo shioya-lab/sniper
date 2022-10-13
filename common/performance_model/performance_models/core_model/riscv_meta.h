@@ -279,53 +279,67 @@ enum rv_op
 	rv_op_vsetvli = 273,
 	rv_op_vle8_v = 274,
 	rv_op_vse8_v = 275,
-	rv_op_nop = 276,                   	/* No operation */
-	rv_op_mv = 277,                    	/* Copy register */
-	rv_op_not = 278,                   	/* One’s complement */
-	rv_op_neg = 279,                   	/* Two’s complement */
-	rv_op_negw = 280,                  	/* Two’s complement Word */
-	rv_op_sext_w = 281,                	/* Sign extend Word */
-	rv_op_seqz = 282,                  	/* Set if = zero */
-	rv_op_snez = 283,                  	/* Set if ≠ zero */
-	rv_op_sltz = 284,                  	/* Set if < zero */
-	rv_op_sgtz = 285,                  	/* Set if > zero */
-	rv_op_fmv_s = 286,                 	/* Single-precision move */
-	rv_op_fabs_s = 287,                	/* Single-precision absolute value */
-	rv_op_fneg_s = 288,                	/* Single-precision negate */
-	rv_op_fmv_d = 289,                 	/* Double-precision move */
-	rv_op_fabs_d = 290,                	/* Double-precision absolute value */
-	rv_op_fneg_d = 291,                	/* Double-precision negate */
-	rv_op_fmv_q = 292,                 	/* Quadruple-precision move */
-	rv_op_fabs_q = 293,                	/* Quadruple-precision absolute value */
-	rv_op_fneg_q = 294,                	/* Quadruple-precision negate */
-	rv_op_beqz = 295,                  	/* Branch if = zero */
-	rv_op_bnez = 296,                  	/* Branch if ≠ zero */
-	rv_op_blez = 297,                  	/* Branch if ≤ zero */
-	rv_op_bgez = 298,                  	/* Branch if ≥ zero */
-	rv_op_bltz = 299,                  	/* Branch if < zero */
-	rv_op_bgtz = 300,                  	/* Branch if > zero */
-	rv_op_ble = 301,
-	rv_op_bleu = 302,
-	rv_op_bgt = 303,
-	rv_op_bgtu = 304,
-	rv_op_j = 305,                     	/* Jump */
-	rv_op_ret = 306,                   	/* Return from subroutine */
-	rv_op_jr = 307,                    	/* Jump register */
-	rv_op_rdcycle = 308,               	/* Read Cycle Counter Status Register */
-	rv_op_rdtime = 309,                	/* Read Timer Status register */
-	rv_op_rdinstret = 310,             	/* Read Instructions Retired Status Register */
-	rv_op_rdcycleh = 311,              	/* Read Cycle Counter Status Register (upper 32-bits on RV32) */
-	rv_op_rdtimeh = 312,               	/* Read Timer Status register (upper 32-bits on RV32) */
-	rv_op_rdinstreth = 313,            	/* Read Instructions Retired Status Register (upper 32-bits on RV32) */
-	rv_op_frcsr = 314,                 	/* Read FP Control and Status Register */
-	rv_op_frrm = 315,                  	/* Read FP Rounding Mode */
-	rv_op_frflags = 316,               	/* Read FP Accrued Exception Flags */
-	rv_op_fscsr = 317,                 	/* Set FP Control and Status Register */
-	rv_op_fsrm = 318,                  	/* Set FP Rounding Mode */
-	rv_op_fsflags = 319,               	/* Set FP Accrued Exception Flags */
-	rv_op_fsrmi = 320,                 	/* Set FP Rounding Mode Immediate */
-	rv_op_fsflagsi = 321,              	/* Set FP Accrued Exception Flags Immediate */
-	rv_op_last = 322,
+	rv_op_vle16_v = 276,
+	rv_op_vse16_v = 277,
+	rv_op_vle32_v = 278,
+	rv_op_vse32_v = 279,
+	rv_op_vle64_v = 280,
+	rv_op_vse64_v = 281,
+	rv_op_vlse8_v = 282,
+	rv_op_vsse8_v = 283,
+	rv_op_vlse16_v = 284,
+	rv_op_vsse16_v = 285,
+	rv_op_vlse32_v = 286,
+	rv_op_vsse32_v = 287,
+	rv_op_vlse64_v = 288,
+	rv_op_vsse64_v = 289,
+	rv_op_nop = 290,                   	/* No operation */
+	rv_op_mv = 291,                    	/* Copy register */
+	rv_op_not = 292,                   	/* One’s complement */
+	rv_op_neg = 293,                   	/* Two’s complement */
+	rv_op_negw = 294,                  	/* Two’s complement Word */
+	rv_op_sext_w = 295,                	/* Sign extend Word */
+	rv_op_seqz = 296,                  	/* Set if = zero */
+	rv_op_snez = 297,                  	/* Set if ≠ zero */
+	rv_op_sltz = 298,                  	/* Set if < zero */
+	rv_op_sgtz = 299,                  	/* Set if > zero */
+	rv_op_fmv_s = 300,                 	/* Single-precision move */
+	rv_op_fabs_s = 301,                	/* Single-precision absolute value */
+	rv_op_fneg_s = 302,                	/* Single-precision negate */
+	rv_op_fmv_d = 303,                 	/* Double-precision move */
+	rv_op_fabs_d = 304,                	/* Double-precision absolute value */
+	rv_op_fneg_d = 305,                	/* Double-precision negate */
+	rv_op_fmv_q = 306,                 	/* Quadruple-precision move */
+	rv_op_fabs_q = 307,                	/* Quadruple-precision absolute value */
+	rv_op_fneg_q = 308,                	/* Quadruple-precision negate */
+	rv_op_beqz = 309,                  	/* Branch if = zero */
+	rv_op_bnez = 310,                  	/* Branch if ≠ zero */
+	rv_op_blez = 311,                  	/* Branch if ≤ zero */
+	rv_op_bgez = 312,                  	/* Branch if ≥ zero */
+	rv_op_bltz = 313,                  	/* Branch if < zero */
+	rv_op_bgtz = 314,                  	/* Branch if > zero */
+	rv_op_ble = 315,
+	rv_op_bleu = 316,
+	rv_op_bgt = 317,
+	rv_op_bgtu = 318,
+	rv_op_j = 319,                     	/* Jump */
+	rv_op_ret = 320,                   	/* Return from subroutine */
+	rv_op_jr = 321,                    	/* Jump register */
+	rv_op_rdcycle = 322,               	/* Read Cycle Counter Status Register */
+	rv_op_rdtime = 323,                	/* Read Timer Status register */
+	rv_op_rdinstret = 324,             	/* Read Instructions Retired Status Register */
+	rv_op_rdcycleh = 325,              	/* Read Cycle Counter Status Register (upper 32-bits on RV32) */
+	rv_op_rdtimeh = 326,               	/* Read Timer Status register (upper 32-bits on RV32) */
+	rv_op_rdinstreth = 327,            	/* Read Instructions Retired Status Register (upper 32-bits on RV32) */
+	rv_op_frcsr = 328,                 	/* Read FP Control and Status Register */
+	rv_op_frrm = 329,                  	/* Read FP Rounding Mode */
+	rv_op_frflags = 330,               	/* Read FP Accrued Exception Flags */
+	rv_op_fscsr = 331,                 	/* Set FP Control and Status Register */
+	rv_op_fsrm = 332,                  	/* Set FP Rounding Mode */
+	rv_op_fsflags = 333,               	/* Set FP Accrued Exception Flags */
+	rv_op_fsrmi = 334,                 	/* Set FP Rounding Mode Immediate */
+	rv_op_fsflagsi = 335,              	/* Set FP Accrued Exception Flags Immediate */
+	rv_op_last = 336,
 };
 
 struct riscvinstr {
@@ -636,6 +650,12 @@ const riscvinstr instrlist[] = {
 	{ rv_op_vsetvli,        1, 0, 0, 0, 0, 0, 0 },
 	{ rv_op_vle8_v ,        1, 0, 0, 0, 0, 0, 0 },
 	{ rv_op_vse8_v ,        1, 0, 0, 0, 0, 0, 0 },
+	{ rv_op_vle16_v ,       1, 0, 0, 0, 0, 0, 0 },
+	{ rv_op_vse16_v ,       1, 0, 0, 0, 0, 0, 0 },
+	{ rv_op_vle32_v ,       1, 0, 0, 0, 0, 0, 0 },
+	{ rv_op_vse32_v ,       1, 0, 0, 0, 0, 0, 0 },
+	{ rv_op_vle64_v ,       1, 0, 0, 0, 0, 0, 0 },
+	{ rv_op_vse64_v ,       1, 0, 0, 0, 0, 0, 0 },
     { rv_op_nop,            1, 0, 0, 0, 0, 0, 0 },  //    272
 	{ rv_op_mv,             1, 0, 0, 0, 0, 0, 0 },  //    273
 	{ rv_op_not,            1, 0, 0, 0, 0, 0, 0 },  //    274

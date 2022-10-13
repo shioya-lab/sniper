@@ -12,9 +12,9 @@
 #include <unistd.h>
 
 // Enable (>0) to print out everything we read
-#define VERBOSE 0
-#define VERBOSE_HEX 0
-#define VERBOSE_ICACHE 0
+#define VERBOSE 3
+#define VERBOSE_HEX 3
+#define VERBOSE_ICACHE 3
 
 Sift::Reader::Reader(const char *filename, const char *response_filename, uint32_t id)
    : input(NULL)
@@ -39,7 +39,7 @@ Sift::Reader::Reader(const char *filename, const char *response_filename, uint32
    , handleEmuArg(NULL)
    , handleRoutineChangeFunc(NULL)
    , handleRoutineAnnounceFunc(NULL)
-   , handleRoutineArg(NULL)   
+   , handleRoutineArg(NULL)
    , filesize(0)
    , last_address(0)
    , icache()
@@ -191,6 +191,7 @@ bool Sift::Reader::Read(Instruction &inst)
       {
          // Other
          input->read(reinterpret_cast<char*>(&rec), sizeof(rec.Other));
+         hexdump(&rec, sizeof(rec.Other));
          switch(rec.Other.type)
          {
             case RecOtherEnd:
@@ -310,7 +311,7 @@ bool Sift::Reader::Read(Instruction &inst)
                hexdump((char*)bytes, size);
                #endif
                #if VERBOSE > 1
-               for (int i = 0 ; i < (size/8) ; i++)
+               for (uint32_t i = 0 ; i < (size/8) ; i++)
                {
                   std::cerr << __FUNCTION__ << ": syscall args[" << i << "] = " << ((uint64_t*)bytes)[i] << std::endl;
                }
@@ -460,9 +461,9 @@ bool Sift::Reader::Read(Instruction &inst)
                free(name);
                free(filename);
                break;
-            }            
+            }
             case RecOtherISAChange:
-            { 
+            {
                assert(rec.Other.size == sizeof(uint32_t));
                uint32_t new_isa;
                input->read(reinterpret_cast<char*>(&new_isa), sizeof(new_isa));

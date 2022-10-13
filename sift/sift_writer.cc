@@ -5,6 +5,7 @@
 #include "sift_assert.h"
 #include "zfstream.h"
 
+#include <unistd.h>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -19,9 +20,9 @@
 #endif
 
 // Enable (>0) to print out everything we write
-#define VERBOSE 0
-#define VERBOSE_HEX 0
-#define VERBOSE_ICACHE 0
+#define VERBOSE 3
+#define VERBOSE_HEX 3
+#define VERBOSE_ICACHE 3
 
 void __assert_fail(const char *__assertion, const char *__file, unsigned int __line, const char *__function) __THROW
 {
@@ -256,7 +257,7 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
       send_va2pa(addresses[i]);
 
    // Try as simple instruction
-   fprintf (stderr, "Address / Last Address check %016lx, %016lx\n", addr, last_address);
+   // fprintf (stderr, "Address / Last Address check %016lx, %016lx\n", addr, last_address);
 
    if (addr == last_address && !is_predicate)
    {
@@ -305,9 +306,12 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
       ninstrext++;
    }
 
+   if (num_addresses != 0) {
+     std::cerr <<  "  Memory Access\n";
+   }
    for(int i = 0; i < num_addresses; ++i) {
-      fprintf(stderr, "  A%016lx\n", addresses[i]);
-      output->write(reinterpret_cast<char*>(&addresses[i]), sizeof(uint64_t));
+     output->write(reinterpret_cast<char*>(&addresses[i]), sizeof(uint64_t));
+     hexdump((char*)(&addresses[i]), sizeof(uint64_t));
    }
 
    last_address += size;

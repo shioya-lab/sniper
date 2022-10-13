@@ -15,7 +15,7 @@
 #if defined(PIN_CRT) && !defined(PINPLAY_SUPPORTED)
 # define SIFT_USE_ZLIB 0
 #else
-# define SIFT_USE_ZLIB 1
+# define SIFT_USE_ZLIB 0
 #endif
 
 namespace Sift

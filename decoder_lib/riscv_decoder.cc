@@ -81,6 +81,38 @@ const char* reg_name_sym[] = {
       "ft9",
       "ft10",
       "ft11",
+      "v0",
+      "v1",
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6",
+      "v7",
+      "v8",
+      "v9",
+      "v10",
+      "v11",
+      "v12",
+      "v13",
+      "v14",
+      "v15",
+      "v16",
+      "v17",
+      "v18",
+      "v19",
+      "v20",
+      "v21",
+      "v22",
+      "v23",
+      "v24",
+      "v25",
+      "v26",
+      "v27",
+      "v28",
+      "v29",
+      "v30",
+      "v31",
       nullptr
     };
 
@@ -327,14 +359,16 @@ Decoder::decoder_reg RISCVDecoder::get_op_reg (const DecodedInst * inst, unsigne
   if (operand_data[idx].type != rv_type_ireg || operand_data[idx].type == rv_type_freg) {
     switch (operand_data[idx].operand_name) {
       case rv_operand_name_rd:    reg = dec->rd;    break;
-	    case rv_operand_name_rs1:   reg = dec->rs1;   break;
-	    case rv_operand_name_rs2:   reg = dec->rs2;   break;
-	    case rv_operand_name_frd:   reg = dec->rd + 32 ;   break;
-	    case rv_operand_name_frs1:  reg = dec->rs1 + 32;   break;
+      case rv_operand_name_rs1:   reg = dec->rs1;   break;
+      case rv_operand_name_rs2:   reg = dec->rs2;   break;
+      case rv_operand_name_frd:   reg = dec->rd + 32 ;   break;
+      case rv_operand_name_frs1:  reg = dec->rs1 + 32;   break;
       case rv_operand_name_frs2:  reg = dec->rs2 + 32;   break;
-	    case rv_operand_name_frs3:  reg = dec->rs3 + 32;   break;
-	    default: reg = 0;
-	  }
+      case rv_operand_name_frs3:  reg = dec->rs3 + 32;   break;
+      case rv_operand_name_vd:    reg = dec->rd  + 64;   break;
+      case rv_operand_name_vs3:   reg = dec->rs3 + 64;   break;
+      default: reg = 0;
+    }
   }
   return reg;
 }
@@ -587,6 +621,8 @@ void RISCVDecodedInst::set_disassembly()
       case '5': *args += rv_freg_name_sym[dec.rs2]; break;
       case '6': *args += rv_freg_name_sym[dec.rs3]; break;
       case '7': *args += format_str("%d", dec.rs1); break;
+      case '8': *args += rv_vreg_name_sym[dec.rd]; break;
+      case '9': *args += rv_vreg_name_sym[dec.rs3]; break;
       case 'i': *args += format_str("%d", dec.imm); break;
       case 'o': *args += format_str("pc %c %td",
         intptr_t(dec.imm) < 0 ? '-' : '+',
