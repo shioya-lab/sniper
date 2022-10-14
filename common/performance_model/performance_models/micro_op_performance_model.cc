@@ -228,7 +228,9 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
       dynins->accessMemory(getCore());
 
    // If we haven't gotten all of our read or write data yet, iterate over the operands
-   for (size_t i = 0 ; i < ops.size() ; ++i)
+   // for (size_t i = 0 ; i < ops.size() ; ++i)
+   unsigned int ops_size = ops.size();
+   for (size_t i = 0 ; i < std::min(ops_size, dynins->num_memory); i++)
    {
       const Operand &o = ops[i];
 
@@ -333,8 +335,10 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
 
    // Make sure there was an Operand/MemoryInfo for each MicroOp
    // This should detect mismatches between decoding as done by fillOperandListMemOps and InstructionDecoder
-   assert(num_reads_done == num_loads);
-   assert(num_writes_done == num_stores);
+
+   // Modify : If exception happend, num_*_done == num_* doesn't match
+   // assert(num_reads_done == num_loads);
+   // assert(num_writes_done == num_stores);
 
    SubsecondTime insn_cost = SubsecondTime::Zero();
 

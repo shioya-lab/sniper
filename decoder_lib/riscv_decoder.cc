@@ -221,6 +221,9 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const char *format = rv_inst_format[dec->op];
 
+  static int vec_lmul = 1;
+  static int vec_vsew = 8;
+
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
     || format == rv_fmt_frd_offset_rs1 /* flw, fld, flq, c.fld, c.flw, c.fldsp, c.flwsp */
     || format == rv_fmt_rs2_offset_rs1  /* sb, sh, sw, sd, sq, c.sw, c.swsp, c.sd, c.sdsp, c.sq, c.sqsp */
@@ -231,8 +234,23 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
      num_memory_operands++;
   } else if (dec->op == rv_op_vle8_v ||
              dec->op == rv_op_vse8_v) {
-    num_memory_operands = 16;
+    num_memory_operands = 16 * vec_lmul;
+  } else if (dec->op == rv_op_vle16_v ||
+             dec->op == rv_op_vse16_v) {
+    num_memory_operands = 8 * vec_lmul;
+  } else if (dec->op == rv_op_vle32_v ||
+             dec->op == rv_op_vse32_v) {
+    num_memory_operands = 4 * vec_lmul;
+  } else if (dec->op == rv_op_vle64_v ||
+             dec->op == rv_op_vse64_v) {
+    num_memory_operands = 2 * vec_lmul;
+  } else if (dec->op == rv_op_vsetvli) {
+    vec_lmul = 1 << (dec->imm & 0x07);
+    vec_vsew = 8 << ((dec->imm >> 3) & 0x07);
+
+    fprintf (stderr, "LMUL is set to %d, VSEW is set to %d\n", vec_lmul, vec_vsew);
   }
+
   return num_memory_operands;
 }
 

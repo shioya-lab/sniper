@@ -285,61 +285,97 @@ enum rv_op
 	rv_op_vse32_v = 279,
 	rv_op_vle64_v = 280,
 	rv_op_vse64_v = 281,
-	rv_op_vlse8_v = 282,
-	rv_op_vsse8_v = 283,
-	rv_op_vlse16_v = 284,
-	rv_op_vsse16_v = 285,
-	rv_op_vlse32_v = 286,
-	rv_op_vsse32_v = 287,
-	rv_op_vlse64_v = 288,
-	rv_op_vsse64_v = 289,
-	rv_op_nop = 290,                   	/* No operation */
-	rv_op_mv = 291,                    	/* Copy register */
-	rv_op_not = 292,                   	/* One’s complement */
-	rv_op_neg = 293,                   	/* Two’s complement */
-	rv_op_negw = 294,                  	/* Two’s complement Word */
-	rv_op_sext_w = 295,                	/* Sign extend Word */
-	rv_op_seqz = 296,                  	/* Set if = zero */
-	rv_op_snez = 297,                  	/* Set if ≠ zero */
-	rv_op_sltz = 298,                  	/* Set if < zero */
-	rv_op_sgtz = 299,                  	/* Set if > zero */
-	rv_op_fmv_s = 300,                 	/* Single-precision move */
-	rv_op_fabs_s = 301,                	/* Single-precision absolute value */
-	rv_op_fneg_s = 302,                	/* Single-precision negate */
-	rv_op_fmv_d = 303,                 	/* Double-precision move */
-	rv_op_fabs_d = 304,                	/* Double-precision absolute value */
-	rv_op_fneg_d = 305,                	/* Double-precision negate */
-	rv_op_fmv_q = 306,                 	/* Quadruple-precision move */
-	rv_op_fabs_q = 307,                	/* Quadruple-precision absolute value */
-	rv_op_fneg_q = 308,                	/* Quadruple-precision negate */
-	rv_op_beqz = 309,                  	/* Branch if = zero */
-	rv_op_bnez = 310,                  	/* Branch if ≠ zero */
-	rv_op_blez = 311,                  	/* Branch if ≤ zero */
-	rv_op_bgez = 312,                  	/* Branch if ≥ zero */
-	rv_op_bltz = 313,                  	/* Branch if < zero */
-	rv_op_bgtz = 314,                  	/* Branch if > zero */
-	rv_op_ble = 315,
-	rv_op_bleu = 316,
-	rv_op_bgt = 317,
-	rv_op_bgtu = 318,
-	rv_op_j = 319,                     	/* Jump */
-	rv_op_ret = 320,                   	/* Return from subroutine */
-	rv_op_jr = 321,                    	/* Jump register */
-	rv_op_rdcycle = 322,               	/* Read Cycle Counter Status Register */
-	rv_op_rdtime = 323,                	/* Read Timer Status register */
-	rv_op_rdinstret = 324,             	/* Read Instructions Retired Status Register */
-	rv_op_rdcycleh = 325,              	/* Read Cycle Counter Status Register (upper 32-bits on RV32) */
-	rv_op_rdtimeh = 326,               	/* Read Timer Status register (upper 32-bits on RV32) */
-	rv_op_rdinstreth = 327,            	/* Read Instructions Retired Status Register (upper 32-bits on RV32) */
-	rv_op_frcsr = 328,                 	/* Read FP Control and Status Register */
-	rv_op_frrm = 329,                  	/* Read FP Rounding Mode */
-	rv_op_frflags = 330,               	/* Read FP Accrued Exception Flags */
-	rv_op_fscsr = 331,                 	/* Set FP Control and Status Register */
-	rv_op_fsrm = 332,                  	/* Set FP Rounding Mode */
-	rv_op_fsflags = 333,               	/* Set FP Accrued Exception Flags */
-	rv_op_fsrmi = 334,                 	/* Set FP Rounding Mode Immediate */
-	rv_op_fsflagsi = 335,              	/* Set FP Accrued Exception Flags Immediate */
-	rv_op_last = 336,
+	rv_op_vleff8_v = 282,
+	rv_op_vleff16_v = 283,
+	rv_op_vleff32_v = 284,
+	rv_op_vleff64_v = 285,
+	rv_op_vl1re8_v = 286,
+	rv_op_vl1re16_v = 287,
+	rv_op_vl1re32_v = 288,
+	rv_op_vl1re64_v = 289,
+	rv_op_vl2re8_v = 290,
+	rv_op_vl2re16_v = 291,
+	rv_op_vl2re32_v = 292,
+	rv_op_vl2re64_v = 293,
+	rv_op_vl4re8_v = 294,
+	rv_op_vl4re16_v = 295,
+	rv_op_vl4re32_v = 296,
+	rv_op_vl4re64_v = 297,
+	rv_op_vl8re8_v = 298,
+	rv_op_vl8re16_v = 299,
+	rv_op_vl8re32_v = 300,
+	rv_op_vl8re64_v = 301,
+	rv_op_vs1re8_v = 302,
+	rv_op_vs1re16_v = 303,
+	rv_op_vs1re32_v = 304,
+	rv_op_vs1re64_v = 305,
+	rv_op_vs2re8_v = 306,
+	rv_op_vs2re16_v = 307,
+	rv_op_vs2re32_v = 308,
+	rv_op_vs2re64_v = 309,
+	rv_op_vs4re8_v = 310,
+	rv_op_vs4re16_v = 311,
+	rv_op_vs4re32_v = 312,
+	rv_op_vs4re64_v = 313,
+	rv_op_vs8re8_v = 314,
+	rv_op_vs8re16_v = 315,
+	rv_op_vs8re32_v = 316,
+	rv_op_vs8re64_v = 317,
+	rv_op_vlse8_v = 318,
+	rv_op_vsse8_v = 319,
+	rv_op_vlse16_v = 320,
+	rv_op_vsse16_v = 321,
+	rv_op_vlse32_v = 322,
+	rv_op_vsse32_v = 323,
+	rv_op_vlse64_v = 324,
+	rv_op_vsse64_v = 325,
+	rv_op_nop = 326,                   	/* No operation */
+	rv_op_mv = 327,                    	/* Copy register */
+	rv_op_not = 328,                   	/* One’s complement */
+	rv_op_neg = 329,                   	/* Two’s complement */
+	rv_op_negw = 330,                  	/* Two’s complement Word */
+	rv_op_sext_w = 331,                	/* Sign extend Word */
+	rv_op_seqz = 332,                  	/* Set if = zero */
+	rv_op_snez = 333,                  	/* Set if ≠ zero */
+	rv_op_sltz = 334,                  	/* Set if < zero */
+	rv_op_sgtz = 335,                  	/* Set if > zero */
+	rv_op_fmv_s = 336,                 	/* Single-precision move */
+	rv_op_fabs_s = 337,                	/* Single-precision absolute value */
+	rv_op_fneg_s = 338,                	/* Single-precision negate */
+	rv_op_fmv_d = 339,                 	/* Double-precision move */
+	rv_op_fabs_d = 340,                	/* Double-precision absolute value */
+	rv_op_fneg_d = 341,                	/* Double-precision negate */
+	rv_op_fmv_q = 342,                 	/* Quadruple-precision move */
+	rv_op_fabs_q = 343,                	/* Quadruple-precision absolute value */
+	rv_op_fneg_q = 344,                	/* Quadruple-precision negate */
+	rv_op_beqz = 345,                  	/* Branch if = zero */
+	rv_op_bnez = 346,                  	/* Branch if ≠ zero */
+	rv_op_blez = 347,                  	/* Branch if ≤ zero */
+	rv_op_bgez = 348,                  	/* Branch if ≥ zero */
+	rv_op_bltz = 349,                  	/* Branch if < zero */
+	rv_op_bgtz = 350,                  	/* Branch if > zero */
+	rv_op_ble = 351,
+	rv_op_bleu = 352,
+	rv_op_bgt = 353,
+	rv_op_bgtu = 354,
+	rv_op_j = 355,                     	/* Jump */
+	rv_op_ret = 356,                   	/* Return from subroutine */
+	rv_op_jr = 357,                    	/* Jump register */
+	rv_op_rdcycle = 358,               	/* Read Cycle Counter Status Register */
+	rv_op_rdtime = 359,                	/* Read Timer Status register */
+	rv_op_rdinstret = 360,             	/* Read Instructions Retired Status Register */
+	rv_op_rdcycleh = 361,              	/* Read Cycle Counter Status Register (upper 32-bits on RV32) */
+	rv_op_rdtimeh = 362,               	/* Read Timer Status register (upper 32-bits on RV32) */
+	rv_op_rdinstreth = 363,            	/* Read Instructions Retired Status Register (upper 32-bits on RV32) */
+	rv_op_frcsr = 364,                 	/* Read FP Control and Status Register */
+	rv_op_frrm = 365,                  	/* Read FP Rounding Mode */
+	rv_op_frflags = 366,               	/* Read FP Accrued Exception Flags */
+	rv_op_fscsr = 367,                 	/* Set FP Control and Status Register */
+	rv_op_fsrm = 368,                  	/* Set FP Rounding Mode */
+	rv_op_fsflags = 369,               	/* Set FP Accrued Exception Flags */
+	rv_op_fsrmi = 370,                 	/* Set FP Rounding Mode Immediate */
+	rv_op_fsflagsi = 371,              	/* Set FP Accrued Exception Flags Immediate */
+    rv_op_last
 };
 
 struct riscvinstr {
@@ -355,94 +391,88 @@ struct riscvinstr {
 
 const riscvinstr instrlist[] = {
     // opcode, has_alu, has_mul, has_div, has_fpu, has_fdiv, has_ifpu, is_memory
-	{ rv_op_illegal,  0, 0, 0, 0, 0, 0, 0 },  //    0
-    { rv_op_lui,      1, 0, 0, 0, 0, 0, 0 },  //    1        RV32I alu
-	{ rv_op_auipc,    1, 0, 0, 0, 0, 0, 0 },  //    2        RV32I alu
-    { rv_op_jal,      1, 0, 0, 0, 0, 0, 0 },  //    3        RV32I jump
-    { rv_op_jalr,     1, 0, 0, 0, 0, 0, 0 },  //    4        RV32I jump indirect
-    { rv_op_beq,      1, 0, 0, 0, 0, 0, 0 },  //    5        RV32I branch
-	{ rv_op_bne,      1, 0, 0, 0, 0, 0, 0 },  //    6        RV32I branch
-	{ rv_op_blt,      1, 0, 0, 0, 0, 0, 0 },  //    7        RV32I branch
-	{ rv_op_bge,      1, 0, 0, 0, 0, 0, 0 },  //    8        RV32I branch
-	{ rv_op_bltu,     1, 0, 0, 0, 0, 0, 0 },  //    9        RV32I branch
-	{ rv_op_bgeu,     1, 0, 0, 0, 0, 0, 0 },  //    10       RV32I branch
-    { rv_op_lb,       1, 0, 0, 0, 0, 0, 1 },  //    11       RV32I load
-	{ rv_op_lh,       1, 0, 0, 0, 0, 0, 1 },  //    12       RV32I load
-	{ rv_op_lw,       1, 0, 0, 0, 0, 0, 1 },  //    13       RV32I load
-	{ rv_op_lbu,      1, 0, 0, 0, 0, 0, 1 },  //    14       RV32I load
-	{ rv_op_lhu,      1, 0, 0, 0, 0, 0, 1 },  //    15       RV32I load
-    { rv_op_sb,       1, 0, 0, 0, 0, 0, 1 },  //    16       RV32I store
-	{ rv_op_sh,       1, 0, 0, 0, 0, 0, 1 },  //    17       RV32I store
-	{ rv_op_sw,       1, 0, 0, 0, 0, 0, 1 },  //    18       RV32I store
-	{ rv_op_addi,     1, 0, 0, 0, 0, 0, 0 },  //    19       RV32I alu
-	{ rv_op_slti,     1, 0, 0, 0, 0, 0, 0 },  //    20       RV32I alu
-	{ rv_op_sltiu,    1, 0, 0, 0, 0, 0, 0 },  //    21       RV32I alu
-	{ rv_op_xori,     1, 0, 0, 0, 0, 0, 0 },  //    22       RV32I alu
-	{ rv_op_ori,      1, 0, 0, 0, 0, 0, 0 },  //    23       RV32I alu
-	{ rv_op_andi,     1, 0, 0, 0, 0, 0, 0 },  //    24       RV32I alu
-	{ rv_op_slli,     1, 0, 0, 0, 0, 0, 0 },  //    25       RV32I alu
-	{ rv_op_srli,     1, 0, 0, 0, 0, 0, 0 },  //    26       RV32I alu
-	{ rv_op_srai,     1, 0, 0, 0, 0, 0, 0 },  //    27       RV32I alu
-	{ rv_op_add,      1, 0, 0, 0, 0, 0, 0 },  //    28       RV32I alu
-	{ rv_op_sub,      1, 0, 0, 0, 0, 0, 0 },  //    29       RV32I alu
-	{ rv_op_sll,      1, 0, 0, 0, 0, 0, 0 },  //    30       RV32I alu
-	{ rv_op_slt,      1, 0, 0, 0, 0, 0, 0 },  //    31       RV32I alu
-	{ rv_op_sltu,     1, 0, 0, 0, 0, 0, 0 },  //    32       RV32I alu
-	{ rv_op_xor,      1, 0, 0, 0, 0, 0, 0 },  //    33       RV32I alu
-	{ rv_op_srl,      1, 0, 0, 0, 0, 0, 0 },  //    34       RV32I alu
-	{ rv_op_sra,      1, 0, 0, 0, 0, 0, 0 },  //    35       RV32I alu
-	{ rv_op_or,       1, 0, 0, 0, 0, 0, 0 },  //    36       RV32I alu
-	{ rv_op_and,      1, 0, 0, 0, 0, 0, 0 },  //    37       RV32I alu
-    { rv_op_fence,    1, 0, 0, 0, 0, 0, 0 },  //    38       RV32I fence
-	{ rv_op_fence_i,  1, 0, 0, 0, 0, 0, 0 },  //    39       RV32I fence
-    { rv_op_lwu,      1, 0, 0, 0, 0, 0, 1 },  //    40       RV32I load
-
-    { rv_op_ld,       1, 0, 0, 0, 0, 0, 1 },  //    41       RV64I load
-    { rv_op_sd,       1, 0, 0, 0, 0, 0, 1 },  //    42       RV64I store
-    { rv_op_addiw,    1, 0, 0, 0, 0, 0, 0 },  //    43       RV64I alu
-	{ rv_op_slliw,    1, 0, 0, 0, 0, 0, 0 },  //    44       RV64I alu
-	{ rv_op_srliw,    1, 0, 0, 0, 0, 0, 0 },  //    45       RV64I alu
-	{ rv_op_sraiw,    1, 0, 0, 0, 0, 0, 0 },  //    46       RV64I alu
-	{ rv_op_addw,     1, 0, 0, 0, 0, 0, 0 },  //    47       RV64I alu
-	{ rv_op_subw,     1, 0, 0, 0, 0, 0, 0 },  //    48       RV64I alu
-	{ rv_op_sllw,     1, 0, 0, 0, 0, 0, 0 },  //    49       RV64I alu
-	{ rv_op_srlw,     1, 0, 0, 0, 0, 0, 0 },  //    50       RV64I alu
-	{ rv_op_sraw,     1, 0, 0, 0, 0, 0, 0 },  //    51       RV64I alu
-
-	{ rv_op_ldu,      1, 0, 0, 0, 0, 0, 0 },  //    52
-	{ rv_op_lq,       1, 0, 0, 0, 0, 0, 0 },  //    53
-	{ rv_op_sq,       1, 0, 0, 0, 0, 0, 0 },  //    54
-	{ rv_op_addid,    1, 0, 0, 0, 0, 0, 0 },  //    55
-	{ rv_op_sllid,    1, 0, 0, 0, 0, 0, 0 },  //    56
-	{ rv_op_srlid,    1, 0, 0, 0, 0, 0, 0 },  //    57
-	{ rv_op_sraid,    1, 0, 0, 0, 0, 0, 0 },  //    58
-	{ rv_op_addd,     1, 0, 0, 0, 0, 0, 0 },  //    59
-	{ rv_op_subd,     1, 0, 0, 0, 0, 0, 0 },  //    60
-	{ rv_op_slld,     1, 0, 0, 0, 0, 0, 0 },  //    61
-	{ rv_op_srld,     1, 0, 0, 0, 0, 0, 0 },  //    62
-	{ rv_op_srad,     1, 0, 0, 0, 0, 0, 0 },  //    63
-
-    { rv_op_mul,      1, 1, 0, 0, 0, 0, 0 },  //    64       RV32M alu multiply
-	{ rv_op_mulh,     1, 1, 0, 0, 0, 0, 0 },  //    65       RV32M alu multiply
-	{ rv_op_mulhsu,   1, 1, 0, 0, 0, 0, 0 },  //    66       RV32M alu multiply
-	{ rv_op_mulhu,    1, 1, 0, 0, 0, 0, 0 },  //    67       RV32M alu multiply
-    { rv_op_div,      1, 0, 1, 0, 0, 0, 0 },  //    68       RV32M alu divide
-	{ rv_op_divu,     1, 0, 1, 0, 0, 0, 0 },  //    69       RV32M alu divide
-	{ rv_op_rem,      1, 0, 1, 0, 0, 0, 0 },  //    70       RV32M alu divide
-	{ rv_op_remu,     1, 0, 1, 0, 0, 0, 0 },  //    71       RV32M alu divide
-
-    { rv_op_mulw,     1, 1, 0, 0, 0, 0, 0 },  //    72       RV64M alu multiply
-	{ rv_op_divw,     1, 0, 1, 0, 0, 0, 0 },  //    73       RV64M alu divide
-	{ rv_op_divuw,    1, 0, 1, 0, 0, 0, 0 },  //    74       RV64M alu divide
-	{ rv_op_remw,     1, 0, 1, 0, 0, 0, 0 },  //    75       RV64M alu divide
-	{ rv_op_remuw,    1, 0, 1, 0, 0, 0, 0 },  //    76       RV64M alu divide
-
-	{ rv_op_muld,     1, 1, 0, 0, 0, 0, 0 },  //    77
-	{ rv_op_divd,     1, 0, 1, 0, 0, 0, 0 },  //    78
-	{ rv_op_divud,    1, 0, 1, 0, 0, 0, 0 },  //    79
-	{ rv_op_remd,     1, 0, 1, 0, 0, 0, 0 },  //    80
-	{ rv_op_remud,    1, 0, 1, 0, 0, 0, 0 },  //    81
-
+	{ rv_op_illegal,        0, 0, 0, 0, 0, 0, 0 },  //    0
+    { rv_op_lui,            1, 0, 0, 0, 0, 0, 0 },  //    1        RV32I alu
+	{ rv_op_auipc,          1, 0, 0, 0, 0, 0, 0 },  //    2        RV32I alu
+    { rv_op_jal,            1, 0, 0, 0, 0, 0, 0 },  //    3        RV32I jump
+    { rv_op_jalr,           1, 0, 0, 0, 0, 0, 0 },  //    4        RV32I jump indirect
+    { rv_op_beq,            1, 0, 0, 0, 0, 0, 0 },  //    5        RV32I branch
+	{ rv_op_bne,            1, 0, 0, 0, 0, 0, 0 },  //    6        RV32I branch
+	{ rv_op_blt,            1, 0, 0, 0, 0, 0, 0 },  //    7        RV32I branch
+	{ rv_op_bge,            1, 0, 0, 0, 0, 0, 0 },  //    8        RV32I branch
+	{ rv_op_bltu,           1, 0, 0, 0, 0, 0, 0 },  //    9        RV32I branch
+	{ rv_op_bgeu,           1, 0, 0, 0, 0, 0, 0 },  //    10       RV32I branch
+    { rv_op_lb,             1, 0, 0, 0, 0, 0, 1 },  //    11       RV32I load
+	{ rv_op_lh,             1, 0, 0, 0, 0, 0, 1 },  //    12       RV32I load
+	{ rv_op_lw,             1, 0, 0, 0, 0, 0, 1 },  //    13       RV32I load
+	{ rv_op_lbu,            1, 0, 0, 0, 0, 0, 1 },  //    14       RV32I load
+	{ rv_op_lhu,            1, 0, 0, 0, 0, 0, 1 },  //    15       RV32I load
+    { rv_op_sb,             1, 0, 0, 0, 0, 0, 1 },  //    16       RV32I store
+	{ rv_op_sh,             1, 0, 0, 0, 0, 0, 1 },  //    17       RV32I store
+	{ rv_op_sw,             1, 0, 0, 0, 0, 0, 1 },  //    18       RV32I store
+	{ rv_op_addi,           1, 0, 0, 0, 0, 0, 0 },  //    19       RV32I alu
+	{ rv_op_slti,           1, 0, 0, 0, 0, 0, 0 },  //    20       RV32I alu
+	{ rv_op_sltiu,          1, 0, 0, 0, 0, 0, 0 },  //    21       RV32I alu
+	{ rv_op_xori,           1, 0, 0, 0, 0, 0, 0 },  //    22       RV32I alu
+	{ rv_op_ori,            1, 0, 0, 0, 0, 0, 0 },  //    23       RV32I alu
+	{ rv_op_andi,           1, 0, 0, 0, 0, 0, 0 },  //    24       RV32I alu
+	{ rv_op_slli,           1, 0, 0, 0, 0, 0, 0 },  //    25       RV32I alu
+	{ rv_op_srli,           1, 0, 0, 0, 0, 0, 0 },  //    26       RV32I alu
+	{ rv_op_srai,           1, 0, 0, 0, 0, 0, 0 },  //    27       RV32I alu
+	{ rv_op_add,            1, 0, 0, 0, 0, 0, 0 },  //    28       RV32I alu
+	{ rv_op_sub,            1, 0, 0, 0, 0, 0, 0 },  //    29       RV32I alu
+	{ rv_op_sll,            1, 0, 0, 0, 0, 0, 0 },  //    30       RV32I alu
+	{ rv_op_slt,            1, 0, 0, 0, 0, 0, 0 },  //    31       RV32I alu
+	{ rv_op_sltu,           1, 0, 0, 0, 0, 0, 0 },  //    32       RV32I alu
+	{ rv_op_xor,            1, 0, 0, 0, 0, 0, 0 },  //    33       RV32I alu
+	{ rv_op_srl,            1, 0, 0, 0, 0, 0, 0 },  //    34       RV32I alu
+	{ rv_op_sra,            1, 0, 0, 0, 0, 0, 0 },  //    35       RV32I alu
+	{ rv_op_or,             1, 0, 0, 0, 0, 0, 0 },  //    36       RV32I alu
+	{ rv_op_and,            1, 0, 0, 0, 0, 0, 0 },  //    37       RV32I alu
+    { rv_op_fence,          1, 0, 0, 0, 0, 0, 0 },  //    38       RV32I fence
+	{ rv_op_fence_i,        1, 0, 0, 0, 0, 0, 0 },  //    39       RV32I fence
+    { rv_op_lwu,            1, 0, 0, 0, 0, 0, 1 },  //    40       RV32I load
+    { rv_op_ld,             1, 0, 0, 0, 0, 0, 1 },  //    41       RV64I load
+    { rv_op_sd,             1, 0, 0, 0, 0, 0, 1 },  //    42       RV64I store
+    { rv_op_addiw,          1, 0, 0, 0, 0, 0, 0 },  //    43       RV64I alu
+	{ rv_op_slliw,          1, 0, 0, 0, 0, 0, 0 },  //    44       RV64I alu
+	{ rv_op_srliw,          1, 0, 0, 0, 0, 0, 0 },  //    45       RV64I alu
+	{ rv_op_sraiw,          1, 0, 0, 0, 0, 0, 0 },  //    46       RV64I alu
+	{ rv_op_addw,           1, 0, 0, 0, 0, 0, 0 },  //    47       RV64I alu
+	{ rv_op_subw,           1, 0, 0, 0, 0, 0, 0 },  //    48       RV64I alu
+	{ rv_op_sllw,           1, 0, 0, 0, 0, 0, 0 },  //    49       RV64I alu
+	{ rv_op_srlw,           1, 0, 0, 0, 0, 0, 0 },  //    50       RV64I alu
+	{ rv_op_sraw,           1, 0, 0, 0, 0, 0, 0 },  //    51       RV64I alu
+	{ rv_op_ldu,            1, 0, 0, 0, 0, 0, 0 },  //    52
+	{ rv_op_lq,             1, 0, 0, 0, 0, 0, 0 },  //    53
+	{ rv_op_sq,             1, 0, 0, 0, 0, 0, 0 },  //    54
+	{ rv_op_addid,          1, 0, 0, 0, 0, 0, 0 },  //    55
+	{ rv_op_sllid,          1, 0, 0, 0, 0, 0, 0 },  //    56
+	{ rv_op_srlid,          1, 0, 0, 0, 0, 0, 0 },  //    57
+	{ rv_op_sraid,          1, 0, 0, 0, 0, 0, 0 },  //    58
+	{ rv_op_addd,           1, 0, 0, 0, 0, 0, 0 },  //    59
+	{ rv_op_subd,           1, 0, 0, 0, 0, 0, 0 },  //    60
+	{ rv_op_slld,           1, 0, 0, 0, 0, 0, 0 },  //    61
+	{ rv_op_srld,           1, 0, 0, 0, 0, 0, 0 },  //    62
+	{ rv_op_srad,           1, 0, 0, 0, 0, 0, 0 },  //    63
+    { rv_op_mul,            1, 1, 0, 0, 0, 0, 0 },  //    64       RV32M alu multiply
+	{ rv_op_mulh,           1, 1, 0, 0, 0, 0, 0 },  //    65       RV32M alu multiply
+	{ rv_op_mulhsu,         1, 1, 0, 0, 0, 0, 0 },  //    66       RV32M alu multiply
+	{ rv_op_mulhu,          1, 1, 0, 0, 0, 0, 0 },  //    67       RV32M alu multiply
+    { rv_op_div,            1, 0, 1, 0, 0, 0, 0 },  //    68       RV32M alu divide
+	{ rv_op_divu,           1, 0, 1, 0, 0, 0, 0 },  //    69       RV32M alu divide
+	{ rv_op_rem,            1, 0, 1, 0, 0, 0, 0 },  //    70       RV32M alu divide
+	{ rv_op_remu,           1, 0, 1, 0, 0, 0, 0 },  //    71       RV32M alu divide
+    { rv_op_mulw,           1, 1, 0, 0, 0, 0, 0 },  //    72       RV64M alu multiply
+	{ rv_op_divw,           1, 0, 1, 0, 0, 0, 0 },  //    73       RV64M alu divide
+	{ rv_op_divuw,          1, 0, 1, 0, 0, 0, 0 },  //    74       RV64M alu divide
+	{ rv_op_remw,           1, 0, 1, 0, 0, 0, 0 },  //    75       RV64M alu divide
+	{ rv_op_remuw,          1, 0, 1, 0, 0, 0, 0 },  //    76       RV64M alu divide
+	{ rv_op_muld,           1, 1, 0, 0, 0, 0, 0 },  //    77
+	{ rv_op_divd,           1, 0, 1, 0, 0, 0, 0 },  //    78
+	{ rv_op_divud,          1, 0, 1, 0, 0, 0, 0 },  //    79
+	{ rv_op_remd,           1, 0, 1, 0, 0, 0, 0 },  //    80
+	{ rv_op_remud,          1, 0, 1, 0, 0, 0, 0 },  //    81
     { rv_op_lr_w,           1, 0, 0, 0, 0, 0, 1 },  //    82    RV32A atomic
 	{ rv_op_sc_w,           1, 0, 0, 0, 0, 0, 1 },  //    83    RV32A atomic
 	{ rv_op_amoswap_w,      1, 0, 0, 0, 0, 0, 1 },  //    84    RV32A atomic
@@ -454,7 +484,6 @@ const riscvinstr instrlist[] = {
 	{ rv_op_amomax_w,       1, 0, 0, 0, 0, 0, 0 },  //    90    RV32A atomic
 	{ rv_op_amominu_w,      1, 0, 0, 0, 0, 0, 0 },  //    91    RV32A atomic
 	{ rv_op_amomaxu_w,      1, 0, 0, 0, 0, 0, 0 },  //    92    RV32A atomic
-
 	{ rv_op_lr_d,           1, 0, 0, 0, 0, 0, 1 },  //    93    RV64A atomic
 	{ rv_op_sc_d,           1, 0, 0, 0, 0, 0, 1 },  //    94    RV64A atomic
 	{ rv_op_amoswap_d,      1, 0, 0, 0, 0, 0, 1 },  //    95    RV64A atomic
@@ -466,7 +495,6 @@ const riscvinstr instrlist[] = {
 	{ rv_op_amomax_d,       1, 0, 0, 0, 0, 0, 0 },  //    101   RV64A atomic
 	{ rv_op_amominu_d,      1, 0, 0, 0, 0, 0, 0 },  //    102   RV64A atomic
 	{ rv_op_amomaxu_d,      1, 0, 0, 0, 0, 0, 0 },  //    103   RV64A atomic
-
 	{ rv_op_lr_q,           1, 0, 0, 0, 0, 0, 1 },  //    104
 	{ rv_op_sc_q,           1, 0, 0, 0, 0, 0, 1 },  //    105
 	{ rv_op_amoswap_q,      1, 0, 0, 0, 0, 0, 1 },  //    106
@@ -478,7 +506,6 @@ const riscvinstr instrlist[] = {
 	{ rv_op_amomax_q,       1, 0, 0, 0, 0, 0, 0 },  //    112
 	{ rv_op_amominu_q,      1, 0, 0, 0, 0, 0, 0 },  //    113
 	{ rv_op_amomaxu_q,      1, 0, 0, 0, 0, 0, 0 },  //    114
-
     { rv_op_ecall,          1, 0, 0, 0, 0, 0, 0 },  //    115      RV32S system
 	{ rv_op_ebreak,         1, 0, 0, 0, 0, 0, 0 },  //    116      RV32S system
 	{ rv_op_uret,           1, 0, 0, 0, 0, 0, 0 },  //    117      RV32S system
@@ -487,22 +514,20 @@ const riscvinstr instrlist[] = {
 	{ rv_op_mret,           1, 0, 0, 0, 0, 0, 0 },  //    120      RV32S system
 	{ rv_op_dret,           1, 0, 0, 0, 0, 0, 0 },  //    121      RV32S system
 	{ rv_op_sfence_vm,      1, 0, 0, 0, 0, 0, 0 },  //    122      RV32S system
-	{ rv_op_wfi,            1, 0, 0, 0, 0, 0, 0 },  //    123      RV32S system
-
+	{ rv_op_sfence_vma,     1, 0, 0, 0, 0, 0, 0 },  //    123      RV32S system
+	{ rv_op_wfi,            1, 0, 0, 0, 0, 0, 0 },  //    124      RV32S system
     { rv_op_csrrw,          1, 0, 0, 0, 0, 0, 0 },  //    124      RV32S csr
 	{ rv_op_csrrs,          1, 0, 0, 0, 0, 0, 0 },  //    125      RV32S csr
 	{ rv_op_csrrc,          1, 0, 0, 0, 0, 0, 0 },  //    126      RV32S csr
 	{ rv_op_csrrwi,         1, 0, 0, 0, 0, 0, 0 },  //    127      RV32S csr
 	{ rv_op_csrrsi,         1, 0, 0, 0, 0, 0, 0 },  //    128      RV32S csr
 	{ rv_op_csrrci,         1, 0, 0, 0, 0, 0, 0 },  //    129      RV32S csr
-
     { rv_op_flw,            1, 0, 0, 1, 0, 0, 1 },  //    130      RV32F fpu load
     { rv_op_fsw,            1, 0, 0, 1, 0, 0, 1 },  //    131      RV32F fpu store
     { rv_op_fmadd_s,        1, 0, 0, 1, 0, 0, 0 },  //    132      RV32F fpu fma
 	{ rv_op_fmsub_s,        1, 0, 0, 1, 0, 0, 0 },  //    133      RV32F fpu fma
 	{ rv_op_fnmsub_s,       1, 0, 0, 1, 0, 0, 0 },  //    134      RV32F fpu fma
 	{ rv_op_fnmadd_s,       1, 0, 0, 1, 0, 0, 0 },  //    135      RV32F fpu fma
-
 	{ rv_op_fadd_s,         1, 0, 0, 1, 0, 0, 0 },  //    136      RV32F fpu
 	{ rv_op_fsub_s,         1, 0, 0, 1, 0, 0, 0 },  //    137      RV32F fpu
 	{ rv_op_fmul_s,         1, 0, 0, 1, 1, 0, 0 },  //    138      RV32F fpu
@@ -520,24 +545,19 @@ const riscvinstr instrlist[] = {
 	{ rv_op_fcvt_wu_s,      1, 0, 0, 1, 0, 1, 0 },  //    150      RV32F fpu fcvt
 	{ rv_op_fcvt_s_w,       1, 0, 0, 1, 0, 1, 0 },  //    151      RV32F fpu fcvt
 	{ rv_op_fcvt_s_wu,      1, 0, 0, 1, 0, 1, 0 },  //    152      RV32F fpu fcvt
-
     { rv_op_fmv_x_s,        1, 0, 0, 1, 0, 0, 0 },  //    153      RV32F fpu fmove
 	{ rv_op_fclass_s,       1, 0, 0, 1, 0, 0, 0 },  //    154      RV32F fpu
     { rv_op_fmv_s_x,        1, 0, 0, 1, 0, 0, 0 },  //    155      RV32F fpu fmove
-
     { rv_op_fcvt_l_s,       1, 0, 0, 1, 0, 1, 0 },  //    156      RV64F fpu fcvt
 	{ rv_op_fcvt_lu_s,      1, 0, 0, 1, 0, 1, 0 },  //    157      RV64F fpu fcvt
 	{ rv_op_fcvt_s_l,       1, 0, 0, 1, 0, 1, 0 },  //    158      RV64F fpu fcvt
 	{ rv_op_fcvt_s_lu,      1, 0, 0, 1, 0, 1, 0 },  //    159      RV64F fpu fcvt
-
     { rv_op_fld,            1, 0, 0, 1, 0, 0, 1 },  //    160      RV32D fpu load
     { rv_op_fsd,            1, 0, 0, 1, 0, 0, 1 },  //    161      RV32D fpu store
-
 	{ rv_op_fmadd_d,        1, 0, 0, 1, 0, 0, 0 },  //    162      RV32D fpu fma
 	{ rv_op_fmsub_d,        1, 0, 0, 1, 0, 0, 0 },  //    163      RV32D fpu fma
 	{ rv_op_fnmsub_d,       1, 0, 0, 1, 0, 0, 0 },  //    164      RV32D fpu fma
 	{ rv_op_fnmadd_d,       1, 0, 0, 1, 0, 0, 0 },  //    165      RV32D fpu fma
-
 	{ rv_op_fadd_d,         1, 0, 0, 1, 0, 0, 0 },  //    166      RV32D fpu
 	{ rv_op_fsub_d,         1, 0, 0, 1, 0, 0, 0 },  //    167      RV32D fpu
 	{ rv_op_fmul_d,         1, 0, 0, 1, 1, 0, 0 },  //    168      RV32D fpu
@@ -558,14 +578,12 @@ const riscvinstr instrlist[] = {
 	{ rv_op_fcvt_d_w,       1, 0, 0, 1, 0, 1, 0 },  //    183      RV32D fpu fcvt
 	{ rv_op_fcvt_d_wu,      1, 0, 0, 1, 0, 1, 0 },  //    184      RV32D fpu fcvt
 	{ rv_op_fclass_d,       1, 0, 0, 1, 0, 0, 0 },  //    185      RV32D fpu
-
 	{ rv_op_fcvt_l_d,       1, 0, 0, 1, 0, 1, 0 },  //    186      RV64D fpu fcvt
 	{ rv_op_fcvt_lu_d,      1, 0, 0, 1, 0, 1, 0 },  //    187      RV64D fpu fcvt
     { rv_op_fmv_x_d,        1, 0, 0, 1, 0, 0, 0 },  //    188      RV64D fpu fmove
 	{ rv_op_fcvt_d_l,       1, 0, 0, 1, 0, 1, 0 },  //    189      RV64D fpu fcvt
 	{ rv_op_fcvt_d_lu,      1, 0, 0, 1, 0, 1, 0 },  //    190      RV64D fpu fcvt
 	{ rv_op_fmv_d_x,        1, 0, 0, 1, 0, 0, 0 },  //    191      RV64D fpu fmove
-
 	{ rv_op_flq,            1, 0, 0, 1, 0, 0, 1 },  //    192
 	{ rv_op_fsq,            1, 0, 0, 1, 0, 0, 1 },  //    193
 	{ rv_op_fmadd_q,        1, 0, 0, 1, 0, 0, 0 },  //    194
@@ -600,7 +618,6 @@ const riscvinstr instrlist[] = {
 	{ rv_op_fcvt_q_lu,      1, 0, 0, 1, 0, 0, 0 },  //    223
 	{ rv_op_fmv_x_q,        1, 0, 0, 1, 0, 0, 0 },  //    224
 	{ rv_op_fmv_q_x,        1, 0, 0, 1, 0, 0, 0 },  //    225
-
 	{ rv_op_c_addi4spn,     1, 0, 0, 0, 0, 0, 0 },  //    226
 	{ rv_op_c_fld,          1, 0, 0, 0, 0, 0, 1 },  //    227
 	{ rv_op_c_lw,           1, 0, 0, 0, 0, 0, 1 },  //    228
@@ -648,14 +665,58 @@ const riscvinstr instrlist[] = {
 	{ rv_op_c_lqsp,         1, 0, 0, 0, 0, 0, 0 },  //    270
 	{ rv_op_c_sqsp,         1, 0, 0, 0, 0, 0, 0 },  //    271
 	{ rv_op_vsetvli,        1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vle8_v ,        1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vse8_v ,        1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vle16_v ,       1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vse16_v ,       1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vle32_v ,       1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vse32_v ,       1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vle64_v ,       1, 0, 0, 0, 0, 0, 0 },
-	{ rv_op_vse64_v ,       1, 0, 0, 0, 0, 0, 0 },
+	{ rv_op_vle8_v ,        1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vse8_v ,        1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vle16_v ,       1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vse16_v ,       1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vle32_v ,       1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vse32_v ,       1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vle64_v ,       1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vse64_v ,       1, 0, 0, 0, 0, 0, 1 },
+	{ rv_op_vleff8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 282,
+	{ rv_op_vleff16_v,      1, 0, 0, 0, 0, 0, 1 },  // 283,
+	{ rv_op_vleff32_v,      1, 0, 0, 0, 0, 0, 1 },  // 284,
+	{ rv_op_vleff64_v,      1, 0, 0, 0, 0, 0, 1 },  // 285,
+	{ rv_op_vl1re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 286,
+	{ rv_op_vl1re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 287,
+	{ rv_op_vl1re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 288,
+	{ rv_op_vl1re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 289,
+	{ rv_op_vl2re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 290,
+	{ rv_op_vl2re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 291,
+	{ rv_op_vl2re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 292,
+	{ rv_op_vl2re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 293,
+	{ rv_op_vl4re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 294,
+	{ rv_op_vl4re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 295,
+	{ rv_op_vl4re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 296,
+	{ rv_op_vl4re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 297,
+	{ rv_op_vl8re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 298,
+	{ rv_op_vl8re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 299,
+	{ rv_op_vl8re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 300,
+	{ rv_op_vl8re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 301,
+	{ rv_op_vs1re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 302,
+	{ rv_op_vs1re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 303,
+	{ rv_op_vs1re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 304,
+	{ rv_op_vs1re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 305,
+	{ rv_op_vs2re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 306,
+	{ rv_op_vs2re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 307,
+	{ rv_op_vs2re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 308,
+	{ rv_op_vs2re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 309,
+	{ rv_op_vs4re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 310,
+	{ rv_op_vs4re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 311,
+	{ rv_op_vs4re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 312,
+	{ rv_op_vs4re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 313,
+	{ rv_op_vs8re8_v ,      1, 0, 0, 0, 0, 0, 1 },  // 314,
+	{ rv_op_vs8re16_v,      1, 0, 0, 0, 0, 0, 1 },  // 315,
+	{ rv_op_vs8re32_v,      1, 0, 0, 0, 0, 0, 1 },  // 316,
+	{ rv_op_vs8re64_v,      1, 0, 0, 0, 0, 0, 1 },  // 317,
+	{ rv_op_vlse8_v  ,      1, 0, 0, 0, 0, 0, 1 },  // 318,
+	{ rv_op_vsse8_v  ,      1, 0, 0, 0, 0, 0, 1 },  // 319,
+	{ rv_op_vlse16_v ,      1, 0, 0, 0, 0, 0, 1 },  // 320,
+	{ rv_op_vsse16_v ,      1, 0, 0, 0, 0, 0, 1 },  // 321,
+	{ rv_op_vlse32_v ,      1, 0, 0, 0, 0, 0, 1 },  // 322,
+	{ rv_op_vsse32_v ,      1, 0, 0, 0, 0, 0, 1 },  // 323,
+	{ rv_op_vlse64_v ,      1, 0, 0, 0, 0, 0, 1 },  // 324,
+	{ rv_op_vsse64_v ,      1, 0, 0, 0, 0, 0, 1 },  // 325,
     { rv_op_nop,            1, 0, 0, 0, 0, 0, 0 },  //    272
 	{ rv_op_mv,             1, 0, 0, 0, 0, 0, 0 },  //    273
 	{ rv_op_not,            1, 0, 0, 0, 0, 0, 0 },  //    274

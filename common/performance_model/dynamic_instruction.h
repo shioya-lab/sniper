@@ -37,12 +37,12 @@ class DynamicInstruction
          SubsecondTime latency;
          HitWhere::where_t hit_where;
       };
-      static const UInt8 MAX_MEMORY = 32;
+      static const UInt8 MAX_MEMORY = 16 * 8;
 
       Instruction* instruction;
       IntPtr eip; // Can be physical address, so different from instruction->getAddress() which is always virtual
       BranchInfo branch_info;
-      UInt8 num_memory;
+      unsigned int num_memory;
       MemoryInfo memory_info[MAX_MEMORY];
 
       static Allocator* createAllocator();

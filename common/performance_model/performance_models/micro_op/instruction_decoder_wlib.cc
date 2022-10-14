@@ -56,7 +56,9 @@ unsigned int InstructionDecoder::getNumExecs(const dl::DecodedInst *ins, int num
 
 const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  const dl::DecodedInst *ins, Instruction *ins_ptr)
 {
-   dl::Decoder *dec = Sim()->getDecoder();
+  fprintf (stderr, "instruction_decoder_wlib.cc::InstructionDecoder::decode() called\n");
+
+  dl::Decoder *dec = Sim()->getDecoder();
    // Determine register dependencies and number of microops per type
 
    std::vector<std::set<dl::Decoder::decoder_reg> > regs_loads, regs_stores;
@@ -103,7 +105,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
          /* LEA-like instruction */
          regs_src.insert(regs_mem.begin(), regs_mem.end());
       }
-      else if (dec->op_is_reg(ins, idx))  
+      else if (dec->op_is_reg(ins, idx))
       {
          dl::Decoder::decoder_reg reg = dec->get_op_reg(ins, idx);
 
@@ -139,20 +141,21 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
 
    std::vector<const MicroOp*> *uops = new std::vector<const MicroOp*>(); //< Return value
    int totalMicroOps = numLoads + numExecs + numStores;
-   // FIXME: 
+   fprintf (stderr, "totalMicroOps = numLoads + numExecs + numStores = %d = %d + %d + %d\n", totalMicroOps, numLoads, numExecs, numStores);
+   // FIXME:
    // Capstone bug: random incorrect disassembly --> ldr x1, [x0] to ldr w1, #0x7faa399350
    // Only happening once. Treat that load as an exec instruction.
    if (totalMicroOps == 0) {
      numExecs = totalMicroOps = 1;
    }
-   
+
    for(int index = 0; index < totalMicroOps; ++index)
    {
       MicroOp *currentMicroOp = new MicroOp();
-      // pass the decoder object to allow access to the library 
+      // pass the decoder object to allow access to the library
       currentMicroOp->setInstructionPointer(Memory::make_access(address));
-      
-      // Extra information on all micro ops 
+
+      // Extra information on all micro ops
       currentMicroOp->setOperandSize(operand_size);
       currentMicroOp->setInstruction(ins_ptr);
       currentMicroOp->setDecodedInstruction(ins);
@@ -160,7 +163,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
       // be dependent on register values.  Therefore, fill it in at simulation time.
 
       if (index < numLoads) /* LOAD */
-      {      
+      {
          size_t loadIndex = index;
          currentMicroOp->makeLoad(
                  loadIndex
@@ -170,9 +173,9 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                );
       }
       else if (index < numLoads + numExecs) /* EXEC */
-      {      
+      {
          size_t execIndex = index - numLoads;
-         LOG_ASSERT_ERROR(numExecs <= 2, "More than 2 exec uops"); 
+         LOG_ASSERT_ERROR(numExecs <= 2, "More than 2 exec uops");
          currentMicroOp->makeExecute(
                  execIndex
                , numLoads
@@ -181,7 +184,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                , ins->is_conditional_branch() /* is conditional branch? */);
       }
       else /* STORE */
-      {      
+      {
          size_t storeIndex = index - numLoads - numExecs;
          currentMicroOp->makeStore(
                  storeIndex
@@ -197,7 +200,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
 
       // Fill in the destination registers for both loads and executes, also on stores if there are no loads or executes
       if (index < numLoads) /* LOAD */
-      {      
+      {
          size_t loadIndex = index;
          addSrcs(regs_loads[loadIndex], currentMicroOp);
          addAddrs(regs_loads[loadIndex], currentMicroOp);
@@ -213,7 +216,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
       }
 
       else if (index < numLoads + numExecs) /* EXEC */
-      {      
+      {
          addSrcs(regs_src, currentMicroOp);
          addDsts(regs_dst, currentMicroOp);
 
@@ -229,7 +232,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
       }
 
       else /* STORE */
-      {      
+      {
          size_t storeIndex = index - numLoads - numExecs;
          addSrcs(regs_stores[storeIndex], currentMicroOp);
          addAddrs(regs_stores[storeIndex], currentMicroOp);

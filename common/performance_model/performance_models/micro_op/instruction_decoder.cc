@@ -90,6 +90,8 @@ unsigned int InstructionDecoder::getNumExecs(const xed_decoded_inst_t *ins, int 
 
 const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address, const xed_decoded_inst_t *ins, Instruction *ins_ptr)
 {
+  fprintf (stderr, "instruction_decoder.cc::InstructionDecoder::decode() called\n");
+
    // Determine register dependencies and number of microops per type
 
    std::vector<std::set<xed_reg_enum_t> > regs_loads, regs_stores;
@@ -225,6 +227,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address, co
 
    std::vector<const MicroOp*> *uops = new std::vector<const MicroOp*>(); //< Return value
    int totalMicroOps = numLoads + numExecs + numStores;
+   fprintf (stderr, "totalMicroOps = numLoads + numExecs + numStores = %d = %d + %d + %d\n", totalMicroOps, numLoads, numExecs, numStores);
 
    for(int index = 0; index < totalMicroOps; ++index)
    {

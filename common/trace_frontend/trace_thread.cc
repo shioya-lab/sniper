@@ -378,7 +378,7 @@ SubsecondTime TraceThread::getCurrentTime() const
 Instruction* TraceThread::decode(Sift::Instruction &inst)
 {
 
-   //printf("PC: %lx Size: %d num_addresses=%d is_branch=%d\n", inst.sinst->addr, inst.sinst->size, inst.num_addresses, inst.is_branch);
+  fprintf(stderr, "PC: %lx Size: %d num_addresses=%d is_branch=%d\n", inst.sinst->addr, inst.sinst->size, inst.num_addresses, inst.is_branch);
    if (m_decoder_cache.count(inst.sinst->addr) == 0)
       m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
 
@@ -389,13 +389,21 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
    // Ignore memory-referencing operands in NOP instructions
    if (!(dec_inst.is_nop()))
    {
-      for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
-         if (Sim()->getDecoder()->op_read_mem(&dec_inst, mem_idx))
-            list.push_back(Operand(Operand::MEMORY, 0, Operand::READ));
+     // for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+     for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx) {
+       if (Sim()->getDecoder()->op_read_mem(&dec_inst, mem_idx)) {
+         fprintf(stderr, "mem_idx mem_read pushed %d\n", mem_idx);
+         list.push_back(Operand(Operand::MEMORY, 0, Operand::READ));
+       }
+     }
 
-      for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
-         if (Sim()->getDecoder()->op_write_mem(&dec_inst, mem_idx))
-            list.push_back(Operand(Operand::MEMORY, 0, Operand::WRITE));
+     // for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+     for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx) {
+       if (Sim()->getDecoder()->op_write_mem(&dec_inst, mem_idx)) {
+         fprintf(stderr, "mem_idx mem_write pushed %d\n", mem_idx);
+         list.push_back(Operand(Operand::MEMORY, 0, Operand::WRITE));
+       }
+     }
    }
 
    Instruction *instruction;
@@ -409,7 +417,7 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
    instruction->setSize(inst.sinst->size);
    instruction->setAtomic(dec_inst.is_atomic());
    instruction->setDisassembly(dec_inst.disassembly_to_str().c_str());
-   // printf("%s\n", instruction->getDisassembly().c_str());
+   printf("disassembly : %s\n", instruction->getDisassembly().c_str());
 
    const std::vector<const MicroOp*> *uops = InstructionDecoder::decode(inst.sinst->addr, &dec_inst, instruction);
    instruction->setMicroOps(uops);
@@ -652,7 +660,8 @@ void TraceThread::handleInstructionDetailed(Sift::Instruction &inst, Sift::Instr
    {
       const bool is_prefetch = dec_inst.is_prefetch();
 
-      for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+      // for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+      for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx)
       {
          if (Sim()->getDecoder()->op_read_mem(&dec_inst, mem_idx))
          {
@@ -660,7 +669,8 @@ void TraceThread::handleInstructionDetailed(Sift::Instruction &inst, Sift::Instr
          }
       }
 
-      for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+      // for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+      for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx)
       {
          if (Sim()->getDecoder()->op_write_mem(&dec_inst, mem_idx))
          {
