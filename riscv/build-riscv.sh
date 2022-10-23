@@ -71,14 +71,14 @@ cd $LOCAL_ROOT
 git clone https://github.com/nus-comparch/riscv-tools.git -b sift
 pushd riscv-tools
 git submodule update --init --recursive riscv-fesvr
-git submodule update --init             riscv-gnu-toolchain
+# git submodule update --init             riscv-gnu-toolchain
 
-pushd riscv-gnu-toolchain
-git submodule update --init --recursive riscv-binutils-gdb
-git submodule update --init --recursive riscv-dejagnu
-git submodule update --init --recursive riscv-gcc
-git submodule update --init --recursive riscv-glibc
-git submodule update --init --recursive riscv-newlib
+# pushd riscv-gnu-toolchain
+# git submodule update --init --recursive riscv-binutils-gdb
+# git submodule update --init --recursive riscv-dejagnu
+# git submodule update --init --recursive riscv-gcc
+# git submodule update --init --recursive riscv-glibc
+# git submodule update --init --recursive riscv-newlib
 # git submodule update --init --recursive riscv-qemu
 popd
 
@@ -86,7 +86,7 @@ git submodule update --init --recursive riscv-isa-sim
 git submodule update --init --recursive riscv-opcodes
 # git submodule update --init --recursive riscv-openocd
 git submodule update --init --recursive riscv-pk
-git submodule update --init --recursive riscv-tests
+# git submodule update --init --recursive riscv-tests
 popd
 
 # updateGitRepo "$URL" "$BRANCH" "$FOLDER"
