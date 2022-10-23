@@ -79,7 +79,7 @@ PeriodicSampling::callbackDetailed(SubsecondTime time)
    }
    else if (time > m_periodic_last + m_detailed_interval)
    {
-      LOG_ASSERT_ERROR(m_detailed_warmup_time_remaining == SubsecondTime::Zero(), "Should not finish detailed simulation before detailed warmup is complete.")
+      LOG_ASSERT_ERROR(m_detailed_warmup_time_remaining == SubsecondTime::Zero(), "Should not finish detailed simulation before detailed warmup is complete.");
       //printf("IPC =");
       for(unsigned int core_id = 0; core_id < Sim()->getConfig()->getApplicationCores(); ++core_id)
       {

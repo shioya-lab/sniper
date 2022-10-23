@@ -30,18 +30,18 @@ CoreModelBoomV1::CoreModelBoomV1()
    int imulLatency = 3;
    for (unsigned int i = 0 ; i < rv_op_last ; i++)
    {
-      instructionLatencies[i] = 1;
-      if (instrlist[i].has_fpu && instrlist[i].has_alu) {
-            instructionLatencies[i] = dfmaLatency;
-      }
-      else if (instrlist[i].has_alu && instrlist[i].has_mul) {
-            instructionLatencies[i] = imulLatency;
-      }
-      else if (instrlist[i].has_alu) {
-            instructionLatencies[i] = 1;
-      }
-      else {
-            instructionLatencies[i] = 1;
+     instructionLatencies[i] = 1;
+     if (instrlist[i].has_fpu && instrlist[i].has_alu) {
+       instructionLatencies[i] = dfmaLatency;
+     }
+     else if (instrlist[i].has_alu && instrlist[i].has_mul) {
+       instructionLatencies[i] = imulLatency;
+     }
+     else if (instrlist[i].has_alu) {
+       instructionLatencies[i] = 1;
+     }
+     else {
+       instructionLatencies[i] = 1;
       }
    }
 
@@ -52,6 +52,7 @@ unsigned int CoreModelBoomV1::getInstructionLatency(const MicroOp *uop) const
 {
    unsigned int instruction_type = (unsigned int) uop->getInstructionOpcode();
    LOG_ASSERT_ERROR(instruction_type > 0 && instruction_type < rv_op_last, "Invalid instruction type %d", instruction_type);
+   fprintf (stderr, "CoreModelBoomV1::getInstructionLatency(%d) = %d\n", instruction_type, instructionLatencies[instruction_type]);
    return instructionLatencies[instruction_type];
 }
 
@@ -60,10 +61,16 @@ unsigned int CoreModelBoomV1::getAluLatency(const MicroOp *uop) const
    switch(uop->getInstructionOpcode()) {
       case rv_op_div:
       case rv_op_divu:
+      case rv_op_rem:
+      case rv_op_remu:
       case rv_op_divw:
       case rv_op_divuw:
+      case rv_op_remw:
+      case rv_op_remuw:
       case rv_op_divd:
       case rv_op_divud:
+      case rv_op_remd:
+      case rv_op_remud:
       case rv_op_fdiv_s:
       case rv_op_fdiv_d:
       case rv_op_fdiv_q:

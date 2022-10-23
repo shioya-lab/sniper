@@ -620,6 +620,7 @@ void
 MemoryManager::incrElapsedTime(SubsecondTime latency, ShmemPerfModel::Thread_t thread_num)
 {
    MYLOG("cycles += %s", itostr(latency).c_str());
+   fprintf(stderr, "cycles += %s\n", itostr(latency).c_str());
    getShmemPerfModel()->incrElapsedTime(latency, thread_num);
 }
 

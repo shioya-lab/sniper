@@ -229,6 +229,8 @@ Core::readInstructionMemory(IntPtr address, UInt32 instruction_size)
 {
    LOG_PRINT("Instruction: Address(0x%x), Size(%u), Start READ",
            address, instruction_size);
+   fprintf(stderr, "Instruction: Address(0x%x), Size(%u), Start READ\n",
+           address, instruction_size);
 
    UInt64 blockmask = ~(getMemoryManager()->getCacheBlockSize() - 1);
    bool single_cache_line = ((address & blockmask) == ((address + instruction_size - 1) & blockmask));
@@ -316,6 +318,10 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
         itostr(initial_time).c_str(),
         ((mem_op_type == READ) ? "READ" : "WRITE"),
         address, data_size);
+   fprintf(stderr, "Time(%s), %s - ADDR(0x%x), data_size(%u), START\n",
+        itostr(initial_time).c_str(),
+        ((mem_op_type == READ) ? "READ" : "WRITE"),
+        address, data_size);
 
    UInt32 num_misses = 0;
    HitWhere::where_t hit_where = HitWhere::UNKNOWN;
@@ -358,6 +364,7 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
       }
 
       LOG_PRINT("Start InitiateSharedMemReq: ADDR(0x%x), offset(%u), curr_size(%u)", curr_addr_aligned, curr_offset, curr_size);
+      fprintf(stderr, "Start InitiateSharedMemReq: ADDR(0x%x), offset(%u), curr_size(%u)\n", curr_addr_aligned, curr_offset, curr_size);
 
       if (m_cheetah_manager)
          m_cheetah_manager->access(mem_op_type, curr_addr_aligned);
@@ -384,6 +391,7 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
          hit_where = this_hit_where;
 
       LOG_PRINT("End InitiateSharedMemReq: ADDR(0x%x), offset(%u), curr_size(%u)", curr_addr_aligned, curr_offset, curr_size);
+      fprintf(stderr, "End InitiateSharedMemReq: ADDR(0x%x), offset(%u), curr_size(%u)\n", curr_addr_aligned, curr_offset, curr_size);
 
       // Increment the buffer head
       curr_data_buffer_head += curr_size;
@@ -395,6 +403,11 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
          "final_time(%s) < initial_time(%s)",
          itostr(final_time).c_str(),
          itostr(initial_time).c_str());
+
+   fprintf(stderr, "Time(%s), %s - ADDR(0x%x), data_size(%u), END\n",
+           itostr(final_time).c_str(),
+           ((mem_op_type == READ) ? "READ" : "WRITE"),
+           address, data_size);
 
    LOG_PRINT("Time(%s), %s - ADDR(0x%x), data_size(%u), END\n",
         itostr(final_time).c_str(),

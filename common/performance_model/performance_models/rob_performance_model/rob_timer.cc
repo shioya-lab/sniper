@@ -489,7 +489,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             else
             {
                #ifdef DEBUG_PERCYCLE
-                  std::cout<<"-- icache miss("<<uop.getICacheLatency()<<")"<<std::endl;
+              std::cout<<"-- icache miss (" << std::hex << uop.getMicroOp()->getInstruction()->getAddress() << ") ("<<uop.getICacheLatency()<<")"<<std::endl;
                #endif
                frontend_stalled_until = now + uop.getICacheLatency();
                in_icache_miss = true;

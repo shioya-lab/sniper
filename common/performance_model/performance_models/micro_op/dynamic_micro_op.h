@@ -134,8 +134,14 @@ class DynamicMicroOp
       HitWhere::where_t getICacheHitWhere() const { return iCacheHitWhere; }
       void setICacheHitWhere(HitWhere::where_t _hitWhere) { iCacheHitWhere = _hitWhere; }
 
-      uint32_t getICacheLatency() const { return iCacheLatency; }
-      void setICacheLatency(uint32_t _latency) { iCacheLatency = _latency; };
+      uint32_t getICacheLatency() const {
+        fprintf(stderr, "getICacheLatency = %d\n", iCacheLatency);
+        return iCacheLatency;
+      }
+      void setICacheLatency(uint32_t _latency) {
+        fprintf(stderr, "setICacheLatency = %d\n", _latency);
+        iCacheLatency = _latency;
+      };
 
 
       void setAddress(const Memory::Access& loadAccess) { this->address = loadAccess; }

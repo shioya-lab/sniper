@@ -265,11 +265,12 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
                LOG_ASSERT_ERROR(m_current_uops[load_index]->getMicroOp()->isLoad(),
                                 "Expected uop %d to be a load.", load_index);
 
-               // if (std::find(m_cache_lines_read.begin(), m_cache_lines_read.end(), cache_line) != m_cache_lines_read.end())
-               // {
-               //    m_current_uops[load_index]->squash(&m_current_uops);
-               //    do_squashing = true;
-               // }
+               if (std::find(m_cache_lines_read.begin(), m_cache_lines_read.end(), cache_line) != m_cache_lines_read.end())
+               {
+                  fprintf (stderr, "Read Do Squashing Activated\n");
+                  m_current_uops[load_index]->squash(&m_current_uops);
+                  do_squashing = true;
+               }
                m_cache_lines_read.push_back(cache_line);
 
                // Update this uop with load latencies
@@ -300,11 +301,13 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
                LOG_ASSERT_ERROR(m_current_uops[store_index]->getMicroOp()->isStore(),
                                 "Expected uop %d to be a store. [%d|%s]", store_index, m_current_uops[store_index]->getMicroOp()->getType(), m_current_uops[store_index]->getMicroOp()->toString().c_str());
 
-               // if (std::find(m_cache_lines_written.begin(), m_cache_lines_written.end(), cache_line) != m_cache_lines_written.end())
-               // {
-               //    m_current_uops[store_index]->squash(&m_current_uops);
-               //    do_squashing = true;
-               // }
+               if (std::find(m_cache_lines_written.begin(), m_cache_lines_written.end(), cache_line) != m_cache_lines_written.end())
+               {
+                  fprintf (stderr, "Write Do Squashing Activated\n");
+                  m_current_uops[store_index]->squash(&m_current_uops);
+                  do_squashing = true;
+               }
+               fprintf (stderr, "cache_line_written push_back %08lx %d\n", cache_line, m_cache_lines_written.size());
                m_cache_lines_written.push_back(cache_line);
 
                // Update this uop with store latencies.
@@ -330,8 +333,8 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
 
    }
 
-   // if(do_squashing > 0)
-   //    doSquashing(m_current_uops);
+   if(do_squashing > 0)
+      doSquashing(m_current_uops);
 
    // Make sure there was an Operand/MemoryInfo for each MicroOp
    // This should detect mismatches between decoding as done by fillOperandListMemOps and InstructionDecoder

@@ -726,11 +726,11 @@ bool RISCVDecodedInst::is_serializing() const
 {
   bool res = false;
   riscv::decode dec = this->rv8_dec;
-  switch (dec.op) {
-    case rv_op_vsetvli:     /* VSETVLI Instruction */
-      res = true;
-      break;
-  }
+  // switch (dec.op) {
+  //   case rv_op_vsetvli:     /* VSETVLI Instruction */
+  //     res = true;
+  //     break;
+  // }
   return res;
 }
 
@@ -774,7 +774,7 @@ bool RISCVDecodedInst::is_barrier() const
   switch (dec.op) {
     case rv_op_fence:		/* Fence */
     case rv_op_fence_i:		/* Fence Instruction */
-    case rv_op_vsetvli:     /* VSETVLI Instruction */
+      // case rv_op_vsetvli:     /* VSETVLI Instruction */
       res = true;
       break;
   }
