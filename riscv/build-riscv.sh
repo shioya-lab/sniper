@@ -94,7 +94,7 @@ echo "##########################################################################
 
 # 1c) rv8 simulator (that support sift generation)
 echo "Setting up rv8 simulator..."
-URL=https://github.com/nus-comparch/rv8.git
+URL=https://github.com/msyksphinz-self/rv8.git
 BRANCH=sift
 FOLDER=rv8
 updateGitRepo "$URL" "$BRANCH" "$FOLDER"
