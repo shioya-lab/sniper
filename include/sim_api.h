@@ -22,6 +22,61 @@
 #define SIM_OPT_INSTRUMENT_WARMUP      1
 #define SIM_OPT_INSTRUMENT_FASTFORWARD 2
 
+#if defined(__riscv64__)
+
+unsigned long save0;
+unsigned long save1;
+unsigned long save2;
+
+#define SimMagic0(cmd) ({                       \
+   unsigned long _cmd = (cmd), _res;            \
+   asm volatile (           \
+   "mv x1,(%[x]\n"         \
+   "\tadd x0, x0, x0\n"   \
+   : [ret]"=r"(_res)        \
+   : [x]"r"(_cmd)           \
+   );                       \
+})
+
+#define SimMagic1(cmd, arg0) ({              \
+   unsigned long _cmd = (cmd), _arg0 = (arg0), _res; \
+   asm volatile (           \
+   "mv x1, %[x]\n"         \
+   "\tmv x2, %[y]\n"       \
+   "\tadd x0, x0, x0\n"   \
+   : [ret]"=r"(_res)        \
+   : [x]"r"(_cmd),          \
+     [y]"r"(_arg0)          \
+   : "x2", "x1"                   \
+   );                       \
+})
+
+#define SimMagic2(cmd, arg0, arg1) ({        \
+   unsigned long _cmd = (cmd), _arg0 = (arg0), _arg1 = (arg1), _res; \
+   asm volatile (                                                    \
+       "\tsd x10, %[save0]\n"           \
+       "\tsd x11, %[save1]\n"           \
+       "\tsd x12, %[save2]\n"           \
+       "\tli x10, %[x]\n"               \
+       "\tli x11, %[y]\n"               \
+       "\tli x12, %[z]\n"               \
+       "\tadd x0, x0, x0\n"             \
+       "\tld x10, %[save0]\n"           \
+       "\tld x11, %[save1]\n"           \
+       "\tld x12, %[save2]\n"           \
+       : [ret]"=r"(_res)                \
+       : [x]"i"(_cmd),                  \
+         [y]"i"(_arg0),                 \
+         [z]"i"(_arg1),                 \
+         [save0]"m"(save0),              \
+         [save1]"m"(save1),              \
+         [save2]"m"(save2)              \
+       : "x1", "x2", "x3"               \
+                                                                     ); \
+    })
+
+#else  // end RISCV64
+
 #if defined(__aarch64__)
 
 #define SimMagic0(cmd) ({                       \
@@ -113,7 +168,8 @@
    _res;                                     \
 })
 
-#endif
+#endif  // _i386
+#endif  // ARM64
 
 #define SimRoiStart()             SimMagic0(SIM_CMD_ROI_START)
 #define SimRoiEnd()               SimMagic0(SIM_CMD_ROI_END)

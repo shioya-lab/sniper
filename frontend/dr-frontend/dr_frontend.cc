@@ -451,6 +451,15 @@ void DRFrontend::magic_clean_call()
                            reg_get_value(DR_REG_X2, &mc), 
                            reg_get_value(DR_REG_X3, &mc) );
   )
+  IF_RISCV64
+  (
+      unko
+    // Invoke the handleMagic callback with command (X1) and arguments (X2, X3)
+    m_callbacks->handleMagic(map_threadids[dr_get_thread_id(drcontext)],
+                           reg_get_value(DR_REG_X10, &mc),
+                           reg_get_value(DR_REG_X11, &mc),
+                           reg_get_value(DR_REG_X12, &mc) );
+  )
 }
 
 void DRFrontend::invoke_endROI()
@@ -490,6 +499,16 @@ dr_emit_flags_t DRFrontend::event_app_instruction(void *drcontext, void *tag, in
          instr_num_srcs(instr) == 4 &&
          opnd_get_immed_int(instr_get_src(instr, 2)) == 0 &&
          opnd_get_immed_int(instr_get_src(instr, 3)) == 0 )
+      {
+        // Insert clean call to handle magic instructions
+        dr_insert_clean_call( drcontext, bb, instr,
+                              (void *)magic_clean_call, false, 0);      }
+    )
+    IF_RISCV64
+    (
+      if(instr_get_opcode(instr) == OP_add &&
+         instr_reg_in_src(instr, DR_REG_X0) &&
+         instr_reg_in_dst(instr, DR_REG_X0))
       {
         // Insert clean call to handle magic instructions
         dr_insert_clean_call( drcontext, bb, instr,
@@ -634,5 +653,3 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
   std::cerr << "Main client" << std::endl;
   frontend::ExecFrontend<DRFrontend>(argc, argv).start();
 }
-
-
