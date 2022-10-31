@@ -436,45 +436,131 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
   riscv::decode *dec = ((RISCVDecodedInst *)ins)->get_rv8_dec();
   switch(dec->op) {
     case rv_op_lr_w:                   	/* Load Reserved Word */
-	  case rv_op_sc_w:                   	/* Store Conditional Word */
+    case rv_op_sc_w:                   	/* Store Conditional Word */
     case rv_op_lr_d:                   	/* Load Reserved Double Word */
-	  case rv_op_sc_d:                   	/* Store Conditional Double Word */
+    case rv_op_sc_d:                   	/* Store Conditional Double Word */
     case rv_op_lr_q:
-	  case rv_op_sc_q:
-                        num_exec_uops = 1;
-                        break;
+    case rv_op_sc_q:
+      num_exec_uops = 1;
+      break;
     case rv_op_amoadd_w:               	/* Atomic Add Word */
-	  case rv_op_amoxor_w:               	/* Atomic Xor Word */
-	  case rv_op_amoor_w:                	/* Atomic Or Word */
-	  case rv_op_amoand_w:               	/* Atomic And Word */
-	  case rv_op_amomin_w:               	/* Atomic Minimum Word */
-	  case rv_op_amomax_w:               	/* Atomic Maximum Word */
-	  case rv_op_amominu_w:              	/* Atomic Minimum Unsigned Word */
-	  case rv_op_amomaxu_w:              	/* Atomic Maximum Unsigned Word */
-	  case rv_op_amoadd_d:               	/* Atomic Add Double Word */
-	  case rv_op_amoxor_d:               	/* Atomic Xor Double Word */
-	  case rv_op_amoor_d:                	/* Atomic Or Double Word */
-	  case rv_op_amoand_d:               	/* Atomic And Double Word */
-	  case rv_op_amomin_d:              	/* Atomic Minimum Double Word */
-	  case rv_op_amomax_d:              	/* Atomic Maximum Double Word */
-	  case rv_op_amominu_d:             	/* Atomic Minimum Unsigned Double Word */
-	  case rv_op_amomaxu_d:             	/* Atomic Maximum Unsigned Double Word */
-	  case rv_op_amoadd_q:
-	  case rv_op_amoxor_q:
-	  case rv_op_amoor_q:
-	  case rv_op_amoand_q:
-	  case rv_op_amomin_q:
-	  case rv_op_amomax_q:
+    case rv_op_amoxor_w:               	/* Atomic Xor Word */
+    case rv_op_amoor_w:                	/* Atomic Or Word */
+    case rv_op_amoand_w:               	/* Atomic And Word */
+    case rv_op_amomin_w:               	/* Atomic Minimum Word */
+    case rv_op_amomax_w:               	/* Atomic Maximum Word */
+    case rv_op_amominu_w:              	/* Atomic Minimum Unsigned Word */
+    case rv_op_amomaxu_w:              	/* Atomic Maximum Unsigned Word */
+    case rv_op_amoadd_d:               	/* Atomic Add Double Word */
+    case rv_op_amoxor_d:               	/* Atomic Xor Double Word */
+    case rv_op_amoor_d:                	/* Atomic Or Double Word */
+    case rv_op_amoand_d:               	/* Atomic And Double Word */
+    case rv_op_amomin_d:              	/* Atomic Minimum Double Word */
+    case rv_op_amomax_d:              	/* Atomic Maximum Double Word */
+    case rv_op_amominu_d:             	/* Atomic Minimum Unsigned Double Word */
+    case rv_op_amomaxu_d:             	/* Atomic Maximum Unsigned Double Word */
+    case rv_op_amoadd_q:
+    case rv_op_amoxor_q:
+    case rv_op_amoor_q:
+    case rv_op_amoand_q:
+    case rv_op_amomin_q:
+    case rv_op_amomax_q:
     case rv_op_amominu_q:
-	  case rv_op_amomaxu_q:
-                        num_exec_uops = 1;
-                        break;
+    case rv_op_amomaxu_q:
+      num_exec_uops = 1;
+      break;
     case rv_op_amoswap_w:              	/* Atomic Swap Word */
     case rv_op_amoswap_d:              	/* Atomic Swap Double Word */
     case rv_op_amoswap_q:
-                        num_exec_uops = 1;
-                        break;
+      num_exec_uops = 1;
+      break;
+	case rv_op_lb        :                     	/* Load Byte */
+	case rv_op_lh        :                     	/* Load Half */
+	case rv_op_lw        :                     	/* Load Word */
+    case rv_op_ld        :                     	/* Load Double */
+	case rv_op_lbu       :                    	/* Load Byte Unsigned */
+	case rv_op_lhu       :                    	/* Load Half Unsigned */
+	case rv_op_sd        :                    	/* Store Double */
+	case rv_op_sb        :                    	/* Store Byte */
+	case rv_op_sh        :                    	/* Store Half */
+	case rv_op_sw        :                    	/* Store Word */
+	case rv_op_c_fld     :
+	case rv_op_c_lw      :
+	case rv_op_c_flw     :
+	case rv_op_c_fsd     :
+	case rv_op_c_sw      :
+	case rv_op_c_fsw     :
+	case rv_op_c_fldsp   :
+	case rv_op_c_lwsp    :
+	case rv_op_c_flwsp   :
+	case rv_op_c_fsdsp   :
+	case rv_op_c_swsp    :
+	case rv_op_c_fswsp   :
+	case rv_op_c_ld      :
+	case rv_op_c_sd      :
+	case rv_op_c_addiw   :
+	case rv_op_c_ldsp    :
+	case rv_op_c_sdsp    :
+	case rv_op_c_lq      :
+	case rv_op_c_sq      :
+	case rv_op_c_lqsp    :
+	case rv_op_c_sqsp    :
+	case rv_op_vle8_v    :
+	case rv_op_vse8_v    :
+	case rv_op_vle16_v   :
+	case rv_op_vse16_v   :
+	case rv_op_vle32_v   :
+	case rv_op_vse32_v   :
+	case rv_op_vle64_v   :
+	case rv_op_vse64_v   :
+	case rv_op_vleff8_v  :
+	case rv_op_vleff16_v :
+	case rv_op_vleff32_v :
+	case rv_op_vleff64_v :
+	case rv_op_vl1re8_v  :
+	case rv_op_vl1re16_v :
+	case rv_op_vl1re32_v :
+	case rv_op_vl1re64_v :
+	case rv_op_vl2re8_v  :
+	case rv_op_vl2re16_v :
+	case rv_op_vl2re32_v :
+	case rv_op_vl2re64_v :
+	case rv_op_vl4re8_v  :
+	case rv_op_vl4re16_v :
+	case rv_op_vl4re32_v :
+	case rv_op_vl4re64_v :
+	case rv_op_vl8re8_v  :
+	case rv_op_vl8re16_v :
+	case rv_op_vl8re32_v :
+	case rv_op_vl8re64_v :
+	case rv_op_vs1re8_v  :
+	case rv_op_vs1re16_v :
+	case rv_op_vs1re32_v :
+	case rv_op_vs1re64_v :
+	case rv_op_vs2re8_v  :
+	case rv_op_vs2re16_v :
+	case rv_op_vs2re32_v :
+	case rv_op_vs2re64_v :
+	case rv_op_vs4re8_v  :
+	case rv_op_vs4re16_v :
+	case rv_op_vs4re32_v :
+	case rv_op_vs4re64_v :
+	case rv_op_vs8re8_v  :
+	case rv_op_vs8re16_v :
+	case rv_op_vs8re32_v :
+	case rv_op_vs8re64_v :
+	case rv_op_vlse8_v   :
+	case rv_op_vsse8_v   :
+	case rv_op_vlse16_v  :
+	case rv_op_vsse16_v  :
+	case rv_op_vlse32_v  :
+	case rv_op_vsse32_v  :
+	case rv_op_vlse64_v  :
+	case rv_op_vsse64_v  :
+      num_exec_uops = 0;
+      break;
   }
+
   return num_exec_uops;
 }
 

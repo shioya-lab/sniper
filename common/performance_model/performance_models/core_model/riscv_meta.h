@@ -726,14 +726,14 @@ const riscvinstr instrlist[] = {
 	{ rv_op_bge,            1, 0, 0, 0, 0, 0, 0 },  //    8        RV32I branch
 	{ rv_op_bltu,           1, 0, 0, 0, 0, 0, 0 },  //    9        RV32I branch
 	{ rv_op_bgeu,           1, 0, 0, 0, 0, 0, 0 },  //    10       RV32I branch
-    { rv_op_lb,             1, 0, 0, 0, 0, 0, 1 },  //    11       RV32I load
-	{ rv_op_lh,             1, 0, 0, 0, 0, 0, 1 },  //    12       RV32I load
-	{ rv_op_lw,             1, 0, 0, 0, 0, 0, 1 },  //    13       RV32I load
-	{ rv_op_lbu,            1, 0, 0, 0, 0, 0, 1 },  //    14       RV32I load
-	{ rv_op_lhu,            1, 0, 0, 0, 0, 0, 1 },  //    15       RV32I load
-    { rv_op_sb,             1, 0, 0, 0, 0, 0, 1 },  //    16       RV32I store
-	{ rv_op_sh,             1, 0, 0, 0, 0, 0, 1 },  //    17       RV32I store
-	{ rv_op_sw,             1, 0, 0, 0, 0, 0, 1 },  //    18       RV32I store
+    { rv_op_lb,             0, 0, 0, 0, 0, 0, 1 },  //    11       RV32I load
+	{ rv_op_lh,             0, 0, 0, 0, 0, 0, 1 },  //    12       RV32I load
+	{ rv_op_lw,             0, 0, 0, 0, 0, 0, 1 },  //    13       RV32I load
+	{ rv_op_lbu,            0, 0, 0, 0, 0, 0, 1 },  //    14       RV32I load
+	{ rv_op_lhu,            0, 0, 0, 0, 0, 0, 1 },  //    15       RV32I load
+    { rv_op_sb,             0, 0, 0, 0, 0, 0, 1 },  //    16       RV32I store
+	{ rv_op_sh,             0, 0, 0, 0, 0, 0, 1 },  //    17       RV32I store
+	{ rv_op_sw,             0, 0, 0, 0, 0, 0, 1 },  //    18       RV32I store
 	{ rv_op_addi,           1, 0, 0, 0, 0, 0, 0 },  //    19       RV32I alu
 	{ rv_op_slti,           1, 0, 0, 0, 0, 0, 0 },  //    20       RV32I alu
 	{ rv_op_sltiu,          1, 0, 0, 0, 0, 0, 0 },  //    21       RV32I alu
@@ -755,9 +755,9 @@ const riscvinstr instrlist[] = {
 	{ rv_op_and,            1, 0, 0, 0, 0, 0, 0 },  //    37       RV32I alu
     { rv_op_fence,          1, 0, 0, 0, 0, 0, 0 },  //    38       RV32I fence
 	{ rv_op_fence_i,        1, 0, 0, 0, 0, 0, 0 },  //    39       RV32I fence
-    { rv_op_lwu,            1, 0, 0, 0, 0, 0, 1 },  //    40       RV32I load
-    { rv_op_ld,             1, 0, 0, 0, 0, 0, 1 },  //    41       RV64I load
-    { rv_op_sd,             1, 0, 0, 0, 0, 0, 1 },  //    42       RV64I store
+    { rv_op_lwu,            0, 0, 0, 0, 0, 0, 1 },  //    40       RV32I load
+    { rv_op_ld,             0, 0, 0, 0, 0, 0, 1 },  //    41       RV64I load
+    { rv_op_sd,             0, 0, 0, 0, 0, 0, 1 },  //    42       RV64I store
     { rv_op_addiw,          1, 0, 0, 0, 0, 0, 0 },  //    43       RV64I alu
 	{ rv_op_slliw,          1, 0, 0, 0, 0, 0, 0 },  //    44       RV64I alu
 	{ rv_op_srliw,          1, 0, 0, 0, 0, 0, 0 },  //    45       RV64I alu
@@ -767,9 +767,9 @@ const riscvinstr instrlist[] = {
 	{ rv_op_sllw,           1, 0, 0, 0, 0, 0, 0 },  //    49       RV64I alu
 	{ rv_op_srlw,           1, 0, 0, 0, 0, 0, 0 },  //    50       RV64I alu
 	{ rv_op_sraw,           1, 0, 0, 0, 0, 0, 0 },  //    51       RV64I alu
-	{ rv_op_ldu,            1, 0, 0, 0, 0, 0, 0 },  //    52
-	{ rv_op_lq,             1, 0, 0, 0, 0, 0, 0 },  //    53
-	{ rv_op_sq,             1, 0, 0, 0, 0, 0, 0 },  //    54
+	{ rv_op_ldu,            0, 0, 0, 0, 0, 0, 0 },  //    52
+	{ rv_op_lq,             0, 0, 0, 0, 0, 0, 0 },  //    53
+	{ rv_op_sq,             0, 0, 0, 0, 0, 0, 0 },  //    54
 	{ rv_op_addid,          1, 0, 0, 0, 0, 0, 0 },  //    55
 	{ rv_op_sllid,          1, 0, 0, 0, 0, 0, 0 },  //    56
 	{ rv_op_srlid,          1, 0, 0, 0, 0, 0, 0 },  //    57
