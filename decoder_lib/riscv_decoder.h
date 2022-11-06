@@ -245,6 +245,8 @@ class RISCVDecodedInst : public DecodedInst
     virtual bool is_indirect_branch() const override;
     virtual bool is_writeback() const override { return false; }
 
+    bool is_vector () const override;
+
     private:
      riscv::decode rv8_dec;
      riscv::inst_t rv8_instr;

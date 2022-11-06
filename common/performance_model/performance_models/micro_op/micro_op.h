@@ -60,6 +60,9 @@ struct MicroOp
    /** The microOperation type. */
    uop_type_t uop_type;
 
+   // Added : Is this Vector instruction?
+   bool is_vector;
+
    enum uop_subtype_t {
       UOP_SUBTYPE_FP_ADDSUB,
       UOP_SUBTYPE_FP_MULDIV,
@@ -75,7 +78,7 @@ struct MicroOp
    bool first;
    /** This microOp is the last microOp of the instruction. */
    bool last;
-   
+
    dl::Decoder::decoder_opcode instructionOpcode;
    const dl::DecodedInst* decodedInstruction;
 
@@ -128,9 +131,9 @@ struct MicroOp
    uint16_t operand_size;
    uint16_t memoryAccessSize;
 
-   void makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size);
-   void makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch);
-   void makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size);
+  void makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false);
+  void makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch, bool is_vector = false);
+  void makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false);
    void makeDynamic(const String& instructionOpcodeName, uint32_t execLatency);
 
    static uop_subtype_t getSubtype_Exec(const MicroOp& uop);
@@ -148,8 +151,8 @@ struct MicroOp
    uint16_t getMemoryAccessSize(void) const { return memoryAccessSize; }
 
    void setInstruction(Instruction* instr) { instruction = instr; }
-   Instruction* getInstruction(void) const { return instruction; }   
-   
+   Instruction* getInstruction(void) const { return instruction; }
+
    void setDecodedInstruction(const dl::DecodedInst* instr) { decodedInstruction = instr; }
    const dl::DecodedInst* getDecodedInstruction(void) const { return decodedInstruction; }
 
@@ -200,6 +203,8 @@ struct MicroOp
 
    bool isLoad() const { return this->uop_type == UOP_LOAD; }
    bool isStore() const { return this->uop_type == UOP_STORE; }
+
+   bool isVector() const { return this->is_vector; }
 
    void setDebugInfo(String debugInfo);
    String toString() const;

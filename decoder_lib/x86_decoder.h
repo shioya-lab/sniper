@@ -10,10 +10,10 @@ extern "C" {
 
 namespace dl
 {
-  
+
 class X86Decoder : public Decoder
 {
-  public:    
+  public:
     X86Decoder(dl_arch arch, dl_mode mode, dl_syntax syntax);
     virtual ~X86Decoder();
     virtual void decode(DecodedInst * inst) override;
@@ -36,7 +36,7 @@ class X86Decoder : public Decoder
     virtual bool op_read_reg (const DecodedInst * inst, unsigned int idx) override;
     virtual bool op_write_reg (const DecodedInst * inst, unsigned int idx) override;
     virtual bool is_addr_gen (const DecodedInst * inst, unsigned int idx) override;
-    virtual bool op_is_reg (const DecodedInst * inst, unsigned int idx) override;    
+    virtual bool op_is_reg (const DecodedInst * inst, unsigned int idx) override;
     virtual decoder_reg get_op_reg (const DecodedInst * inst, unsigned int idx) override;
     virtual unsigned int size_mem_op (const DecodedInst * inst, unsigned int mem_idx) override;
     virtual unsigned int get_exec_microops(const DecodedInst *ins, int numLoads, int numStores) override;
@@ -46,7 +46,7 @@ class X86Decoder : public Decoder
     virtual bool is_pause_opcode(decoder_opcode opcd) override;
     virtual bool is_branch_opcode(decoder_opcode opcd) override;
     virtual bool is_fpvector_addsub_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
-    virtual bool is_fpvector_muldiv_opcode(decoder_opcode opcd, const DecodedInst* ins) override;    
+    virtual bool is_fpvector_muldiv_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual bool is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual decoder_reg last_reg() override;
     virtual uint32_t map_register(decoder_reg reg) override { return reg; }
@@ -69,7 +69,7 @@ class X86DecodedInst : public DecodedInst
   public:
     X86DecodedInst(Decoder* d, const uint8_t * code, size_t size, uint64_t address);
     xed_decoded_inst_t * get_xed_inst();
-    
+
     virtual unsigned int inst_num_id() const override;
     virtual std::string disassembly_to_str() const override;
     virtual bool is_nop() const override;
@@ -84,6 +84,8 @@ class X86DecodedInst : public DecodedInst
     virtual bool has_modifiers() const override;
     virtual bool is_mem_pair() const override;
     virtual bool is_writeback() const override { return false; }
+
+    virtual bool is_vector () const override { return false; }
 
   private:
     void set_disassembly();

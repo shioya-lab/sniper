@@ -98,6 +98,11 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
    if (ins->is_atomic())
       is_atomic = true;
 
+   bool is_vector = false;
+   if (ins->is_vector()) {
+     is_vector = true;
+   }
+
    for(uint32_t idx = 0; idx < dec->num_operands(ins); ++idx)
    {
       if (dec->is_addr_gen(ins, idx))
@@ -167,9 +172,10 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
          size_t loadIndex = index;
          currentMicroOp->makeLoad(
                  loadIndex
-               , ins->inst_num_id()
-               , dec->inst_name(ins->inst_num_id())
-               , memop_load_size[loadIndex]
+                 , ins->inst_num_id()
+                 , dec->inst_name(ins->inst_num_id())
+                 , memop_load_size[loadIndex]
+                 , is_vector
                );
       }
       else if (index < numLoads + numExecs) /* EXEC */
@@ -177,21 +183,23 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
          size_t execIndex = index - numLoads;
          LOG_ASSERT_ERROR(numExecs <= 2, "More than 2 exec uops");
          currentMicroOp->makeExecute(
-                 execIndex
-               , numLoads
-               , ins->inst_num_id()
-               , dec->inst_name(ins->inst_num_id())
-               , ins->is_conditional_branch() /* is conditional branch? */);
+             execIndex
+             , numLoads
+             , ins->inst_num_id()
+             , dec->inst_name(ins->inst_num_id())
+             , ins->is_conditional_branch() /* is conditional branch? */
+             , is_vector);
       }
       else /* STORE */
       {
          size_t storeIndex = index - numLoads - numExecs;
          currentMicroOp->makeStore(
                  storeIndex
-               , numExecs
-               , ins->inst_num_id()
-               , dec->inst_name(ins->inst_num_id())
-               , memop_store_size[storeIndex]
+                 , numExecs
+                 , ins->inst_num_id()
+                 , dec->inst_name(ins->inst_num_id())
+                 , memop_store_size[storeIndex]
+                 , is_vector
                );
          if (is_atomic)
             currentMicroOp->setMemBarrier(true);

@@ -71,8 +71,10 @@ MicroOp::MicroOp()
 #endif
 }
 
-void MicroOp::makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size) {
-   this->uop_type = UOP_LOAD;               
+void MicroOp::makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size,
+                       bool is_vector) {
+   this->uop_type = UOP_LOAD;
+   this->is_vector = is_vector;
    this->microOpTypeOffset = offset;
    this->memoryAccessSize = mem_size;
 #ifdef ENABLE_MICROOP_STRINGS
@@ -83,8 +85,10 @@ void MicroOp::makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionO
    this->setTypes();
 }
 
-void MicroOp::makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch) {
+void MicroOp::makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch,
+                          bool is_vector) {
    this->uop_type = UOP_EXECUTE;
+   this->is_vector = is_vector;
    this->microOpTypeOffset = offset;
    this->intraInstructionDependencies = num_loads;
    this->instructionOpcode = instructionOpcode;
@@ -95,8 +99,10 @@ void MicroOp::makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::deco
    this->setTypes();
 }
 
-void MicroOp::makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size) {
+void MicroOp::makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size,
+                        bool is_vector) {
    this->uop_type = UOP_STORE;
+   this->is_vector = is_vector;
    this->microOpTypeOffset = offset;
    this->memoryAccessSize = mem_size;
 #ifdef ENABLE_MICROOP_STRINGS
@@ -109,6 +115,7 @@ void MicroOp::makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::deco
 
 void MicroOp::makeDynamic(const String& instructionOpcodeName, uint32_t execLatency) {
    this->uop_type = UOP_EXECUTE;
+   this->is_vector = false;
    this->microOpTypeOffset = 0;
    this->intraInstructionDependencies = 0;
    this->instructionOpcode = dl::Decoder::DL_OPCODE_INVALID;
@@ -121,7 +128,7 @@ void MicroOp::makeDynamic(const String& instructionOpcodeName, uint32_t execLate
 
 
 MicroOp::uop_subtype_t MicroOp::getSubtype_Exec(const MicroOp& uop)
-{   
+{
    dl::Decoder *dec = Sim()->getDecoder();
 
    // Get the uop subtype for the EXEC part of this instruction

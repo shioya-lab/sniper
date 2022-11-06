@@ -38,6 +38,7 @@ RobTimer::RobTimer(
       , m_store_to_load_forwarding(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/store_to_load_forwarding", core->getId()))
       , m_no_address_disambiguation(!Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/address_disambiguation", core->getId()))
       , inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/in_order", core->getId()))
+      , vector_inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/vector_inorder", core->getId()))
       , m_core(core)
       , rob(window_size + 255)
       , m_num_in_rob(0)
@@ -827,7 +828,7 @@ SubsecondTime RobTimer::doIssue()
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
             have_unresolved_store = true;
 
-         if (inorder)
+         if (inorder | uop->getMicroOp()->isVector() && vector_inorder)
             // In-order: only issue from head of the ROB
             break;
       }

@@ -910,4 +910,12 @@ bool RISCVDecodedInst::is_indirect_branch() const
   return res;
 }
 
+#include "riscv_meta.h"
+
+bool RISCVDecodedInst::is_vector () const
+{
+  riscv::decode dec = this->rv8_dec;
+  return instrlist[dec.op].is_vector;
+}
+
 } // namespace dl;

@@ -54,6 +54,7 @@ private:
    const bool m_store_to_load_forwarding;
    const bool m_no_address_disambiguation;
    const bool inorder;
+   const bool vector_inorder;
 
    Core *m_core;
 
