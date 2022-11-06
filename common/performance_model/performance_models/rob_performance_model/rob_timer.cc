@@ -19,7 +19,7 @@
 #include <iomanip>
 
 // Define to get per-cycle printout of dispatch, issue, writeback stages
-#define DEBUG_PERCYCLE
+// #define DEBUG_PERCYCLE
 //#define STOP_PERCYCLE
 
 // Define to not skip any cycles, but assert that the skip logic is working fine
