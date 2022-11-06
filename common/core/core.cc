@@ -318,10 +318,6 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
         itostr(initial_time).c_str(),
         ((mem_op_type == READ) ? "READ" : "WRITE"),
         address, data_size);
-   fprintf(stderr, "Time(%s), %s - ADDR(0x%x), data_size(%u), START\n",
-        itostr(initial_time).c_str(),
-        ((mem_op_type == READ) ? "READ" : "WRITE"),
-        address, data_size);
 
    UInt32 num_misses = 0;
    HitWhere::where_t hit_where = HitWhere::UNKNOWN;
@@ -391,7 +387,6 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
          hit_where = this_hit_where;
 
       LOG_PRINT("End InitiateSharedMemReq: ADDR(0x%x), offset(%u), curr_size(%u)", curr_addr_aligned, curr_offset, curr_size);
-      fprintf(stderr, "End InitiateSharedMemReq: ADDR(0x%x), offset(%u), curr_size(%u)\n", curr_addr_aligned, curr_offset, curr_size);
 
       // Increment the buffer head
       curr_data_buffer_head += curr_size;
@@ -408,11 +403,6 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
            itostr(final_time).c_str(),
            ((mem_op_type == READ) ? "READ" : "WRITE"),
            address, data_size);
-
-   LOG_PRINT("Time(%s), %s - ADDR(0x%x), data_size(%u), END\n",
-        itostr(final_time).c_str(),
-        ((mem_op_type == READ) ? "READ" : "WRITE"),
-        address, data_size);
 
    if (lock_signal != Core::LOCK)
       m_mem_lock.release();

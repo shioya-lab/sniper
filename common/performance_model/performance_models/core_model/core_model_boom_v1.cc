@@ -52,7 +52,6 @@ unsigned int CoreModelBoomV1::getInstructionLatency(const MicroOp *uop) const
 {
    unsigned int instruction_type = (unsigned int) uop->getInstructionOpcode();
    LOG_ASSERT_ERROR(instruction_type > 0 && instruction_type < rv_op_last, "Invalid instruction type %d", instruction_type);
-   fprintf (stderr, "CoreModelBoomV1::getInstructionLatency(%d) = %d\n", instruction_type, instructionLatencies[instruction_type]);
    return instructionLatencies[instruction_type];
 }
 

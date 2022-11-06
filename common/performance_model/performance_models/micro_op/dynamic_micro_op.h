@@ -139,7 +139,6 @@ class DynamicMicroOp
         return iCacheLatency;
       }
       void setICacheLatency(uint32_t _latency) {
-        fprintf(stderr, "setICacheLatency = %d\n", _latency);
         iCacheLatency = _latency;
       };
 

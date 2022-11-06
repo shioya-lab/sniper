@@ -51,8 +51,6 @@ ShmemPerfModel::incrElapsedTime(SubsecondTime time, Thread_t thread_num)
    LOG_PRINT("incrElapsedTime: time(%s)", itostr(time).c_str());
    //ScopedLock sl(m_shmem_perf_model_lock);
 
-   fprintf(stderr, "ShmemPerfModel : cycles += %s\n", itostr(time).c_str());
-
    SubsecondTime i_elapsed_time = m_elapsed_time[thread_num];
    SubsecondTime t_elapsed_time = i_elapsed_time + time;
 
