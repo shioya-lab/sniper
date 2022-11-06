@@ -12,9 +12,9 @@
 #include <unistd.h>
 
 // Enable (>0) to print out everything we read
-#define VERBOSE 3
-#define VERBOSE_HEX 3
-#define VERBOSE_ICACHE 3
+#define VERBOSE        0
+#define VERBOSE_HEX    0
+#define VERBOSE_ICACHE 0
 
 Sift::Reader::Reader(const char *filename, const char *response_filename, uint32_t id)
    : input(NULL)

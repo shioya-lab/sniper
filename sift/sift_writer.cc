@@ -20,9 +20,9 @@
 #endif
 
 // Enable (>0) to print out everything we write
-#define VERBOSE 3
-#define VERBOSE_HEX 3
-#define VERBOSE_ICACHE 3
+#define VERBOSE        0
+#define VERBOSE_HEX    0
+#define VERBOSE_ICACHE 0
 
 void __assert_fail(const char *__assertion, const char *__file, unsigned int __line, const char *__function) __THROW
 {
@@ -306,12 +306,16 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
       ninstrext++;
    }
 
+#if VERBOSE_HEX > 2
    if (num_addresses != 0) {
      std::cerr <<  "  Memory Access\n";
    }
+#endif // VERBOSE_HEX > 2
    for(int i = 0; i < num_addresses; ++i) {
      output->write(reinterpret_cast<char*>(&addresses[i]), sizeof(uint64_t));
+#if VERBOSE_HEX > 2
      hexdump((char*)(&addresses[i]), sizeof(uint64_t));
+#endif // VERBOSE_HEX > 2
    }
 
    last_address += size;
