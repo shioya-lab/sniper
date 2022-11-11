@@ -787,6 +787,9 @@ SubsecondTime RobTimer::doIssue()
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop))
          canIssue = false;          // blocked by structural hazard
 
+      if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
+        canIssue = false;
+      }
 
       if (canIssue)
       {
@@ -828,7 +831,7 @@ SubsecondTime RobTimer::doIssue()
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
             have_unresolved_store = true;
 
-         if (inorder | uop->getMicroOp()->isVector() && vector_inorder)
+         if (inorder)
             // In-order: only issue from head of the ROB
             break;
       }
