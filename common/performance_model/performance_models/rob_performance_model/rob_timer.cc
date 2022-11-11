@@ -19,7 +19,7 @@
 #include <iomanip>
 
 // Define to get per-cycle printout of dispatch, issue, writeback stages
-// #define DEBUG_PERCYCLE
+#define DEBUG_PERCYCLE
 //#define STOP_PERCYCLE
 
 // Define to not skip any cycles, but assert that the skip logic is working fine
@@ -929,11 +929,12 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    instructionsExecuted = 0;
    SubsecondTime *cpiComponent = NULL;
 
-   #ifdef DEBUG_PERCYCLE
-      std::cout<<std::endl;
-      std::cout<<"Running cycle "<<SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
-   #endif
+#ifdef DEBUG_PERCYCLE
+   std::cout<<std::endl;
+   std::cout<<"Running cycle "<<SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
+#endif
 
+   std::cout<<"Running cycle "<<SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
 
    // If frontend not stalled
    if (frontend_stalled_until <= now)

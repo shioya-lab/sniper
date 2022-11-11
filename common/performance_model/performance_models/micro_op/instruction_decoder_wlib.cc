@@ -56,9 +56,7 @@ unsigned int InstructionDecoder::getNumExecs(const dl::DecodedInst *ins, int num
 
 const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  const dl::DecodedInst *ins, Instruction *ins_ptr)
 {
-  fprintf (stderr, "instruction_decoder_wlib.cc::InstructionDecoder::decode() called\n");
-
-  dl::Decoder *dec = Sim()->getDecoder();
+   dl::Decoder *dec = Sim()->getDecoder();
    // Determine register dependencies and number of microops per type
 
    std::vector<std::set<dl::Decoder::decoder_reg> > regs_loads, regs_stores;
@@ -146,7 +144,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
 
    std::vector<const MicroOp*> *uops = new std::vector<const MicroOp*>(); //< Return value
    int totalMicroOps = numLoads + numExecs + numStores;
-   fprintf (stderr, "totalMicroOps = numLoads + numExecs + numStores = %d = %d + %d + %d\n", totalMicroOps, numLoads, numExecs, numStores);
+
    // FIXME:
    // Capstone bug: random incorrect disassembly --> ldr x1, [x0] to ldr w1, #0x7faa399350
    // Only happening once. Treat that load as an exec instruction.
