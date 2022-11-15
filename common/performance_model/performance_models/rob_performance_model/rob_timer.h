@@ -75,6 +75,8 @@ private:
    bool will_skip;
    SubsecondTime time_skipped;
 
+   bool enable_debug_printf;
+
    RegisterDependencies* const registerDependencies;
    MemoryDependencies* const memoryDependencies;
 

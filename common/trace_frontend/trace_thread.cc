@@ -391,7 +391,7 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
      // for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
      for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx) {
        if (Sim()->getDecoder()->op_read_mem(&dec_inst, mem_idx)) {
-         fprintf(stderr, "mem_idx mem_read pushed %d\n", mem_idx);
+         // fprintf(stderr, "mem_idx mem_read pushed %d\n", mem_idx);
          list.push_back(Operand(Operand::MEMORY, 0, Operand::READ));
        }
      }
@@ -399,7 +399,7 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
      // for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
      for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx) {
        if (Sim()->getDecoder()->op_write_mem(&dec_inst, mem_idx)) {
-         fprintf(stderr, "mem_idx mem_write pushed %d\n", mem_idx);
+         // fprintf(stderr, "mem_idx mem_write pushed %d\n", mem_idx);
          list.push_back(Operand(Operand::MEMORY, 0, Operand::WRITE));
        }
      }

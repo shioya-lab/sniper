@@ -56,6 +56,7 @@ RobTimer::RobTimer(
       , nextSequenceNumber(0)
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
+      , enable_debug_printf(false)
       , registerDependencies(new RegisterDependencies())
       , memoryDependencies(new MemoryDependencies())
       , perf(_perf)
@@ -379,7 +380,9 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       }
 
       #ifdef DEBUG_PERCYCLE
+      if (enable_debug_printf) {
          std::cout<<"** simulate: "<< entry->uop->getMicroOp()->toShortString(true) << std::endl << entry->uop->getMicroOp()->toString()<<std::endl;
+      }
       #endif
 
       m_uop_type_count[(*it)->getMicroOp()->getSubtype()]++;
@@ -881,7 +884,12 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         o3_fp = fopen("o3_trace.out", "w");
       }
 
-      {
+      Instruction *inst = entry->uop->getMicroOp()->getInstruction();
+      if (inst->getDisassembly().find("cycle") != std::string::npos) {
+        enable_debug_printf = !enable_debug_printf;
+      }
+
+      if (enable_debug_printf) {
 
         uint64_t cycle_fetch    = SubsecondTime::divideRounded(entry->fetch,      m_core->getDvfsDomain()->getPeriod());
         uint64_t cycle_dispatch = SubsecondTime::divideRounded(entry->dispatched, m_core->getDvfsDomain()->getPeriod());
@@ -931,10 +939,8 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
 
 #ifdef DEBUG_PERCYCLE
    std::cout<<std::endl;
-   std::cout<<"Running cycle "<<SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
+   std::cout<<"Running cycles "<< std::dec << SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
 #endif
-
-   std::cout<<"Running cycle "<<SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
 
    // If frontend not stalled
    if (frontend_stalled_until <= now)
@@ -960,7 +966,9 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
          if (! will_skip)
          {
       #endif
-         printRob();
+           if (enable_debug_printf) {
+             printRob();
+           }
       #ifdef ASSERT_SKIP
          }
       #endif
