@@ -234,16 +234,20 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
      num_memory_operands++;
   } else if (dec->op == rv_op_vle8_v ||
              dec->op == rv_op_vse8_v) {
-    num_memory_operands = 16 * vec_lmul;
+    // num_memory_operands = 16 * vec_lmul;
+    num_memory_operands = 16;
   } else if (dec->op == rv_op_vle16_v ||
              dec->op == rv_op_vse16_v) {
-    num_memory_operands = 8 * vec_lmul;
+    // num_memory_operands = 8 * vec_lmul;
+    num_memory_operands = 8;
   } else if (dec->op == rv_op_vle32_v ||
              dec->op == rv_op_vse32_v) {
-    num_memory_operands = 4 * vec_lmul;
+    // num_memory_operands = 4 * vec_lmul;
+    num_memory_operands = 4;
   } else if (dec->op == rv_op_vle64_v ||
              dec->op == rv_op_vse64_v) {
-    num_memory_operands = 2 * vec_lmul;
+    // num_memory_operands = 2 * vec_lmul;
+    num_memory_operands = 2;
   } else if (dec->op == rv_op_vsetvli) {
     vec_lmul = 1 << (dec->imm & 0x07);
     vec_vsew = 8 << ((dec->imm >> 3) & 0x07);
@@ -300,7 +304,9 @@ bool RISCVDecoder::op_read_mem(const DecodedInst * inst, unsigned int mem_idx)
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
     || format == rv_fmt_frd_offset_rs1 /* flw, fld, flq, c.fld, c.flw, c.fldsp, c.flwsp */ ) {
      res = true;
-  } else if (dec->op == rv_op_vle8_v) {
+  } else if (format == rv_fmt_vd_rs1 ||
+             format == rv_fmt_vd_rs1_rs2 ||
+             format == rv_fmt_vd_rs1_vs2) {
     res = true;
   }
 
@@ -317,7 +323,9 @@ bool RISCVDecoder::op_write_mem(const DecodedInst * inst, unsigned int mem_idx)
   if (format == rv_fmt_rs2_offset_rs1  /* sb, sh, sw, sd, sq, c.sw, c.swsp, c.sd, c.sdsp, c.sq, c.sqsp */
     || format == rv_fmt_frs2_offset_rs1  /* fsw, fsd, fsq, c.fsd, c.fsw, c.fsdsp, c.fswsp */ ) {
      res = true;
-  } else if (dec->op == rv_op_vse8_v) {
+  } else if (format == rv_fmt_vs3_rs1 ||
+             format == rv_fmt_vs3_rs1_rs2 ||
+             format == rv_fmt_vs3_rs1_vs2) {
     res = true;
   }
   return res;
@@ -917,5 +925,6 @@ bool RISCVDecodedInst::is_vector () const
   riscv::decode dec = this->rv8_dec;
   return instrlist[dec.op].is_vector;
 }
+
 
 } // namespace dl;
