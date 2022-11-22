@@ -50,7 +50,7 @@ const uint64_t INVALID_SEQNR = UINT64_MAX;
  */
 
 // Define to store debug strings inside the MicroOp for MicroOp::toString
-//#define ENABLE_MICROOP_STRINGS
+#define ENABLE_MICROOP_STRINGS
 
 struct MicroOp
 {

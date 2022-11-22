@@ -77,13 +77,17 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
          regs.insert(dec->mem_index_reg(ins, mem_idx));
 
          if (dec->op_read_mem(ins, mem_idx)) {
-            regs_loads.push_back(regs);
+           std::cout << "dec->op_read_mem()\n";
+
+           regs_loads.push_back(regs);
             memop_load_size.push_back(dec->size_mem_op(ins, mem_idx));
             numLoads++;
          }
 
          if (dec->op_write_mem(ins, mem_idx)) {
-            regs_stores.push_back(regs);
+           std::cout << "dec->op_write_mem()\n";
+
+           regs_stores.push_back(regs);
             memop_store_size.push_back(dec->size_mem_op(ins, mem_idx));
             numStores++;
          }
@@ -239,6 +243,8 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
 
       else /* STORE */
       {
+         std::cout << "Instruction_decoder_wlib.cc = " << currentMicroOp->toShortString() << '\n';
+
          size_t storeIndex = index - numLoads - numExecs;
          addSrcs(regs_stores[storeIndex], currentMicroOp);
          addAddrs(regs_stores[storeIndex], currentMicroOp);

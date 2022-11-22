@@ -59,18 +59,26 @@ DynamicMicroOpBoomV1::uop_alu_t DynamicMicroOpBoomV1::getAlu(const MicroOp *uop)
       case MicroOp::UOP_EXECUTE:
          switch(uop->getInstructionOpcode())
          {
-            case rv_op_div:
-            case rv_op_divu:
-            case rv_op_divw:
-            case rv_op_divuw:
-            case rv_op_divd:
-            case rv_op_divud:
-            case rv_op_fdiv_s:
-            case rv_op_fdiv_d:
-            case rv_op_fdiv_q:
-            case rv_op_fsqrt_s:
-            case rv_op_fsqrt_d:
-            case rv_op_fsqrt_q:
+           case rv_op_div:
+           case rv_op_divu:
+           case rv_op_divw:
+           case rv_op_divuw:
+           case rv_op_divd:
+           case rv_op_divud:
+           case rv_op_fdiv_s:
+           case rv_op_fdiv_d:
+           case rv_op_fdiv_q:
+           case rv_op_fsqrt_s:
+           case rv_op_fsqrt_d:
+           case rv_op_fsqrt_q:
+           case rv_op_vdivu_vv:
+           case rv_op_vdiv_vv:
+           case rv_op_vremu_vv:
+           case rv_op_vrem_vv:
+           case rv_op_vdivu_vx:
+           case rv_op_vdiv_vx:
+           case rv_op_vremu_vx:
+           case rv_op_vrem_vx:
                return UOP_ALU_TRIG;
             default:
                return UOP_ALU_NONE;

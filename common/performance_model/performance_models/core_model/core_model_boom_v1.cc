@@ -30,19 +30,17 @@ CoreModelBoomV1::CoreModelBoomV1()
    int imulLatency = 3;
    for (unsigned int i = 0 ; i < rv_op_last ; i++)
    {
-     instructionLatencies[i] = 1;
      if (instrlist[i].has_fpu && instrlist[i].has_alu) {
        instructionLatencies[i] = dfmaLatency;
-     }
-     else if (instrlist[i].has_alu && instrlist[i].has_mul) {
+     } else if (instrlist[i].has_alu && instrlist[i].has_mul) {
        instructionLatencies[i] = imulLatency;
-     }
-     else if (instrlist[i].has_alu) {
+     } else if (instrlist[i].has_alu) {
+       instructionLatencies[i] = 1;
+     } else if (instrlist[i].is_vector && instrlist[i].has_fpu) {
+       instructionLatencies[i] = dfmaLatency;
+     } else {
        instructionLatencies[i] = 1;
      }
-     else {
-       instructionLatencies[i] = 1;
-      }
    }
 
    m_lll_cutoff = Sim()->getCfg()->getInt("perf_model/core/interval_timer/lll_cutoff");
@@ -57,26 +55,34 @@ unsigned int CoreModelBoomV1::getInstructionLatency(const MicroOp *uop) const
 
 unsigned int CoreModelBoomV1::getAluLatency(const MicroOp *uop) const
 {
-   switch(uop->getInstructionOpcode()) {
-      case rv_op_div:
-      case rv_op_divu:
-      case rv_op_rem:
-      case rv_op_remu:
-      case rv_op_divw:
-      case rv_op_divuw:
-      case rv_op_remw:
-      case rv_op_remuw:
-      case rv_op_divd:
-      case rv_op_divud:
-      case rv_op_remd:
-      case rv_op_remud:
-      case rv_op_fdiv_s:
-      case rv_op_fdiv_d:
-      case rv_op_fdiv_q:
-         return 32;     // TODO: Latency of div operations need to be more accurately determined
-      default:
-         return getInstructionLatency(uop);
-         //LOG_PRINT_ERROR("Don't know the ALU latency for this MicroOp.");
+  switch(uop->getInstructionOpcode()) {
+    case rv_op_div:
+    case rv_op_divu:
+    case rv_op_rem:
+    case rv_op_remu:
+    case rv_op_divw:
+    case rv_op_divuw:
+    case rv_op_remw:
+    case rv_op_remuw:
+    case rv_op_divd:
+    case rv_op_divud:
+    case rv_op_remd:
+    case rv_op_remud:
+    case rv_op_fdiv_s:
+    case rv_op_fdiv_d:
+    case rv_op_fdiv_q:
+	case rv_op_vdivu_vv:
+	case rv_op_vdiv_vv:
+	case rv_op_vremu_vv:
+	case rv_op_vrem_vv:
+	case rv_op_vdivu_vx:
+	case rv_op_vdiv_vx:
+	case rv_op_vremu_vx:
+	case rv_op_vrem_vx:
+      return 32;     // TODO: Latency of div operations need to be more accurately determined
+    default:
+      return getInstructionLatency(uop);
+      // LOG_PRINT_ERROR("Don't know the ALU latency for this MicroOp.");
    }
 }
 

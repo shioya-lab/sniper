@@ -381,7 +381,7 @@ String MicroOp::toShortString(bool withDisassembly) const
          #ifdef ENABLE_MICROOP_STRINGS
          << std::left << std::setw(8) << instructionOpcodeName
          #endif
-         << ":0x" << std::hex << std::setw(4) << instructionOpcode << std::dec << ")";
+         << std::setw(4) << instructionOpcode << std::dec << ")";
 
    if (withDisassembly)
       out << "  --  " << (this->getInstruction() ? this->getInstruction()->getDisassembly() : "(dynamic)");
