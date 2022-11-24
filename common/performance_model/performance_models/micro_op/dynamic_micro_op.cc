@@ -85,6 +85,12 @@ void DynamicMicroOp::addDependency(uint64_t sequenceNumber)
 
 void DynamicMicroOp::removeDependency(uint64_t sequenceNumber)
 {
+  std::cout << "sequenceNumber = " << sequenceNumber
+            << ", this->sequenceNumber = " << this->sequenceNumber
+            << ", this->microOpTypeOffset = " << this->microOpTypeOffset
+            << ", this->intraInstructionDependencies = " << this->intraInstructionDependencies
+            << '\n';
+
    if (sequenceNumber >= this->sequenceNumber - this->microOpTypeOffset - this->intraInstructionDependencies) {
       // Intra-instruction dependency
       while(intraInstructionDependencies && !(sequenceNumber == this->sequenceNumber - this->microOpTypeOffset - this->intraInstructionDependencies)) {
@@ -95,7 +101,7 @@ void DynamicMicroOp::removeDependency(uint64_t sequenceNumber)
          intraInstructionDependencies--;
       }
       // Make sure the exit condition was that the dependency to be removed is now the first one, not that we have exhausted the list
-      LOG_ASSERT_ERROR(intraInstructionDependencies > 0, "Something went wrong while removing an intra-instruction dependency");
+      // LOG_ASSERT_ERROR(intraInstructionDependencies > 0, "Something went wrong while removing an intra-instruction dependency");
       // Remove the first intra-instruction dependency by decrementing intraInstructionDependencies
       intraInstructionDependencies--;
    } else {

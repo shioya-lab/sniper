@@ -290,6 +290,9 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          if (entry->getNumAddressProducers() == 0)
             entry->addressReady = entry->addressReadyMax;
       }
+
+      std::cout << "entry->uop " << entry->uop->getSequenceNumber() << ", lowestVaidSequenceNumber = " << lowestValidSequenceNumber << '\n';
+
       this->registerDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
       this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
 
@@ -667,6 +670,10 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
       // Remove uop from dependency list and update readyMax
       depEntry->readyMax = std::max(depEntry->readyMax, cycle_depend.getElapsedTime());
+      std::cout << "depEntry " << depEntry->uop->getSequenceNumber()
+                << ", " << depEntry->uop->getMicroOp()->toShortString()
+                << "removeDependency(" << uop.getSequenceNumber() << "), "
+                << uop.getMicroOp()->toShortString() << "\n";
       depEntry->uop->removeDependency(uop.getSequenceNumber());
 
       // If all dependencies are resolved, mark the uop ready

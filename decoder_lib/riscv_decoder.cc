@@ -208,7 +208,9 @@ unsigned int RISCVDecoder::num_operands(const DecodedInst * inst)
   unsigned int num_operands = 0;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const rv_operand_data *operand_data = rv_inst_operand_data[dec->op];
-  while (operand_data->type == rv_type_ireg && operand_data->type == rv_type_freg) {
+  while (operand_data->type == rv_type_ireg ||
+         operand_data->type == rv_type_freg ||
+         operand_data->type == rv_type_vreg) {
     num_operands++;
     operand_data++;
   }
@@ -361,7 +363,9 @@ bool RISCVDecoder::op_read_reg (const DecodedInst * inst, unsigned int idx)
   bool res = false;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const rv_operand_data *operand_data = rv_inst_operand_data[dec->op];
-  if (operand_data[idx].type == rv_type_ireg || operand_data[idx].type == rv_type_freg || operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
+  if (operand_data[idx].type == rv_type_ireg ||
+      operand_data[idx].type == rv_type_freg ||
+      operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
     res = true;
   }
   return res;
@@ -373,7 +377,9 @@ bool RISCVDecoder::op_write_reg (const DecodedInst * inst, unsigned int idx)
   bool res = false;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const rv_operand_data *operand_data = rv_inst_operand_data[dec->op];
-  if (operand_data[idx].type == rv_type_ireg || operand_data[idx].type == rv_type_freg || operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
+  if (operand_data[idx].type == rv_type_ireg ||
+      operand_data[idx].type == rv_type_freg ||
+      operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
     res = true;
   }
   return res;

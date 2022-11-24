@@ -20,9 +20,9 @@
 #endif
 
 // Enable (>0) to print out everything we write
-#define VERBOSE        0
-#define VERBOSE_HEX    0
-#define VERBOSE_ICACHE 0
+#define VERBOSE        3
+#define VERBOSE_HEX    3
+#define VERBOSE_ICACHE 3
 
 void __assert_fail(const char *__assertion, const char *__file, unsigned int __line, const char *__function) __THROW
 {
@@ -215,7 +215,7 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
          hexdump((char*)buffer, sizeof(buffer));
          #endif
 
-         icache[addr] = true;
+         // icache[addr] = true;
       }
    }
    else
@@ -243,7 +243,7 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
             }
             output->write(reinterpret_cast<char*>(buffer), ICACHE_SIZE);
 
-            icache[base_addr] = true;
+            // icache[base_addr] = true;
          }
       }
    }
@@ -259,7 +259,7 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
    // Try as simple instruction
    // fprintf (stderr, "Address / Last Address check %016lx, %016lx\n", addr, last_address);
 
-   if (addr == last_address && !is_predicate)
+   if (/* addr == last_address && !is_predicate */false)
    {
       #if VERBOSE > 2
       std::cerr << "[DEBUG:" << m_id << "] Write Simple Instruction" << std::endl;

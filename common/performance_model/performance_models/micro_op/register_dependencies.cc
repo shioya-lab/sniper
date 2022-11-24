@@ -8,9 +8,6 @@ RegisterDependencies::RegisterDependencies()
 
 void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber)
 {
-  std::cout << "RegisterDependencies::setDependencies called. Source Register Length = "
-            << microOp.getMicroOp()->getSourceRegistersLength() << "\n";
-
    // Create the dependencies for the microOp
    for(uint32_t i = 0; i < microOp.getMicroOp()->getSourceRegistersLength(); i++)
    {
