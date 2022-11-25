@@ -378,8 +378,8 @@ SubsecondTime TraceThread::getCurrentTime() const
 Instruction* TraceThread::decode(Sift::Instruction &inst)
 {
 
-   if (m_decoder_cache.count(inst.sinst->addr) == 0)
-      m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
+   // if (m_decoder_cache.count(inst.sinst->addr) == 0)
+   m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
 
    const dl::DecodedInst& dec_inst = *(m_decoder_cache[inst.sinst->addr]);
 
@@ -527,8 +527,8 @@ const dl::DecodedInst* TraceThread::staticDecode(Sift::Instruction &inst)
 
 void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruction &next_inst, Core *core, bool do_icache_warmup, UInt64 icache_warmup_addr, UInt64 icache_warmup_size)
 {
-   if (m_decoder_cache.count(inst.sinst->addr) == 0)
-      m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
+  // if (m_decoder_cache.count(inst.sinst->addr) == 0)
+  m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
 
    const dl::DecodedInst &dec_inst = *(m_decoder_cache[inst.sinst->addr]);
 
@@ -639,8 +639,8 @@ void TraceThread::handleInstructionDetailed(Sift::Instruction &inst, Sift::Instr
 
    // Set up instruction
 
-   if (m_icache.count(inst.sinst->addr) == 0)
-      m_icache[inst.sinst->addr] = decode(inst);
+   // if (m_icache.count(inst.sinst->addr) == 0)
+   m_icache[inst.sinst->addr] = decode(inst);
    // Here get the decoder instruction without checking, because we must have it for sure
    const dl::DecodedInst &dec_inst = *(m_decoder_cache[inst.sinst->addr]);
 
