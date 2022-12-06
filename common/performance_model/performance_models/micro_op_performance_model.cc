@@ -267,7 +267,7 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
 
                if (std::find(m_cache_lines_read.begin(), m_cache_lines_read.end(), cache_line) != m_cache_lines_read.end())
                {
-                  fprintf (stderr, "Read Do Squashing Activated\n");
+                  // fprintf (stderr, "Read Do Squashing Activated\n");
                   m_current_uops[load_index]->squash(&m_current_uops);
                   do_squashing = true;
                }
@@ -284,7 +284,8 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
             }
             else
             {
-               LOG_PRINT_ERROR("Read operand count mismatch");
+              fprintf (stderr, "ERROR : %08lx, %s\n", dynins->instruction->getAddress(), dynins->instruction->getDisassembly().c_str());
+              LOG_PRINT_ERROR("Read operand count mismatch");
             }
 
          }
@@ -303,11 +304,10 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
 
                if (std::find(m_cache_lines_written.begin(), m_cache_lines_written.end(), cache_line) != m_cache_lines_written.end())
                {
-                  fprintf (stderr, "Write Do Squashing Activated\n");
+                 // fprintf (stderr, "Write Do Squashing Activated\n");
                   m_current_uops[store_index]->squash(&m_current_uops);
                   do_squashing = true;
                }
-               fprintf (stderr, "cache_line_written push_back %08lx %d\n", cache_line, m_cache_lines_written.size());
                m_cache_lines_written.push_back(cache_line);
 
                // Update this uop with store latencies.

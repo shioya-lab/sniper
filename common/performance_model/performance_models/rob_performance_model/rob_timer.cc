@@ -19,7 +19,7 @@
 #include <iomanip>
 
 // Define to get per-cycle printout of dispatch, issue, writeback stages
-#define DEBUG_PERCYCLE
+// #define DEBUG_PERCYCLE
 //#define STOP_PERCYCLE
 
 // Define to not skip any cycles, but assert that the skip logic is working fine
@@ -291,8 +291,6 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
             entry->addressReady = entry->addressReadyMax;
       }
 
-      std::cout << "entry->uop " << entry->uop->getSequenceNumber() << ", lowestVaidSequenceNumber = " << lowestValidSequenceNumber << '\n';
-
       this->registerDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
       this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
 
@@ -310,9 +308,9 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
                // Add dependencies to the producers of the value being stored instead
                // Remark: one of these may be producing the store address, but because the store has to be
                //         disambiguated, it's correct to have the load depend on the address producers as well.
-               for(unsigned int j = 0; j < prodEntry->uop->getDependenciesLength(); ++j)
-                  entry->uop->addDependency(prodEntry->uop->getDependency(j));
-
+               for(unsigned int j = 0; j < prodEntry->uop->getDependenciesLength(); ++j) {
+                 entry->uop->addDependency(prodEntry->uop->getDependency(j));
+               }
                break;
             }
          }
@@ -670,10 +668,6 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
       // Remove uop from dependency list and update readyMax
       depEntry->readyMax = std::max(depEntry->readyMax, cycle_depend.getElapsedTime());
-      std::cout << "depEntry " << depEntry->uop->getSequenceNumber()
-                << ", " << depEntry->uop->getMicroOp()->toShortString()
-                << "removeDependency(" << uop.getSequenceNumber() << "), "
-                << uop.getMicroOp()->toShortString() << "\n";
       depEntry->uop->removeDependency(uop.getSequenceNumber());
 
       // If all dependencies are resolved, mark the uop ready
@@ -865,14 +859,15 @@ SubsecondTime RobTimer::doIssue()
 SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 {
    uint64_t num_committed = 0;
+   static bool cycle_activated = false;
 
    while(rob.size() && (rob.front().done <= now))
    {
       RobEntry *entry = &rob.front();
 
-      #ifdef DEBUG_PERCYCLE
-         std::cout<<"COMMIT   "<<entry->uop->getMicroOp()->toShortString()<<std::endl;
-      #endif
+#ifdef DEBUG_PERCYCLE
+      std::cout<<"COMMIT   "<<entry->uop->getMicroOp()->toShortString()<<std::endl;
+#endif
 
       // Send instructions to loop tracer, in-order, once we know their issue time
       InstructionTracer::uop_times_t times = {
@@ -892,8 +887,20 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       }
 
       Instruction *inst = entry->uop->getMicroOp()->getInstruction();
-      if (inst->getDisassembly().find("cycle") != std::string::npos) {
+      if (cycle_activated &&
+          inst->getDisassembly().find("add            zero, zero, zero") != std::string::npos) {
         enable_debug_printf = !enable_debug_printf;
+
+        // Display Instruction Log
+        std::cout << "CycleTrace " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
+                  << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
+                  << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
+      }
+
+      if (inst->getDisassembly().find("cycle") != std::string::npos) {
+        cycle_activated = true;
+      } else {
+        cycle_activated = false;
       }
 
       if (enable_debug_printf) {
@@ -918,6 +925,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         fprintf (o3_fp, "O3PipeView:complete:%ld\n",              (cycle_done      )*500);
         fprintf (o3_fp, "O3PipeView:retire:%ld:store:0\n",        (cycle_commit    )*500);
       }
+
 
       entry->free();
       rob.pop();

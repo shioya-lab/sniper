@@ -135,7 +135,6 @@ class DynamicMicroOp
       void setICacheHitWhere(HitWhere::where_t _hitWhere) { iCacheHitWhere = _hitWhere; }
 
       uint32_t getICacheLatency() const {
-        fprintf(stderr, "getICacheLatency = %d\n", iCacheLatency);
         return iCacheLatency;
       }
       void setICacheLatency(uint32_t _latency) {

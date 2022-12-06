@@ -46,10 +46,12 @@ CoreModelBoomV1::CoreModelBoomV1()
    m_lll_cutoff = Sim()->getCfg()->getInt("perf_model/core/interval_timer/lll_cutoff");
 }
 
+#include "instruction.h"
+
 unsigned int CoreModelBoomV1::getInstructionLatency(const MicroOp *uop) const
 {
    unsigned int instruction_type = (unsigned int) uop->getInstructionOpcode();
-   LOG_ASSERT_ERROR(instruction_type > 0 && instruction_type < rv_op_last, "Invalid instruction type %d", instruction_type);
+   LOG_ASSERT_ERROR(instruction_type > 0 && instruction_type < rv_op_last, "Invalid instruction type %d, %llx", instruction_type, uop->getInstruction()->getAddress());
    return instructionLatencies[instruction_type];
 }
 
@@ -79,6 +81,7 @@ unsigned int CoreModelBoomV1::getAluLatency(const MicroOp *uop) const
 	case rv_op_vdiv_vx:
 	case rv_op_vremu_vx:
 	case rv_op_vrem_vx:
+	case rv_op_vfsqrt_v:
       return 32;     // TODO: Latency of div operations need to be more accurately determined
     default:
       return getInstructionLatency(uop);

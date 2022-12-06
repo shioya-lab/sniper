@@ -191,7 +191,9 @@ bool Sift::Reader::Read(Instruction &inst)
       {
          // Other
          input->read(reinterpret_cast<char*>(&rec), sizeof(rec.Other));
+         #if VERBOSE > 0
          hexdump(&rec, sizeof(rec.Other));
+         #endif // VERBOSE > 0
          switch(rec.Other.type)
          {
             case RecOtherEnd:

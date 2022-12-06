@@ -85,12 +85,6 @@ void DynamicMicroOp::addDependency(uint64_t sequenceNumber)
 
 void DynamicMicroOp::removeDependency(uint64_t sequenceNumber)
 {
-  std::cout << "sequenceNumber = " << sequenceNumber
-            << ", this->sequenceNumber = " << this->sequenceNumber
-            << ", this->microOpTypeOffset = " << this->microOpTypeOffset
-            << ", this->intraInstructionDependencies = " << this->intraInstructionDependencies
-            << '\n';
-
    if (sequenceNumber >= this->sequenceNumber - this->microOpTypeOffset - this->intraInstructionDependencies) {
       // Intra-instruction dependency
       while(intraInstructionDependencies && !(sequenceNumber == this->sequenceNumber - this->microOpTypeOffset - this->intraInstructionDependencies)) {

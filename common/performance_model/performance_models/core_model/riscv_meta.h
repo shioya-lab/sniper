@@ -939,6 +939,7 @@ enum rv_op
 	rv_op_vfwnmacc_vf = 933,
 	rv_op_vfwmsac_vf = 934,
 	rv_op_vfwnmsac_vf = 935,
+	rv_op_vfsqrt_v = 936,
     rv_op_last
 };
 
@@ -1886,6 +1887,7 @@ const riscvinstr instrlist[] = {
 	{ rv_op_vfwnmacc_vf    ,0, 0, 0, 1, 0, 0, 0, 1 },  // 651,
 	{ rv_op_vfwmsac_vf     ,0, 0, 0, 1, 0, 0, 0, 1 },  // 652,
 	{ rv_op_vfwnmsac_vf    ,0, 0, 0, 1, 0, 0, 0, 1 },  // 653,
+	{ rv_op_vfsqrt_v       ,0, 0, 0, 0, 1, 0, 0, 1 },  //
 
     { rv_op_last,           0, 0, 0, 0, 0, 0, 0, 0 }
 };

@@ -19,7 +19,7 @@ all: message dependencies $(SIM_TARGETS) configscripts
 
 include common/Makefile.common
 
-dependencies: package_deps pin_kit pin xed python mcpat linux builddir showdebugstatus
+dependencies: package_deps pin xed python mcpat linux builddir showdebugstatus
 ifeq ($(BUILD_ARM),1)
 dependencies: capstone
 .PHONY: capstone
@@ -51,14 +51,14 @@ $(PIN_FRONTEND):
 #$(LIB_FOLLOW):
 #	@$(MAKE) $(MAKE_QUIET) -C $(SIM_ROOT)/pin $@
 
-$(LIB_CARBON): 
+$(LIB_CARBON):
 	@$(MAKE) $(MAKE_QUIET) -C $(SIM_ROOT)/common
 
 $(LIB_SIFT): $(LIB_CARBON)
 	@$(MAKE) $(MAKE_QUIET) -C $(SIM_ROOT)/sift
 
 $(LIB_DECODER): $(LIB_CARBON)
-	@$(MAKE) $(MAKE_QUIET) -C $(SIM_ROOT)/decoder_lib 
+	@$(MAKE) $(MAKE_QUIET) -C $(SIM_ROOT)/decoder_lib
 
 CAPSTONE_GITID=f9c6a90489be7b3637ff1c7298e45efafe7cf1b9
 CAPSTONE_INSTALL=$(SIM_ROOT)/capstone

@@ -236,6 +236,15 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
      num_memory_operands++;
   } else if (dec->op == rv_op_vle8_v ||
              dec->op == rv_op_vse8_v ||
+             dec->op == rv_op_vlse8_v ||
+             dec->op == rv_op_vsse8_v ||
+             dec->op == rv_op_vluxei8_v ||
+             dec->op == rv_op_vloxei8_v ||
+             dec->op == rv_op_vsuxei8_v ||
+             dec->op == rv_op_vl1re8_v ||
+             dec->op == rv_op_vl2re8_v ||
+             dec->op == rv_op_vl4re8_v ||
+             dec->op == rv_op_vl8re8_v ||
              dec->op == rv_op_vs1re8_v ||
              dec->op == rv_op_vs2re8_v ||
              dec->op == rv_op_vs4re8_v ||
@@ -245,6 +254,15 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
     num_memory_operands = 16;
   } else if (dec->op == rv_op_vle16_v ||
              dec->op == rv_op_vse16_v ||
+             dec->op == rv_op_vlse16_v ||
+             dec->op == rv_op_vsse16_v ||
+             dec->op == rv_op_vluxei16_v ||
+             dec->op == rv_op_vloxei16_v ||
+             dec->op == rv_op_vsuxei16_v ||
+             dec->op == rv_op_vl1re16_v ||
+             dec->op == rv_op_vl2re16_v ||
+             dec->op == rv_op_vl4re16_v ||
+             dec->op == rv_op_vl8re16_v ||
              dec->op == rv_op_vs1re16_v ||
              dec->op == rv_op_vs2re16_v ||
              dec->op == rv_op_vs4re16_v ||
@@ -254,7 +272,16 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
     num_memory_operands = 8;
   } else if (dec->op == rv_op_vle32_v ||
              dec->op == rv_op_vse32_v ||
+             dec->op == rv_op_vlse32_v ||
+             dec->op == rv_op_vsse32_v ||
              dec->op == rv_op_vleff32_v ||
+             dec->op == rv_op_vluxei32_v ||
+             dec->op == rv_op_vloxei32_v ||
+             dec->op == rv_op_vsuxei32_v ||
+             dec->op == rv_op_vl1re32_v ||
+             dec->op == rv_op_vl2re32_v ||
+             dec->op == rv_op_vl4re32_v ||
+             dec->op == rv_op_vl8re32_v ||
              dec->op == rv_op_vs1re32_v ||
              dec->op == rv_op_vs2re32_v ||
              dec->op == rv_op_vs4re32_v ||
@@ -267,6 +294,15 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
     num_memory_operands = 4;
   } else if (dec->op == rv_op_vle64_v ||
              dec->op == rv_op_vse64_v ||
+             dec->op == rv_op_vlse64_v ||
+             dec->op == rv_op_vsse64_v ||
+             dec->op == rv_op_vluxei64_v ||
+             dec->op == rv_op_vloxei64_v ||
+             dec->op == rv_op_vsuxei64_v ||
+             dec->op == rv_op_vl1re64_v ||
+             dec->op == rv_op_vl2re64_v ||
+             dec->op == rv_op_vl4re64_v ||
+             dec->op == rv_op_vl8re64_v ||
              dec->op == rv_op_vs1re64_v ||
              dec->op == rv_op_vs2re64_v ||
              dec->op == rv_op_vs4re64_v ||
@@ -278,7 +314,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
     vec_lmul = 1 << (dec->imm & 0x07);
     vec_vsew = 8 << ((dec->imm >> 3) & 0x07);
 
-    fprintf (stderr, "LMUL is set to %d, VSEW is set to %d\n", vec_lmul, vec_vsew);
+    // fprintf (stderr, "LMUL is set to %d, VSEW is set to %d\n", vec_lmul, vec_vsew);
   }
 
   return num_memory_operands;
@@ -363,9 +399,27 @@ bool RISCVDecoder::op_read_reg (const DecodedInst * inst, unsigned int idx)
   bool res = false;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const rv_operand_data *operand_data = rv_inst_operand_data[dec->op];
-  if (operand_data[idx].type == rv_type_ireg ||
-      operand_data[idx].type == rv_type_freg ||
-      operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
+  if (operand_data[idx].operand_name == rv_operand_name_rd ||
+      operand_data[idx].operand_name == rv_operand_name_frd ||
+      operand_data[idx].operand_name == rv_operand_name_vd) {
+    res = false;
+  } else if (operand_data[idx].type == rv_type_ireg) {
+    // std::cout << "op_read_reg called : operand_data[idx].operand_name = " << operand_data[idx].operand_name << ", "
+    //           << "dec->rd = "  << static_cast<int>(dec->rd)  << ", "
+    //           << "dec->rs1 = " << static_cast<int>(dec->rs1) << ", "
+    //           << "dec->rs2 = " << static_cast<int>(dec->rs2) << ", "
+    //           << "dec->rs3 = " << static_cast<int>(dec->rs3) << "\n";
+    if (operand_data[idx].operand_name == rv_operand_name_rs1 && (dec->rs1 == rv_ireg_zero) ||
+        operand_data[idx].operand_name == rv_operand_name_rs2 && (dec->rs2 == rv_ireg_zero) ||
+        operand_data[idx].operand_name == rv_operand_name_rs3 && (dec->rs3 == rv_ireg_zero)) {
+      // std::cout << "   Zero Hit\n";
+      res = false;
+    } else {
+      // std::cout << "   NonZero Hit\n";
+      res = true;
+    }
+  } else if (operand_data[idx].type == rv_type_freg ||
+             operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
     res = true;
   }
   return res;
@@ -377,9 +431,25 @@ bool RISCVDecoder::op_write_reg (const DecodedInst * inst, unsigned int idx)
   bool res = false;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const rv_operand_data *operand_data = rv_inst_operand_data[dec->op];
-  if (operand_data[idx].type == rv_type_ireg ||
-      operand_data[idx].type == rv_type_freg ||
-      operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
+
+  // std::cout << "op_write_reg called : operand_data[idx].operand_name = " << operand_data[idx].operand_name << ", "
+  //           << "dec->rd = "  << static_cast<int>(dec->rd)  << ", "
+  //           << "dec->rs1 = " << static_cast<int>(dec->rs1) << ", "
+  //           << "dec->rs2 = " << static_cast<int>(dec->rs2) << ", "
+  //           << "dec->rs3 = " << static_cast<int>(dec->rs3) << "\n";
+
+  if (operand_data[idx].operand_name != rv_operand_name_rd  &&
+      operand_data[idx].operand_name != rv_operand_name_frd &&
+      operand_data[idx].operand_name != rv_operand_name_vd) {
+    res = false;
+  } else if (operand_data[idx].type == rv_type_ireg) {
+    if (operand_data[idx].operand_name == rv_operand_name_rd && (dec->rd == rv_ireg_zero)) {
+      res = false;
+    } else {
+      res = true;
+    }
+  } else if (operand_data[idx].type == rv_type_freg ||
+             operand_data[idx].type == rv_type_vreg) {  // what about compressed register?
     res = true;
   }
   return res;
@@ -399,20 +469,24 @@ bool RISCVDecoder::op_is_reg (const DecodedInst * inst, unsigned int idx)
   bool res = false;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const rv_operand_data *operand_data = rv_inst_operand_data[dec->op];
-  if (operand_data[idx].type == rv_type_ireg || operand_data[idx].type == rv_type_freg || operand_data[idx].type == rv_type_vreg) {
+  if (operand_data[idx].type == rv_type_ireg ||
+      operand_data[idx].type == rv_type_freg ||
+      operand_data[idx].type == rv_type_vreg) {
     res = true;
   }
   return res;
 }
 
 /// Get the register used for operand idx from instruction inst.
-    /// Function op_is_reg() should be called first.
+/// Function op_is_reg() should be called first.
 Decoder::decoder_reg RISCVDecoder::get_op_reg (const DecodedInst * inst, unsigned int idx)
 {
   Decoder::decoder_reg reg = 0;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const rv_operand_data *operand_data = rv_inst_operand_data[dec->op];
-  if (operand_data[idx].type != rv_type_ireg || operand_data[idx].type == rv_type_freg || operand_data[idx].type == rv_type_vreg) {
+  if (operand_data[idx].type == rv_type_ireg ||
+      operand_data[idx].type == rv_type_freg ||
+      operand_data[idx].type == rv_type_vreg) {
     switch (operand_data[idx].operand_name) {
       case rv_operand_name_rd:    reg = dec->rd;    break;
       case rv_operand_name_rs1:   reg = dec->rs1;   break;
@@ -802,7 +876,7 @@ void RISCVDecodedInst::set_disassembly()
         if (dec.succ & rv_fence_r) *args += "r";
         if (dec.succ & rv_fence_w) *args += "w";
         break;
-      case '\t': while (args->length() < 12) *args += " "; break;
+      case '\t': while (args->length() < 15) *args += " "; break;
       case 'A': if (dec.aq) *args += ".aq"; break;
       case 'R': if (dec.rl) *args += ".rl"; break;
       default:
@@ -854,11 +928,13 @@ bool RISCVDecodedInst::is_serializing() const
 {
   bool res = false;
   riscv::decode dec = this->rv8_dec;
-  // switch (dec.op) {
-  //   case rv_op_vsetvli:     /* VSETVLI Instruction */
-  //     res = true;
-  //     break;
-  // }
+  switch (dec.op) {
+    case rv_op_vsetvli:     /* VSETVLI Instruction */
+    case rv_op_vsetvl:     /* VSETVLI Instruction */
+    case rv_op_vsetivli:     /* VSETVLI Instruction */
+      res = true;
+      break;
+  }
   return res;
 }
 
@@ -902,6 +978,9 @@ bool RISCVDecodedInst::is_barrier() const
   switch (dec.op) {
     case rv_op_fence:		/* Fence */
     case rv_op_fence_i:		/* Fence Instruction */
+    case rv_op_vsetvli:     /* VSETVLI Instruction */
+    case rv_op_vsetvl:     /* VSETVLI Instruction */
+    case rv_op_vsetivli:     /* VSETVLI Instruction */
       // case rv_op_vsetvli:     /* VSETVLI Instruction */
       res = true;
       break;
