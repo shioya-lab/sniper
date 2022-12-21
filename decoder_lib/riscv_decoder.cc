@@ -1,3 +1,6 @@
+#include "tools.h"
+#include "config.hpp"
+
 #include "riscv_decoder.h"
 #include <iostream>
 #include <cstddef>
@@ -144,7 +147,7 @@ void RISCVDecoder::decode(DecodedInst * inst)
 
   ((RISCVDecodedInst *)inst)->set_rv8_dec(dec);
 
-  //printf("inst: (%016llx) Size: %d Opcode: %d\n", r_inst, riscv::inst_length(r_inst), dec.op); #DEBUG
+  //printf("inst: (%016llx) Size: %d Opcode: %d\n", r_inst, riscv::inst_length(r_inst), dec.op); // DEBUG
 
   inst->set_already_decoded(true);
 }
@@ -226,6 +229,9 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
   static int vec_lmul = 1;
   static int vec_vsew = 8;
 
+  int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
+  int vlenb = vlen / 8;
+
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
     || format == rv_fmt_frd_offset_rs1 /* flw, fld, flq, c.fld, c.flw, c.fldsp, c.flwsp */
     || format == rv_fmt_rs2_offset_rs1  /* sb, sh, sw, sd, sq, c.sw, c.swsp, c.sd, c.sdsp, c.sq, c.sqsp */
@@ -249,9 +255,8 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vs2re8_v ||
              dec->op == rv_op_vs4re8_v ||
              dec->op == rv_op_vs8re8_v ||
-             dec->op == rv_op_vleff8_v) {
-    // num_memory_operands = 16 * vec_lmul;
-    num_memory_operands = 16;
+             dec->op == rv_op_vle8ff_v) {
+    num_memory_operands = vlenb;
   } else if (dec->op == rv_op_vle16_v ||
              dec->op == rv_op_vse16_v ||
              dec->op == rv_op_vlse16_v ||
@@ -267,14 +272,13 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vs2re16_v ||
              dec->op == rv_op_vs4re16_v ||
              dec->op == rv_op_vs8re16_v ||
-             dec->op == rv_op_vleff16_v) {
-    // num_memory_operands = 8 * vec_lmul;
-    num_memory_operands = 8;
+             dec->op == rv_op_vle16ff_v) {
+    num_memory_operands = vlenb / 2;
   } else if (dec->op == rv_op_vle32_v ||
              dec->op == rv_op_vse32_v ||
              dec->op == rv_op_vlse32_v ||
              dec->op == rv_op_vsse32_v ||
-             dec->op == rv_op_vleff32_v ||
+             dec->op == rv_op_vle32ff_v ||
              dec->op == rv_op_vluxei32_v ||
              dec->op == rv_op_vloxei32_v ||
              dec->op == rv_op_vsuxei32_v ||
@@ -290,8 +294,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vlseg8e32_v ||
              dec->op == rv_op_vsseg4e32_v ||
              dec->op == rv_op_vsseg8e32_v) {
-    // num_memory_operands = 4 * vec_lmul;
-    num_memory_operands = 4;
+    num_memory_operands = vlenb / 4;
   } else if (dec->op == rv_op_vle64_v ||
              dec->op == rv_op_vse64_v ||
              dec->op == rv_op_vlse64_v ||
@@ -307,9 +310,8 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vs2re64_v ||
              dec->op == rv_op_vs4re64_v ||
              dec->op == rv_op_vs8re64_v ||
-             dec->op == rv_op_vleff64_v) {
-    // num_memory_operands = 2 * vec_lmul;
-    num_memory_operands = 2;
+             dec->op == rv_op_vle64ff_v) {
+    num_memory_operands = vlenb / 8;
   } else if (dec->op == rv_op_vsetvli) {
     vec_lmul = 1 << (dec->imm & 0x07);
     vec_vsew = 8 << ((dec->imm >> 3) & 0x07);
@@ -627,10 +629,10 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
 	case rv_op_vse32_v   :
 	case rv_op_vle64_v   :
 	case rv_op_vse64_v   :
-	case rv_op_vleff8_v  :
-	case rv_op_vleff16_v :
-	case rv_op_vleff32_v :
-	case rv_op_vleff64_v :
+	case rv_op_vle8ff_v  :
+	case rv_op_vle16ff_v :
+	case rv_op_vle32ff_v :
+	case rv_op_vle64ff_v :
 	case rv_op_vl1re8_v  :
 	case rv_op_vl1re16_v :
 	case rv_op_vl1re32_v :
