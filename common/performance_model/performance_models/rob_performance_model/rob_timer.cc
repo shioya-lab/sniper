@@ -860,6 +860,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 {
    uint64_t num_committed = 0;
    static bool cycle_activated = false;
+   static bool enable_konata = false;
 
    while(rob.size() && (rob.front().done <= now))
    {
@@ -897,13 +898,22 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
 
+      if (cycle_activated &&
+          inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos) {
+        enable_konata = 1;
+      }
+      if (cycle_activated &&
+          inst->getDisassembly().find("add            zero, zero, sp") != std::string::npos) {
+        enable_konata = 0;
+      }
+
       if (inst->getDisassembly().find("cycle") != std::string::npos) {
         cycle_activated = true;
       } else {
         cycle_activated = false;
       }
 
-      if (enable_debug_printf) {
+      if (enable_konata) {
 
         uint64_t cycle_fetch    = SubsecondTime::divideRounded(entry->fetch,      m_core->getDvfsDomain()->getPeriod());
         uint64_t cycle_dispatch = SubsecondTime::divideRounded(entry->dispatched, m_core->getDvfsDomain()->getPeriod());
