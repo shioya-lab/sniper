@@ -25,6 +25,8 @@
 // Define to not skip any cycles, but assert that the skip logic is working fine
 //#define ASSERT_SKIP
 
+#define KONATA_CNT_MAX (100000)
+
 RobTimer::RobTimer(
          Core *core, PerformanceModel *_perf, const CoreModel *core_model,
          int misprediction_penalty,
@@ -860,7 +862,8 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 {
    uint64_t num_committed = 0;
    static bool cycle_activated = false;
-   static bool enable_konata = false;
+   static int enable_konata = false;
+   static int konata_count = 0;
 
    while(rob.size() && (rob.front().done <= now))
    {
@@ -898,13 +901,30 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
 
-      if (cycle_activated &&
-          inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos) {
+      if (enable_debug_printf &&
+          cycle_activated &&
+          inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos &&
+          konata_count < KONATA_CNT_MAX) {
         enable_konata = 1;
+        std::cout << "KonataStart " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
+                  << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
+                  << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
-      if (cycle_activated &&
+      if (enable_debug_printf &&
+          cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, sp") != std::string::npos) {
         enable_konata = 0;
+        std::cout << "KonataStop " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
+                  << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
+                  << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
+      }
+      if (enable_konata &&
+          konata_count >= KONATA_CNT_MAX) {
+        enable_konata = 0;
+      }
+
+      if (enable_konata) {
+        konata_count ++;
       }
 
       if (inst->getDisassembly().find("cycle") != std::string::npos) {
