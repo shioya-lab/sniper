@@ -513,6 +513,10 @@ unsigned int RISCVDecoder::size_mem_op (const DecodedInst * inst, unsigned int m
 {
   unsigned int size = 0;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
+
+  int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
+  int vlenb = vlen / 8;
+
   switch(dec->op) {
     case rv_op_lb: 			/* Load Byte */
     case rv_op_lbu: 		/* Load Byte Unsigned */
@@ -541,6 +545,82 @@ unsigned int RISCVDecoder::size_mem_op (const DecodedInst * inst, unsigned int m
     case rv_op_sc_d: 		/* Store Conditional Double Word */
                         size = 8;
                         break;
+    case rv_op_vle8_v    :
+    case rv_op_vse8_v    :
+    case rv_op_vlse8_v   :
+    case rv_op_vsse8_v   :
+    case rv_op_vluxei8_v :
+    case rv_op_vloxei8_v :
+    case rv_op_vsuxei8_v :
+    case rv_op_vl1re8_v  :
+    case rv_op_vl2re8_v  :
+    case rv_op_vl4re8_v  :
+    case rv_op_vl8re8_v  :
+    case rv_op_vs1re8_v  :
+    case rv_op_vs2re8_v  :
+    case rv_op_vs4re8_v  :
+    case rv_op_vs8re8_v  :
+    case rv_op_vle8ff_v  :
+      size = 1;
+      break;
+    case rv_op_vle16_v    :
+    case rv_op_vse16_v    :
+    case rv_op_vlse16_v   :
+    case rv_op_vsse16_v   :
+    case rv_op_vluxei16_v :
+    case rv_op_vloxei16_v :
+    case rv_op_vsuxei16_v :
+    case rv_op_vl1re16_v  :
+    case rv_op_vl2re16_v  :
+    case rv_op_vl4re16_v  :
+    case rv_op_vl8re16_v  :
+    case rv_op_vs1re16_v  :
+    case rv_op_vs2re16_v  :
+    case rv_op_vs4re16_v  :
+    case rv_op_vs8re16_v  :
+    case rv_op_vle16ff_v  :
+      size = 2;
+      break;
+    case rv_op_vle32_v      :
+    case rv_op_vse32_v      :
+    case rv_op_vlse32_v     :
+    case rv_op_vsse32_v     :
+    case rv_op_vle32ff_v    :
+    case rv_op_vluxei32_v   :
+    case rv_op_vloxei32_v   :
+    case rv_op_vsuxei32_v   :
+    case rv_op_vl1re32_v    :
+    case rv_op_vl2re32_v    :
+    case rv_op_vl4re32_v    :
+    case rv_op_vl8re32_v    :
+    case rv_op_vs1re32_v    :
+    case rv_op_vs2re32_v    :
+    case rv_op_vs4re32_v    :
+    case rv_op_vs8re32_v    :
+    case rv_op_vlseg4e32_v  :
+    case rv_op_vlseg8e32_v  :
+    case rv_op_vsseg4e32_v  :
+    case rv_op_vsseg8e32_v  :
+      size = 4;
+      break;
+    case rv_op_vle64_v    :
+    case rv_op_vse64_v    :
+    case rv_op_vlse64_v   :
+    case rv_op_vsse64_v   :
+    case rv_op_vluxei64_v :
+    case rv_op_vloxei64_v :
+    case rv_op_vsuxei64_v :
+    case rv_op_vl1re64_v  :
+    case rv_op_vl2re64_v  :
+    case rv_op_vl4re64_v  :
+    case rv_op_vl8re64_v  :
+    case rv_op_vs1re64_v  :
+    case rv_op_vs2re64_v  :
+    case rv_op_vs4re64_v  :
+    case rv_op_vs8re64_v  :
+    case rv_op_vle64ff_v  :
+      size = 8;
+      break;
   }
   return size;
 }
