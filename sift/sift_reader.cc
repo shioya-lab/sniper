@@ -676,18 +676,18 @@ const Sift::StaticInstruction* Sift::Reader::getStaticInstruction(uint64_t addr,
 {
    const StaticInstruction *sinst;
 
-   // // Lookup in a large unordered_map is quite expensive if we have to do this for every dynamic instruction
-   // // Therefore, keep a pointer to the probable next instruction in each (static) instruction
-   // if (m_last_sinst && m_last_sinst->next && m_last_sinst->next->addr == addr)
-   // {
-   //    sinst = m_last_sinst->next;
-   // }
-   // else if (scache.count(addr))
-   // {
-   //    sinst = scache[addr];
-   //    assert(sinst->size == size);
-   // }
-   // else
+   // Lookup in a large unordered_map is quite expensive if we have to do this for every dynamic instruction
+   // Therefore, keep a pointer to the probable next instruction in each (static) instruction
+   if (m_last_sinst && m_last_sinst->next && m_last_sinst->next->addr == addr)
+   {
+      sinst = m_last_sinst->next;
+   }
+   else if (scache.count(addr))
+   {
+      sinst = scache[addr];
+      assert(sinst->size == size);
+   }
+   else
    {
       sinst = staticInfoInstruction(addr, size);
       scache[addr] = sinst;
