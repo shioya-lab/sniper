@@ -17,6 +17,7 @@
 #include "rng.h"
 #include "routine_tracer.h"
 #include "sim_api.h"
+#include "micro_op.h"
 
 #include "stats.h"
 
@@ -47,6 +48,8 @@ TraceThread::TraceThread(Thread *thread, SubsecondTime time_start, String tracef
    , m_blocked(false)
    , m_cleanup(cleanup)
    , m_started(false)
+   , m_vec_last_pc_addr(0)
+   , m_vec_lmul_idx(0)
    , m_stopped(false)
 {
 
@@ -377,13 +380,22 @@ SubsecondTime TraceThread::getCurrentTime() const
 
 Instruction* TraceThread::decode(Sift::Instruction &inst)
 {
-
-   if (m_decoder_cache.count(inst.sinst->addr) != 0) {
-     delete m_decoder_cache[inst.sinst->addr];
+   if (m_decoder_cache.count(inst.sinst->addr) == 0) {
+     m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
+     m_vec_decoder_cache[inst.sinst->addr].push_back(m_decoder_cache[inst.sinst->addr]);
    }
-   m_decoder_cache[inst.sinst->addr] = staticDecode(inst);
+   bool is_vector = m_decoder_cache[inst.sinst->addr]->is_vector();
+   if (is_vector) {
+     if (m_vec_decoder_cache[inst.sinst->addr].size() <= m_vec_lmul_idx) {
+       m_vec_decoder_cache[inst.sinst->addr].push_back(staticDecode(inst));
+     }
+   } else {
+     if (m_vec_decoder_cache.count(inst.sinst->addr) == 0) {
+       m_vec_decoder_cache[inst.sinst->addr].push_back(staticDecode(inst));
+     }
+   }
 
-   const dl::DecodedInst& dec_inst = *(m_decoder_cache[inst.sinst->addr]);
+   const dl::DecodedInst &dec_inst = *(m_vec_decoder_cache[inst.sinst->addr][m_vec_lmul_idx]);
 
    OperandList list;
 
@@ -643,12 +655,38 @@ void TraceThread::handleInstructionDetailed(Sift::Instruction &inst, Sift::Instr
 
    // Set up instruction
    if (m_icache.count(inst.sinst->addr) == 0) {
+     m_vec_last_pc_addr = 0;
+     m_vec_lmul_idx = 0;
      m_icache[inst.sinst->addr] = decode(inst);
+     m_vec_icache[inst.sinst->addr].push_back(m_icache[inst.sinst->addr]);
+     m_vec_last_pc_addr = inst.sinst->addr;
+   } else {
+     Instruction *existed_inst = m_icache[inst.sinst->addr];
+     const std::vector<const MicroOp*> *uops = existed_inst->getMicroOps();
+     const MicroOp* uop = (*uops)[0];
+     if (uop->isVector()) {
+       if (inst.sinst->addr == m_vec_last_pc_addr) {
+         m_vec_lmul_idx++;
+       } else {
+         m_vec_lmul_idx = 0;
+       }
+       if (m_vec_icache[inst.sinst->addr].size() <= m_vec_lmul_idx + 1) {
+         m_vec_icache[inst.sinst->addr].push_back (decode(inst));
+       }
+       m_vec_last_pc_addr = inst.sinst->addr;
+     } else {
+       m_vec_last_pc_addr = 0;
+       m_vec_lmul_idx = 0;
+     }
    }
-   // Here get the decoder instruction without checking, because we must have it for sure
-   const dl::DecodedInst &dec_inst = *(m_decoder_cache[inst.sinst->addr]);
 
-   Instruction *ins = m_icache[inst.sinst->addr];
+   // Here get the decoder instruction without checking, because we must have it for sure
+   // const dl::DecodedInst &dec_inst = *(m_decoder_cache[inst.sinst->addr]);
+   const dl::DecodedInst &dec_inst = *(m_vec_decoder_cache[inst.sinst->addr][m_vec_lmul_idx]);
+
+   Instruction *ins = m_vec_icache[inst.sinst->addr][m_vec_lmul_idx];
+   const MicroOp *uop_t = (*ins->getMicroOps())[0];
+
    DynamicInstruction *dynins = prfmdl->createDynamicInstruction(ins, va2pa(inst.sinst->addr));
 
    // Add dynamic instruction info

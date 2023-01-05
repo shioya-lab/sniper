@@ -71,6 +71,11 @@ class TraceThread : public Runnable
       bool m_cleanup;
       bool m_started;
 
+  uint64_t m_vec_last_pc_addr;
+  uint8_t  m_vec_lmul_idx;
+  std::unordered_map<IntPtr, std::vector<Instruction *>> m_vec_icache;
+  std::unordered_map<IntPtr, std::vector<const dl::DecodedInst *>> m_vec_decoder_cache;
+
       void run();
       static Sift::Mode __handleInstructionCountFunc(void* arg, uint32_t icount)
       { return ((TraceThread*)arg)->handleInstructionCountFunc(icount); }
@@ -114,12 +119,12 @@ class TraceThread : public Runnable
       void unblock();
 
       SubsecondTime getCurrentTime() const;
-      
+
       dl::DecoderFactory *m_factory;  // we need a factory here to be able to create instructions of any kind
       const dl::DecodedInst* staticDecode(Sift::Instruction &inst);
 
       long long *m_papi_counters;
-      
+
       Lock m_lock;
 
    public:
