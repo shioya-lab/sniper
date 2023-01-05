@@ -215,7 +215,7 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
          hexdump((char*)buffer, sizeof(buffer));
          #endif
 
-         // icache[addr] = true;
+         icache[addr] = true;
       }
    }
    else
@@ -243,7 +243,7 @@ void Sift::Writer::Instruction(uint64_t addr, uint8_t size, uint8_t num_addresse
             }
             output->write(reinterpret_cast<char*>(buffer), ICACHE_SIZE);
 
-            // icache[base_addr] = true;
+            icache[base_addr] = true;
          }
       }
    }
