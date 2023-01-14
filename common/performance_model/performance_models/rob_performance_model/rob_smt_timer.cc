@@ -534,9 +534,9 @@ void RobSmtTimer::synchronize(smtthread_id_t thread_id, SubsecondTime time)
    if (earliest > now.getElapsedTime())
    {
       now.setElapsedTime(earliest);
-      #ifdef DEBUG_PERCYCLE
-         std::cout<<"** ["<<int(thread_id)<<"] fast-forwarding core time to "<<toCycles(now)<<" cycles"<<std::endl;
-      #endif
+      // #ifdef DEBUG_PERCYCLE
+      //    std::cout<<"** ["<<int(thread_id)<<"] fast-forwarding core time to "<<toCycles(now)<<" cycles"<<std::endl;
+      // #endif
    }
 }
 
