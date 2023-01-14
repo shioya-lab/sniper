@@ -753,6 +753,22 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
 	case rv_op_vsse32_v  :
 	case rv_op_vlse64_v  :
 	case rv_op_vsse64_v  :
+    case rv_op_vluxei8_v :
+    case rv_op_vloxei8_v :
+    case rv_op_vsuxei8_v :
+    case rv_op_vluxei16_v :
+    case rv_op_vloxei16_v :
+    case rv_op_vsuxei16_v :
+    case rv_op_vluxei32_v :
+    case rv_op_vloxei32_v :
+    case rv_op_vsuxei32_v :
+    case rv_op_vlseg4e32_v :
+    case rv_op_vlseg8e32_v :
+    case rv_op_vsseg4e32_v :
+    case rv_op_vsseg8e32_v :
+    case rv_op_vluxei64_v :
+    case rv_op_vloxei64_v :
+    case rv_op_vsuxei64_v :
       num_exec_uops = 0;
       break;
   }
