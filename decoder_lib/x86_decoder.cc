@@ -490,6 +490,11 @@ bool X86Decoder::is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst*
   return is_vls;
 }
 
+bool X86Decoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
+{
+  return false;
+}
+
 Decoder::decoder_reg X86Decoder::last_reg()
 {
     return XED_REG_LAST;

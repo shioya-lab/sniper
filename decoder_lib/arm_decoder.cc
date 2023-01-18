@@ -1138,6 +1138,12 @@ bool ARMDecoder::is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst*
   return is_vls;
 }
 
+bool ARMDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
+{
+  return false;
+}
+
+
 Decoder::decoder_reg ARMDecoder::last_reg()
 {
   if (m_arch == DL_ARCH_ARMv7)

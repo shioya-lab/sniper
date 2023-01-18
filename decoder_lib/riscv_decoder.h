@@ -205,6 +205,8 @@ class RISCVDecoder : public Decoder
     /// Check if the opcode is an instruction that loads or store data on vector and FP registers
     virtual bool is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
 
+    virtual bool is_vector(decoder_opcode opcd, const DecodedInst* ins) override;
+
     /// Get the value of the last register in the enumeration
     virtual decoder_reg last_reg() override;
 

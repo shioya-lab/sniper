@@ -187,7 +187,7 @@ Decoder::decoder_reg RISCVDecoder::largest_enclosing_register(Decoder::decoder_r
 bool RISCVDecoder::invalid_register(decoder_reg r)
 {
   bool res = false;
-  if (r < reg_set_size && reg_name_sym[r] == NULL)
+  if (r < static_cast<decoder_reg>(reg_set_size) && reg_name_sym[r] == NULL)
     return true;
   return res;
 }
@@ -226,8 +226,8 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
   const char *format = rv_inst_format[dec->op];
 
-  static int vec_lmul = 1;
-  static int vec_vsew = 8;
+  // static int vec_lmul = 1;
+  // static int vec_vsew = 8;
 
   int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
   int vlenb = vlen / 8;
@@ -313,8 +313,8 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vle64ff_v) {
     num_memory_operands = vlenb / 8;
   } else if (dec->op == rv_op_vsetvli) {
-    vec_lmul = 1 << (dec->imm & 0x07);
-    vec_vsew = 8 << ((dec->imm >> 3) & 0x07);
+    // vec_lmul = 1 << (dec->imm & 0x07);
+    // vec_vsew = 8 << ((dec->imm >> 3) & 0x07);
 
     // fprintf (stderr, "LMUL is set to %d, VSEW is set to %d\n", vec_lmul, vec_vsew);
   }
@@ -406,15 +406,9 @@ bool RISCVDecoder::op_read_reg (const DecodedInst * inst, unsigned int idx)
       operand_data[idx].operand_name == rv_operand_name_vd) {
     res = false;
   } else if (operand_data[idx].type == rv_type_ireg) {
-    // std::cout << "op_read_reg called : operand_data[idx].operand_name = " << operand_data[idx].operand_name << ", "
-    //           << "dec->rd = "  << static_cast<int>(dec->rd)  << ", "
-    //           << "dec->rs1 = " << static_cast<int>(dec->rs1) << ", "
-    //           << "dec->rs2 = " << static_cast<int>(dec->rs2) << ", "
-    //           << "dec->rs3 = " << static_cast<int>(dec->rs3) << "\n";
-    if (operand_data[idx].operand_name == rv_operand_name_rs1 && (dec->rs1 == rv_ireg_zero) ||
-        operand_data[idx].operand_name == rv_operand_name_rs2 && (dec->rs2 == rv_ireg_zero) ||
-        operand_data[idx].operand_name == rv_operand_name_rs3 && (dec->rs3 == rv_ireg_zero)) {
-      // std::cout << "   Zero Hit\n";
+    if ((operand_data[idx].operand_name == rv_operand_name_rs1 && dec->rs1 == rv_ireg_zero) ||
+        (operand_data[idx].operand_name == rv_operand_name_rs2 && dec->rs2 == rv_ireg_zero) ||
+        (operand_data[idx].operand_name == rv_operand_name_rs3 && dec->rs3 == rv_ireg_zero)) {
       res = false;
     } else {
       // std::cout << "   NonZero Hit\n";
@@ -514,8 +508,8 @@ unsigned int RISCVDecoder::size_mem_op (const DecodedInst * inst, unsigned int m
   unsigned int size = 0;
   riscv::decode *dec = ((RISCVDecodedInst *)inst)->get_rv8_dec();
 
-  int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
-  int vlenb = vlen / 8;
+  // int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
+  // int vlenb = vlen / 8;
 
   switch(dec->op) {
     case rv_op_lb: 			/* Load Byte */
@@ -776,6 +770,8 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
   return num_exec_uops;
 }
 
+
+
 /// Get the maximum size of the operands of instruction inst in bits
 uint16_t RISCVDecoder::get_operand_size(const DecodedInst *ins)
 {
@@ -860,6 +856,638 @@ bool RISCVDecoder::is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedIns
 {
   return false;
 }
+
+
+bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
+{
+  bool res;
+  switch(opcd) {
+	case rv_op_vle8_v            :
+	case rv_op_vse8_v            :
+	case rv_op_vle16_v           :
+	case rv_op_vse16_v           :
+	case rv_op_vle32_v           :
+	case rv_op_vse32_v           :
+	case rv_op_vle64_v           :
+	case rv_op_vse64_v           :
+	case rv_op_vle8ff_v          :
+	case rv_op_vle16ff_v         :
+	case rv_op_vle32ff_v         :
+	case rv_op_vle64ff_v         :
+	case rv_op_vl1re8_v          :
+	case rv_op_vl1re16_v         :
+	case rv_op_vl1re32_v         :
+	case rv_op_vl1re64_v         :
+	case rv_op_vl2re8_v          :
+	case rv_op_vl2re16_v         :
+	case rv_op_vl2re32_v         :
+	case rv_op_vl2re64_v         :
+	case rv_op_vl4re8_v          :
+	case rv_op_vl4re16_v         :
+	case rv_op_vl4re32_v         :
+	case rv_op_vl4re64_v         :
+	case rv_op_vl8re8_v          :
+	case rv_op_vl8re16_v         :
+	case rv_op_vl8re32_v         :
+	case rv_op_vl8re64_v         :
+	case rv_op_vs1re8_v          :
+	case rv_op_vs1re16_v         :
+	case rv_op_vs1re32_v         :
+	case rv_op_vs1re64_v         :
+	case rv_op_vs2re8_v          :
+	case rv_op_vs2re16_v         :
+	case rv_op_vs2re32_v         :
+	case rv_op_vs2re64_v         :
+	case rv_op_vs4re8_v          :
+	case rv_op_vs4re16_v         :
+	case rv_op_vs4re32_v         :
+	case rv_op_vs4re64_v         :
+	case rv_op_vs8re8_v          :
+	case rv_op_vs8re16_v         :
+	case rv_op_vs8re32_v         :
+	case rv_op_vs8re64_v         :
+	case rv_op_vlse8_v           :
+	case rv_op_vsse8_v           :
+	case rv_op_vlse16_v          :
+	case rv_op_vsse16_v          :
+	case rv_op_vlse32_v          :
+	case rv_op_vsse32_v          :
+	case rv_op_vlse64_v          :
+	case rv_op_vsse64_v          :
+	case rv_op_vluxei8_v         :
+	case rv_op_vsuxei8_v         :
+	case rv_op_vluxei16_v        :
+	case rv_op_vsuxei16_v        :
+	case rv_op_vluxei32_v        :
+	case rv_op_vsuxei32_v        :
+	case rv_op_vluxei64_v        :
+	case rv_op_vsuxei64_v        :
+	case rv_op_vloxei8_v         :
+	case rv_op_vsoxei8_v         :
+	case rv_op_vloxei16_v        :
+	case rv_op_vsoxei16_v        :
+	case rv_op_vloxei32_v        :
+	case rv_op_vsoxei32_v        :
+	case rv_op_vloxei64_v        :
+	case rv_op_vsoxei64_v        :
+	case rv_op_vlseg2e8_v        :
+	case rv_op_vsseg2e8_v        :
+	case rv_op_vlseg2e16_v       :
+	case rv_op_vsseg2e16_v       :
+	case rv_op_vlseg2e32_v       :
+	case rv_op_vsseg2e32_v       :
+	case rv_op_vlseg2e64_v       :
+	case rv_op_vsseg2e64_v       :
+	case rv_op_vlsseg2e8_v       :
+	case rv_op_vssseg2e8_v       :
+	case rv_op_vlsseg2e16_v      :
+	case rv_op_vssseg2e16_v      :
+	case rv_op_vlsseg2e32_v      :
+	case rv_op_vssseg2e32_v      :
+	case rv_op_vlsseg2e64_v      :
+	case rv_op_vssseg2e64_v      :
+	case rv_op_vluxseg2ei8_v     :
+	case rv_op_vsuxseg2ei8_v     :
+	case rv_op_vluxseg2ei16_v    :
+	case rv_op_vsuxseg2ei16_v    :
+	case rv_op_vluxseg2ei32_v    :
+	case rv_op_vsuxseg2ei32_v    :
+	case rv_op_vluxseg2ei64_v    :
+	case rv_op_vsuxseg2ei64_v    :
+	case rv_op_vloxseg2ei8_v     :
+	case rv_op_vsoxseg2ei8_v     :
+	case rv_op_vloxseg2ei16_v    :
+	case rv_op_vsoxseg2ei16_v    :
+	case rv_op_vloxseg2ei32_v    :
+	case rv_op_vsoxseg2ei32_v    :
+	case rv_op_vloxseg2ei64_v    :
+	case rv_op_vsoxseg2ei64_v    :
+	case rv_op_vlseg3e8_v        :
+	case rv_op_vsseg3e8_v        :
+	case rv_op_vlseg3e16_v       :
+	case rv_op_vsseg3e16_v       :
+	case rv_op_vlseg3e32_v       :
+	case rv_op_vsseg3e32_v       :
+	case rv_op_vlseg3e64_v       :
+	case rv_op_vsseg3e64_v       :
+	case rv_op_vlsseg3e8_v       :
+	case rv_op_vssseg3e8_v       :
+	case rv_op_vlsseg3e16_v      :
+	case rv_op_vssseg3e16_v      :
+	case rv_op_vlsseg3e32_v      :
+	case rv_op_vssseg3e32_v      :
+	case rv_op_vlsseg3e64_v      :
+	case rv_op_vssseg3e64_v      :
+	case rv_op_vluxseg3ei8_v     :
+	case rv_op_vsuxseg3ei8_v     :
+	case rv_op_vluxseg3ei16_v    :
+	case rv_op_vsuxseg3ei16_v    :
+	case rv_op_vluxseg3ei32_v    :
+	case rv_op_vsuxseg3ei32_v    :
+	case rv_op_vluxseg3ei64_v    :
+	case rv_op_vsuxseg3ei64_v    :
+	case rv_op_vloxseg3ei8_v     :
+	case rv_op_vsoxseg3ei8_v     :
+	case rv_op_vloxseg3ei16_v    :
+	case rv_op_vsoxseg3ei16_v    :
+	case rv_op_vloxseg3ei32_v    :
+	case rv_op_vsoxseg3ei32_v    :
+	case rv_op_vloxseg3ei64_v    :
+	case rv_op_vsoxseg3ei64_v    :
+	case rv_op_vlseg4e8_v        :
+	case rv_op_vsseg4e8_v        :
+	case rv_op_vlseg4e16_v       :
+	case rv_op_vsseg4e16_v       :
+	case rv_op_vlseg4e32_v       :
+	case rv_op_vsseg4e32_v       :
+	case rv_op_vlseg4e64_v       :
+	case rv_op_vsseg4e64_v       :
+	case rv_op_vlsseg4e8_v       :
+	case rv_op_vssseg4e8_v       :
+	case rv_op_vlsseg4e16_v      :
+	case rv_op_vssseg4e16_v      :
+	case rv_op_vlsseg4e32_v      :
+	case rv_op_vssseg4e32_v      :
+	case rv_op_vlsseg4e64_v      :
+	case rv_op_vssseg4e64_v      :
+	case rv_op_vluxseg4ei8_v     :
+	case rv_op_vsuxseg4ei8_v     :
+	case rv_op_vluxseg4ei16_v    :
+	case rv_op_vsuxseg4ei16_v    :
+	case rv_op_vluxseg4ei32_v    :
+	case rv_op_vsuxseg4ei32_v    :
+	case rv_op_vluxseg4ei64_v    :
+	case rv_op_vsuxseg4ei64_v    :
+	case rv_op_vloxseg4ei8_v     :
+	case rv_op_vsoxseg4ei8_v     :
+	case rv_op_vloxseg4ei16_v    :
+	case rv_op_vsoxseg4ei16_v    :
+	case rv_op_vloxseg4ei32_v    :
+	case rv_op_vsoxseg4ei32_v    :
+	case rv_op_vloxseg4ei64_v    :
+	case rv_op_vsoxseg4ei64_v    :
+	case rv_op_vlseg5e8_v        :
+	case rv_op_vsseg5e8_v        :
+	case rv_op_vlseg5e16_v       :
+	case rv_op_vsseg5e16_v       :
+	case rv_op_vlseg5e32_v       :
+	case rv_op_vsseg5e32_v       :
+	case rv_op_vlseg5e64_v       :
+	case rv_op_vsseg5e64_v       :
+	case rv_op_vlsseg5e8_v       :
+	case rv_op_vssseg5e8_v       :
+	case rv_op_vlsseg5e16_v      :
+	case rv_op_vssseg5e16_v      :
+	case rv_op_vlsseg5e32_v      :
+	case rv_op_vssseg5e32_v      :
+	case rv_op_vlsseg5e64_v      :
+	case rv_op_vssseg5e64_v      :
+	case rv_op_vluxseg5ei8_v     :
+	case rv_op_vsuxseg5ei8_v     :
+	case rv_op_vluxseg5ei16_v    :
+	case rv_op_vsuxseg5ei16_v    :
+	case rv_op_vluxseg5ei32_v    :
+	case rv_op_vsuxseg5ei32_v    :
+	case rv_op_vluxseg5ei64_v    :
+	case rv_op_vsuxseg5ei64_v    :
+	case rv_op_vloxseg5ei8_v     :
+	case rv_op_vsoxseg5ei8_v     :
+	case rv_op_vloxseg5ei16_v    :
+	case rv_op_vsoxseg5ei16_v    :
+	case rv_op_vloxseg5ei32_v    :
+	case rv_op_vsoxseg5ei32_v    :
+	case rv_op_vloxseg5ei64_v    :
+	case rv_op_vsoxseg5ei64_v    :
+	case rv_op_vlseg6e8_v        :
+	case rv_op_vsseg6e8_v        :
+	case rv_op_vlseg6e16_v       :
+	case rv_op_vsseg6e16_v       :
+	case rv_op_vlseg6e32_v       :
+	case rv_op_vsseg6e32_v       :
+	case rv_op_vlseg6e64_v       :
+	case rv_op_vsseg6e64_v       :
+	case rv_op_vlsseg6e8_v       :
+	case rv_op_vssseg6e8_v       :
+	case rv_op_vlsseg6e16_v      :
+	case rv_op_vssseg6e16_v      :
+	case rv_op_vlsseg6e32_v      :
+	case rv_op_vssseg6e32_v      :
+	case rv_op_vlsseg6e64_v      :
+	case rv_op_vssseg6e64_v      :
+	case rv_op_vluxseg6ei8_v     :
+	case rv_op_vsuxseg6ei8_v     :
+	case rv_op_vluxseg6ei16_v    :
+	case rv_op_vsuxseg6ei16_v    :
+	case rv_op_vluxseg6ei32_v    :
+	case rv_op_vsuxseg6ei32_v    :
+	case rv_op_vluxseg6ei64_v    :
+	case rv_op_vsuxseg6ei64_v    :
+	case rv_op_vloxseg6ei8_v     :
+	case rv_op_vsoxseg6ei8_v     :
+	case rv_op_vloxseg6ei16_v    :
+	case rv_op_vsoxseg6ei16_v    :
+	case rv_op_vloxseg6ei32_v    :
+	case rv_op_vsoxseg6ei32_v    :
+	case rv_op_vloxseg6ei64_v    :
+	case rv_op_vsoxseg6ei64_v    :
+	case rv_op_vlseg7e8_v        :
+	case rv_op_vsseg7e8_v        :
+	case rv_op_vlseg7e16_v       :
+	case rv_op_vsseg7e16_v       :
+	case rv_op_vlseg7e32_v       :
+	case rv_op_vsseg7e32_v       :
+	case rv_op_vlseg7e64_v       :
+	case rv_op_vsseg7e64_v       :
+	case rv_op_vlsseg7e8_v       :
+	case rv_op_vssseg7e8_v       :
+	case rv_op_vlsseg7e16_v      :
+	case rv_op_vssseg7e16_v      :
+	case rv_op_vlsseg7e32_v      :
+	case rv_op_vssseg7e32_v      :
+	case rv_op_vlsseg7e64_v      :
+	case rv_op_vssseg7e64_v      :
+	case rv_op_vluxseg7ei8_v     :
+	case rv_op_vsuxseg7ei8_v     :
+	case rv_op_vluxseg7ei16_v    :
+	case rv_op_vsuxseg7ei16_v    :
+	case rv_op_vluxseg7ei32_v    :
+	case rv_op_vsuxseg7ei32_v    :
+	case rv_op_vluxseg7ei64_v    :
+	case rv_op_vsuxseg7ei64_v    :
+	case rv_op_vloxseg7ei8_v     :
+	case rv_op_vsoxseg7ei8_v     :
+	case rv_op_vloxseg7ei16_v    :
+	case rv_op_vsoxseg7ei16_v    :
+	case rv_op_vloxseg7ei32_v    :
+	case rv_op_vsoxseg7ei32_v    :
+	case rv_op_vloxseg7ei64_v    :
+	case rv_op_vsoxseg7ei64_v    :
+	case rv_op_vlseg8e8_v        :
+	case rv_op_vsseg8e8_v        :
+	case rv_op_vlseg8e16_v       :
+	case rv_op_vsseg8e16_v       :
+	case rv_op_vlseg8e32_v       :
+	case rv_op_vsseg8e32_v       :
+	case rv_op_vlseg8e64_v       :
+	case rv_op_vsseg8e64_v       :
+	case rv_op_vlsseg8e8_v       :
+	case rv_op_vssseg8e8_v       :
+	case rv_op_vlsseg8e16_v      :
+	case rv_op_vssseg8e16_v      :
+	case rv_op_vlsseg8e32_v      :
+	case rv_op_vssseg8e32_v      :
+	case rv_op_vlsseg8e64_v      :
+	case rv_op_vssseg8e64_v      :
+	case rv_op_vluxseg8ei8_v     :
+	case rv_op_vsuxseg8ei8_v     :
+	case rv_op_vluxseg8ei16_v    :
+	case rv_op_vsuxseg8ei16_v    :
+	case rv_op_vluxseg8ei32_v    :
+	case rv_op_vsuxseg8ei32_v    :
+	case rv_op_vluxseg8ei64_v    :
+	case rv_op_vsuxseg8ei64_v    :
+	case rv_op_vloxseg8ei8_v     :
+	case rv_op_vsoxseg8ei8_v     :
+	case rv_op_vloxseg8ei16_v    :
+	case rv_op_vsoxseg8ei16_v    :
+	case rv_op_vloxseg8ei32_v    :
+	case rv_op_vsoxseg8ei32_v    :
+	case rv_op_vloxseg8ei64_v    :
+	case rv_op_vsoxseg8ei64_v    :
+	case rv_op_vadd_vv           :
+	case rv_op_vsub_vv           :
+	case rv_op_vminu_vv          :
+	case rv_op_vmin_vv           :
+	case rv_op_vmaxu_vv          :
+	case rv_op_vmax_vv           :
+	case rv_op_vand_vv           :
+	case rv_op_vor_vv            :
+	case rv_op_vxor_vv           :
+	case rv_op_vrgather_vv       :
+	case rv_op_vadc_vv           :
+	case rv_op_vmadc_vv          :
+	case rv_op_vsbc_vv           :
+	case rv_op_vmsbc_vv          :
+	case rv_op_vmerge_vv         :
+	case rv_op_vmseq_vv          :
+	case rv_op_vmsne_vv          :
+	case rv_op_vmsltu_vv         :
+	case rv_op_vmslt_vv          :
+	case rv_op_vmsleu_vv         :
+	case rv_op_vmsle_vv          :
+	case rv_op_vsaddu_vv         :
+	case rv_op_vsadd_vv          :
+	case rv_op_vssubu_vv         :
+	case rv_op_vssub_vv          :
+	case rv_op_vsll_vv           :
+	case rv_op_vsmul_vv          :
+	case rv_op_vsrl_vv           :
+	case rv_op_vsra_vv           :
+	case rv_op_vssrl_vv          :
+	case rv_op_vssra_vv          :
+	case rv_op_vnsrl_vv          :
+	case rv_op_vnsra_vv          :
+	case rv_op_vnclipu_vv        :
+	case rv_op_vnclip_vv         :
+	case rv_op_vwredsumu_vv      :
+	case rv_op_vwredsum_vv       :
+	case rv_op_vdotu_vv          :
+	case rv_op_vdot_vv           :
+	case rv_op_vqmaccu_vv        :
+	case rv_op_vqmacc_vv         :
+	case rv_op_vqmaccus_vv       :
+	case rv_op_vqmaccsu_vv       :
+	case rv_op_vadd_vx           :
+	case rv_op_vsub_vx           :
+	case rv_op_vrsub_vx          :
+	case rv_op_vminu_vx          :
+	case rv_op_vmin_vx           :
+	case rv_op_vmaxu_vx          :
+	case rv_op_vmax_vx           :
+	case rv_op_vand_vx           :
+	case rv_op_vor_vx            :
+	case rv_op_vxor_vx           :
+	case rv_op_vrgather_vx       :
+	case rv_op_vslideup_vx       :
+	case rv_op_vslidedown_vx     :
+	case rv_op_vadc_vx           :
+	case rv_op_vmadc_vx          :
+	case rv_op_vsbc_vx           :
+	case rv_op_vmsbc_vx          :
+	case rv_op_vmerge_vx         :
+	case rv_op_vmseq_vx          :
+	case rv_op_vmsne_vx          :
+	case rv_op_vmsltu_vx         :
+	case rv_op_vmslt_vx          :
+	case rv_op_vmsleu_vx         :
+	case rv_op_vmsle_vx          :
+	case rv_op_vmsgtu_vx         :
+	case rv_op_vmsgt_vx          :
+	case rv_op_vsaddu_vx         :
+	case rv_op_vsadd_vx          :
+	case rv_op_vssubu_vx         :
+	case rv_op_vssub_vx          :
+	case rv_op_vsll_vx           :
+	case rv_op_vsmul_vx          :
+	case rv_op_vsrl_vx           :
+	case rv_op_vsra_vx           :
+	case rv_op_vssrl_vx          :
+	case rv_op_vssra_vx          :
+	case rv_op_vnsrl_vx          :
+	case rv_op_vnsra_vx          :
+	case rv_op_vnclipu_vx        :
+	case rv_op_vnclip_vx         :
+	case rv_op_vwredsumu_vx      :
+	case rv_op_vwredsum_vx       :
+	case rv_op_vdotu_vx          :
+	case rv_op_vdot_vx           :
+	case rv_op_vqmaccu_vx        :
+	case rv_op_vqmacc_vx         :
+	case rv_op_vqmaccus_vx       :
+	case rv_op_vqmaccsu_vx       :
+	case rv_op_vadd_vi           :
+	case rv_op_vrsub_vi          :
+	case rv_op_vand_vi           :
+	case rv_op_vor_vi            :
+	case rv_op_vxor_vi           :
+	case rv_op_vrgather_vi       :
+	case rv_op_vslideup_vi       :
+	case rv_op_vslidedown_vi     :
+	case rv_op_vadc_vi           :
+	case rv_op_vmadc_vi          :
+	case rv_op_vmv_vi            :
+	case rv_op_vmseq_vi          :
+	case rv_op_vmsne_vi          :
+	case rv_op_vmsleu_vi         :
+	case rv_op_vmsle_vi          :
+	case rv_op_vmsgtu_vi         :
+	case rv_op_vmsgt_vi          :
+	case rv_op_vmv1r             :
+	case rv_op_vmv2r             :
+	case rv_op_vmv4r             :
+	case rv_op_vmv8r             :
+	case rv_op_vsaddu_vi         :
+	case rv_op_vsadd_vi          :
+	case rv_op_vsll_vi           :
+	case rv_op_vsrl_vi           :
+	case rv_op_vsra_vi           :
+	case rv_op_vssrl_vi          :
+	case rv_op_vssra_vi          :
+	case rv_op_vnsrl_vi          :
+	case rv_op_vnsra_vi          :
+	case rv_op_vnclipu_vi        :
+	case rv_op_vnclip_vi         :
+	case rv_op_vredsum_vv        :
+	case rv_op_vredand_vv        :
+	case rv_op_vredor_vv         :
+	case rv_op_vredxor_vv        :
+	case rv_op_vredminu_vv       :
+	case rv_op_vredmin_vv        :
+	case rv_op_vredmaxu_vv       :
+	case rv_op_vredmax_vv        :
+	case rv_op_vaaddu_vv         :
+	case rv_op_vaadd_vv          :
+	case rv_op_vasubu_vv         :
+	case rv_op_vasub_vv          :
+	case rv_op_vmv_x_s           :
+	case rv_op_vpopc_m           :
+	case rv_op_vfirst_m          :
+	case rv_op_vmv_s_x           :
+	case rv_op_vzext_vf8         :
+	case rv_op_vsext_vf8         :
+	case rv_op_vzext_vf4         :
+	case rv_op_vsext_vf4         :
+	case rv_op_vzext_vf2         :
+	case rv_op_vsext_vf2         :
+	case rv_op_vmsbf_m           :
+	case rv_op_vmsof_m           :
+	case rv_op_vmsif_m           :
+	case rv_op_viota_m           :
+	case rv_op_vid_v             :
+	case rv_op_vcompress_vv      :
+	case rv_op_vmandnot_vv       :
+	case rv_op_vmand_vv          :
+	case rv_op_vmor_vv           :
+	case rv_op_vmxor_vv          :
+	case rv_op_vmornot_vv        :
+	case rv_op_vmnand_vv         :
+	case rv_op_vmnor_vv          :
+	case rv_op_vmxnor_vv         :
+	case rv_op_vdivu_vv          :
+	case rv_op_vdiv_vv           :
+	case rv_op_vremu_vv          :
+	case rv_op_vrem_vv           :
+	case rv_op_vmulhu_vv         :
+	case rv_op_vmul_vv           :
+	case rv_op_vmulhsu_vv        :
+	case rv_op_vmulh_vv          :
+	case rv_op_vmadd_vv          :
+	case rv_op_vnmsub_vv         :
+	case rv_op_vmacc_vv          :
+	case rv_op_vnmsac_vv         :
+	case rv_op_vwaddu_vv         :
+	case rv_op_vwadd_vv          :
+	case rv_op_vwsubu_vv         :
+	case rv_op_vwsub_vv          :
+	case rv_op_vwaddu_w_vv       :
+	case rv_op_vwadd_w_vv        :
+	case rv_op_vwsubu_w_vv       :
+	case rv_op_vwsub_w_vv        :
+	case rv_op_vwmulu_vv         :
+	case rv_op_vwmulsu_vv        :
+	case rv_op_vwmul_vv          :
+	case rv_op_vwmaccu_vv        :
+	case rv_op_vwmacc_vv         :
+	case rv_op_vwmaccus_vv       :
+	case rv_op_vwmaccsu_vv       :
+	case rv_op_vaaddu_vx         :
+	case rv_op_vaadd_vx          :
+	case rv_op_vasubu_vx         :
+	case rv_op_vasub_vx          :
+	case rv_op_vslide1up_vx      :
+	case rv_op_vslide1down_vx    :
+	case rv_op_vdivu_vx          :
+	case rv_op_vdiv_vx           :
+	case rv_op_vremu_vx          :
+	case rv_op_vrem_vx           :
+	case rv_op_vmulhu_vx         :
+	case rv_op_vmul_vx           :
+	case rv_op_vmulhsu_vx        :
+	case rv_op_vmulh_vx          :
+	case rv_op_vmadd_vx          :
+	case rv_op_vnmsub_vx         :
+	case rv_op_vmacc_vx          :
+	case rv_op_vnmsac_vx         :
+	case rv_op_vwaddu_vx         :
+	case rv_op_vwadd_vx          :
+	case rv_op_vwsubu_vx         :
+	case rv_op_vwsub_vx          :
+	case rv_op_vwaddu_w_vx       :
+	case rv_op_vwadd_w_vx        :
+	case rv_op_vwsubu_w_vx       :
+	case rv_op_vwsub_w_vx        :
+	case rv_op_vwmulu_vx         :
+	case rv_op_vwmulsu_vx        :
+	case rv_op_vwmul_vx          :
+	case rv_op_vwmaccu_vx        :
+	case rv_op_vwmacc_vx         :
+	case rv_op_vwmaccus_vx       :
+	case rv_op_vwmaccsu_vx       :
+	case rv_op_vfadd_vv          :
+	case rv_op_vfredsum_vv       :
+	case rv_op_vfsub_vv          :
+	case rv_op_vfredosum_vv      :
+	case rv_op_vfmin_vv          :
+	case rv_op_vfredmin_vv       :
+	case rv_op_vfmax_vv          :
+	case rv_op_vfredmax_vv       :
+	case rv_op_vfsgnj_vv         :
+	case rv_op_vfsgnjn_vv        :
+	case rv_op_vfsgnjx_vv        :
+	case rv_op_vfslide1up_vf     :
+	case rv_op_vfslide1down_vf   :
+	case rv_op_vmfeq_vx          :
+	case rv_op_vmfle_vx          :
+	case rv_op_vmflt_vx          :
+	case rv_op_vmfne_vx          :
+	case rv_op_vfdiv_vx          :
+	case rv_op_vfcvt_xu_f_v      :
+	case rv_op_vfcvt_x_f_v       :
+	case rv_op_vfcvt_f_xu_v      :
+	case rv_op_vfcvt_f_x_v       :
+	case rv_op_vfcvt_rtz_xu_f_v  :
+	case rv_op_vfcvt_rtz_x_f_v   :
+	case rv_op_vfwcvt_xu_f_v     :
+	case rv_op_vfwcvt_x_f_v      :
+	case rv_op_vfwcvt_f_xu_v     :
+	case rv_op_vfwcvt_f_x_v      :
+	case rv_op_vfwcvt_f_f_v      :
+	case rv_op_vfwcvt_rtz_xu_f_v :
+	case rv_op_vfwcvt_rtz_x_f_v  :
+	case rv_op_vfncvt_xu_f_w     :
+	case rv_op_vfncvt_x_f_w      :
+	case rv_op_vfncvt_f_xu_w     :
+	case rv_op_vfncvt_f_x_w      :
+	case rv_op_vfncvt_f_f_w      :
+	case rv_op_vfncvt_rod_f_f_w  :
+	case rv_op_vfncvt_rtz_xu_f_w :
+	case rv_op_vfncvt_rtz_x_f_w  :
+	case rv_op_vfmul_vv          :
+	case rv_op_vfrsub_vv         :
+	case rv_op_vfmadd_vv         :
+	case rv_op_vfnmadd_vv        :
+	case rv_op_vfmsub_vv         :
+	case rv_op_vfnmsub_vv        :
+	case rv_op_vfmacc_vv         :
+	case rv_op_vfnmacc_vv        :
+	case rv_op_vfmsac_vv         :
+	case rv_op_vfnmsac_vv        :
+	case rv_op_vfwadd_vv         :
+	case rv_op_vfwredsum_vv      :
+	case rv_op_vfwsub_vv         :
+	case rv_op_vfwredosum_vv     :
+	case rv_op_vfwadd_wv         :
+	case rv_op_vfwsub_wv         :
+	case rv_op_vfwmul_vv         :
+	case rv_op_vfdot_vv          :
+	case rv_op_vfwmacc_vv        :
+	case rv_op_vfwnmacc_vv       :
+	case rv_op_vfwmsac_vv        :
+	case rv_op_vfwnmsac_vv       :
+	case rv_op_vfadd_vf          :
+	case rv_op_vfredsum_vf       :
+	case rv_op_vfsub_vf          :
+	case rv_op_vfredosum_vf      :
+	case rv_op_vfmin_vf          :
+	case rv_op_vfredmin_vf       :
+	case rv_op_vfmax_vf          :
+	case rv_op_vfredmax_vf       :
+	case rv_op_vfsgnj_vf         :
+	case rv_op_vfsgnjn_vf        :
+	case rv_op_vfsgnjx_vf        :
+	case rv_op_vfmv_s_f          :
+	case rv_op_vfmv_f_s          :
+	case rv_op_vfmv_v_f          :
+	case rv_op_vmfeq_vf          :
+	case rv_op_vmfle_vf          :
+	case rv_op_vmflt_vf          :
+	case rv_op_vmfne_vf          :
+	case rv_op_vmfgt_vf          :
+	case rv_op_vmfge_vf          :
+	case rv_op_vfdiv_vf          :
+	case rv_op_vfrdiv_vf         :
+	case rv_op_vfmul_vf          :
+	case rv_op_vfrsub_vf         :
+	case rv_op_vfmadd_vf         :
+	case rv_op_vfnmadd_vf        :
+	case rv_op_vfmsub_vf         :
+	case rv_op_vfnmsub_vf        :
+	case rv_op_vfmacc_vf         :
+	case rv_op_vfnmacc_vf        :
+	case rv_op_vfmsac_vf         :
+	case rv_op_vfnmsac_vf        :
+	case rv_op_vfwadd_vf         :
+	case rv_op_vfwredsum_vf      :
+	case rv_op_vfwsub_vf         :
+	case rv_op_vfwredosum_vf     :
+	case rv_op_vfwadd_wf         :
+	case rv_op_vfwsub_wf         :
+	case rv_op_vfwmul_vf         :
+	case rv_op_vfdot_vf          :
+	case rv_op_vfwmacc_vf        :
+	case rv_op_vfwnmacc_vf       :
+	case rv_op_vfwmsac_vf        :
+	case rv_op_vfwnmsac_vf       :
+	case rv_op_vfsqrt_v          :
+      res = true;
+      break;
+    default :
+      res = false;
+      break;
+  }
+  return res;
+}
+
 
 /// Get the value of the last register in the enumeration
 Decoder::decoder_reg RISCVDecoder::last_reg()
@@ -1122,8 +1750,10 @@ bool RISCVDecodedInst::is_indirect_branch() const
     case rv_op_jalr:
     case rv_op_jr:
       res = true;
+      break;
     default :
       res = false;
+      break;
   }
 
   return res;
