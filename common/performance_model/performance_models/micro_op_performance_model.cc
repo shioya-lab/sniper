@@ -250,7 +250,18 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
          //   For simplicity, vgather/vscatter have 16 load/store microops, one for each address.
          //   Here, we squash microops that touch a given cache line a second time
          //   FIXME: although the microop is squashed and its latency ignored, the cache still sees the access
-         IntPtr cache_line = info.addr & ~63; // FIXME: hard-coded cache line size
+
+         UInt64 l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
+         IntPtr cache_line = info.addr & ~(l1d_block_size-1); // FIXME: hard-coded cache line size
+
+         const std::vector<const MicroOp*> *uops = dynins->instruction->getMicroOps();
+         const MicroOp* uop0 = (*uops)[0];
+         if (uop0->isVector()) {
+           UInt64 l1d_num_banks = Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks");
+           cache_line = cache_line & ~(l1d_block_size * l1d_num_banks - 1);
+         }
+
+         // IntPtr cache_line = info.addr & ~63; // FIXME: hard-coded cache line size
 
          if (o.m_direction == Operand::READ)
          {
@@ -265,13 +276,21 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
                LOG_ASSERT_ERROR(m_current_uops[load_index]->getMicroOp()->isLoad(),
                                 "Expected uop %d to be a load.", load_index);
 
+               // for (auto c : m_cache_lines_read) {
+               //   fprintf (stderr, "cache line list = %08lx\n", c);
+               // }
                if (std::find(m_cache_lines_read.begin(), m_cache_lines_read.end(), cache_line) != m_cache_lines_read.end())
                {
-                  // fprintf (stderr, "Read Do Squashing Activated\n");
+                  // fprintf (stderr, "cache line merged. Addr = %08lx, cache_line = %08lx\n",
+                  //         info.addr, cache_line);
                   m_current_uops[load_index]->squash(&m_current_uops);
                   do_squashing = true;
+               } else {
+                 // fprintf (stderr, "m_cache_lines_read pushed Addr = %08lx, %08lx\n",
+                 //          info.addr, cache_line);
+                 m_cache_lines_read.push_back(cache_line);
                }
-               m_cache_lines_read.push_back(cache_line);
+               // m_cache_lines_read.push_back(cache_line);
 
                // Update this uop with load latencies
                UInt64 bypass_latency = m_core_model->getBypassLatency(m_current_uops[load_index]);
