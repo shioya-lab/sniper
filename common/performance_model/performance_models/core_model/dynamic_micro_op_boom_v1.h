@@ -12,6 +12,7 @@ class DynamicMicroOpBoomV1 : public DynamicMicroOp
          UOP_PORT0,
          UOP_PORT1,
          UOP_PORT2,
+         UOP_PORT3,
          UOP_PORT012,
          UOP_PORT_SIZE,
       };

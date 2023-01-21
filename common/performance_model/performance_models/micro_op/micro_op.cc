@@ -72,9 +72,10 @@ MicroOp::MicroOp()
 }
 
 void MicroOp::makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size,
-                       bool is_vector) {
+                       bool is_vector, bool can_vec_squash) {
    this->uop_type = UOP_LOAD;
    this->is_vector = is_vector;
+   this->can_vec_squash = can_vec_squash;
    this->microOpTypeOffset = offset;
    this->memoryAccessSize = mem_size;
 #ifdef ENABLE_MICROOP_STRINGS
@@ -89,6 +90,7 @@ void MicroOp::makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::deco
                           bool is_vector) {
    this->uop_type = UOP_EXECUTE;
    this->is_vector = is_vector;
+   this->can_vec_squash = false;
    this->microOpTypeOffset = offset;
    this->intraInstructionDependencies = num_loads;
    this->instructionOpcode = instructionOpcode;
@@ -100,9 +102,10 @@ void MicroOp::makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::deco
 }
 
 void MicroOp::makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size,
-                        bool is_vector) {
+                        bool is_vector, bool can_vec_squash) {
    this->uop_type = UOP_STORE;
    this->is_vector = is_vector;
+   this->can_vec_squash = can_vec_squash;
    this->microOpTypeOffset = offset;
    this->memoryAccessSize = mem_size;
 #ifdef ENABLE_MICROOP_STRINGS
@@ -116,6 +119,7 @@ void MicroOp::makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::deco
 void MicroOp::makeDynamic(const String& instructionOpcodeName, uint32_t execLatency) {
    this->uop_type = UOP_EXECUTE;
    this->is_vector = false;
+   this->can_vec_squash = false;
    this->microOpTypeOffset = 0;
    this->intraInstructionDependencies = 0;
    this->instructionOpcode = dl::Decoder::DL_OPCODE_INVALID;

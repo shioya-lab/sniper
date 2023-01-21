@@ -670,7 +670,7 @@ void TraceThread::handleInstructionDetailed(Sift::Instruction &inst, Sift::Instr
        } else {
          m_vec_lmul_idx = 0;
        }
-       if (m_vec_icache[inst.sinst->addr].size() <= m_vec_lmul_idx + 1) {
+       if (m_vec_icache[inst.sinst->addr].size() <= static_cast<UInt32>(m_vec_lmul_idx + 1)) {
          m_vec_icache[inst.sinst->addr].push_back (decode(inst));
        }
        m_vec_last_pc_addr = inst.sinst->addr;
@@ -685,7 +685,7 @@ void TraceThread::handleInstructionDetailed(Sift::Instruction &inst, Sift::Instr
    const dl::DecodedInst &dec_inst = *(m_vec_decoder_cache[inst.sinst->addr][m_vec_lmul_idx]);
 
    Instruction *ins = m_vec_icache[inst.sinst->addr][m_vec_lmul_idx];
-   const MicroOp *uop_t = (*ins->getMicroOps())[0];
+   // const MicroOp *uop_t = (*ins->getMicroOps())[0];
 
    DynamicInstruction *dynins = prfmdl->createDynamicInstruction(ins, va2pa(inst.sinst->addr));
 

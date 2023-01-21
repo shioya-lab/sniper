@@ -1488,6 +1488,58 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
   return res;
 }
 
+bool RISCVDecoder::can_vec_squash (decoder_opcode opcd, const DecodedInst* ins)
+{
+  switch(opcd) {
+	case rv_op_vle8_v            :
+	case rv_op_vse8_v            :
+	case rv_op_vle16_v           :
+	case rv_op_vse16_v           :
+	case rv_op_vle32_v           :
+	case rv_op_vse32_v           :
+	case rv_op_vle64_v           :
+	case rv_op_vse64_v           :
+	case rv_op_vle8ff_v          :
+	case rv_op_vle16ff_v         :
+	case rv_op_vle32ff_v         :
+	case rv_op_vle64ff_v         :
+	case rv_op_vl1re8_v          :
+	case rv_op_vl1re16_v         :
+	case rv_op_vl1re32_v         :
+	case rv_op_vl1re64_v         :
+	case rv_op_vl2re8_v          :
+	case rv_op_vl2re16_v         :
+	case rv_op_vl2re32_v         :
+	case rv_op_vl2re64_v         :
+	case rv_op_vl4re8_v          :
+	case rv_op_vl4re16_v         :
+	case rv_op_vl4re32_v         :
+	case rv_op_vl4re64_v         :
+	case rv_op_vl8re8_v          :
+	case rv_op_vl8re16_v         :
+	case rv_op_vl8re32_v         :
+	case rv_op_vl8re64_v         :
+	case rv_op_vs1re8_v          :
+	case rv_op_vs1re16_v         :
+	case rv_op_vs1re32_v         :
+	case rv_op_vs1re64_v         :
+	case rv_op_vs2re8_v          :
+	case rv_op_vs2re16_v         :
+	case rv_op_vs2re32_v         :
+	case rv_op_vs2re64_v         :
+	case rv_op_vs4re8_v          :
+	case rv_op_vs4re16_v         :
+	case rv_op_vs4re32_v         :
+	case rv_op_vs4re64_v         :
+	case rv_op_vs8re8_v          :
+	case rv_op_vs8re16_v         :
+	case rv_op_vs8re32_v         :
+      return true;
+    default:
+      return false;
+  }
+}
+
 
 /// Get the value of the last register in the enumeration
 Decoder::decoder_reg RISCVDecoder::last_reg()
@@ -1766,6 +1818,59 @@ bool RISCVDecodedInst::is_vector () const
   riscv::decode dec = this->rv8_dec;
   return instrlist[dec.op].is_vector;
 }
+
+bool RISCVDecodedInst::can_vec_squash () const
+{
+  switch(this->rv8_dec.op) {
+	case rv_op_vle8_v            :
+	case rv_op_vse8_v            :
+	case rv_op_vle16_v           :
+	case rv_op_vse16_v           :
+	case rv_op_vle32_v           :
+	case rv_op_vse32_v           :
+	case rv_op_vle64_v           :
+	case rv_op_vse64_v           :
+	case rv_op_vle8ff_v          :
+	case rv_op_vle16ff_v         :
+	case rv_op_vle32ff_v         :
+	case rv_op_vle64ff_v         :
+	case rv_op_vl1re8_v          :
+	case rv_op_vl1re16_v         :
+	case rv_op_vl1re32_v         :
+	case rv_op_vl1re64_v         :
+	case rv_op_vl2re8_v          :
+	case rv_op_vl2re16_v         :
+	case rv_op_vl2re32_v         :
+	case rv_op_vl2re64_v         :
+	case rv_op_vl4re8_v          :
+	case rv_op_vl4re16_v         :
+	case rv_op_vl4re32_v         :
+	case rv_op_vl4re64_v         :
+	case rv_op_vl8re8_v          :
+	case rv_op_vl8re16_v         :
+	case rv_op_vl8re32_v         :
+	case rv_op_vl8re64_v         :
+	case rv_op_vs1re8_v          :
+	case rv_op_vs1re16_v         :
+	case rv_op_vs1re32_v         :
+	case rv_op_vs1re64_v         :
+	case rv_op_vs2re8_v          :
+	case rv_op_vs2re16_v         :
+	case rv_op_vs2re32_v         :
+	case rv_op_vs2re64_v         :
+	case rv_op_vs4re8_v          :
+	case rv_op_vs4re16_v         :
+	case rv_op_vs4re32_v         :
+	case rv_op_vs4re64_v         :
+	case rv_op_vs8re8_v          :
+	case rv_op_vs8re16_v         :
+	case rv_op_vs8re32_v         :
+      return true;
+    default:
+      return false;
+  }
+}
+
 
 
 } // namespace dl;

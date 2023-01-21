@@ -19,9 +19,9 @@
 
 #include <cstring>
 
-#if 0
+#if DEBUG_MYLOG
    extern Lock iolock;
-#  define MYLOG(...) { ScopedLock l(iolock); fflush(stderr); fprintf(stderr, "[%8lu] %dcor %-25s@%03u: ", getPerformanceModel()->getCycleCount(ShmemPerfModel::_USER_THREAD), m_core_id, __FUNCTION__, __LINE__); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); fflush(stderr); }
+#  define MYLOG(...) { ScopedLock l(iolock); fflush(stderr); fprintf(stderr, "[%8lu] %dcor %-25s@%03u: ", getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD), m_core_id, __FUNCTION__, __LINE__); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); fflush(stderr); }
 #else
 #  define MYLOG(...) {}
 #endif
@@ -311,7 +311,8 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
 #endif
 
    getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, initial_time);
-
+   // fprintf (stderr, "initial_time=%lu\n",
+   //          SubsecondTime::divideRounded(initial_time, getDvfsDomain()->getPeriod()));
    LOG_PRINT("Time(%s), %s - ADDR(0x%x), data_size(%u), START",
         itostr(initial_time).c_str(),
         ((mem_op_type == READ) ? "READ" : "WRITE"),
@@ -400,6 +401,10 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
       m_mem_lock.release();
 
    // Calculate the round-trip time
+   // fprintf (stderr, "shmem_time = final_time=%lu - initial_time=%lu = %lu\n",
+   //          SubsecondTime::divideRounded(final_time, getDvfsDomain()->getPeriod()),
+   //          SubsecondTime::divideRounded(initial_time, getDvfsDomain()->getPeriod()),
+   //          SubsecondTime::divideRounded(final_time - initial_time, getDvfsDomain()->getPeriod()));
    SubsecondTime shmem_time = final_time - initial_time;
 
    switch(modeled)

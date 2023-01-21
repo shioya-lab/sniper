@@ -23,6 +23,7 @@ void RobContentionBoomV1::initCycle(SubsecondTime now)
    m_now.setElapsedTime(now);
    memset(ports, 0, sizeof(bool) * DynamicMicroOpBoomV1::UOP_PORT_SIZE);
    ports_generic012 = 0;
+   ports_vecmem = 0;
 }
 
 bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
@@ -42,6 +43,13 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
          return false;
       else
          ports_generic012++;
+   }
+   else if (uop_port == DynamicMicroOpBoomV1::UOP_PORT3) {
+     if (ports_vecmem >= 4) {
+       return false;
+     } else {
+       ports_vecmem++;
+     }
    }
    else
    { // PORT0, PORT1 or PORT2

@@ -97,8 +97,10 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
       is_atomic = true;
 
    bool is_vector = false;
+   bool can_vector_squash = false;
    if (ins->is_vector()) {
      is_vector = true;
+     can_vector_squash = ins->can_vec_squash();
    }
 
    for(uint32_t idx = 0; idx < dec->num_operands(ins); ++idx)
@@ -174,6 +176,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  , dec->inst_name(ins->inst_num_id())
                  , memop_load_size[loadIndex]
                  , is_vector
+                 , can_vector_squash
                );
       }
       else if (index < numLoads + numExecs) /* EXEC */
@@ -198,6 +201,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  , dec->inst_name(ins->inst_num_id())
                  , memop_store_size[storeIndex]
                  , is_vector
+                 , can_vector_squash
                );
          if (is_atomic)
             currentMicroOp->setMemBarrier(true);

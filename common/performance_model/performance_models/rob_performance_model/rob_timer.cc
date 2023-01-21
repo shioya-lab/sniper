@@ -600,7 +600,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    {
       MemoryResult res = m_core->accessMemory(
          Core::NONE,
-         uop.getMicroOp()->isLoad() ? Core::READ : Core::WRITE,
+         uop.getMicroOp()->isLoad() ? uop.getMicroOp()->isVector() ? Core::READ_VEC : Core::READ : Core::WRITE,
          uop.getAddress().address,
          NULL,
          uop.getMicroOp()->getMemoryAccessSize(),
@@ -730,6 +730,16 @@ SubsecondTime RobTimer::doIssue()
    if (m_rob_contention)
       m_rob_contention->initCycle(now);
 
+   int64_t last_vec_issued_idx = -1;
+   int64_t issued_vec_inst = 0;
+   UInt64  l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
+   UInt64  l1d_num_banks  = Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks");
+
+   UInt64  *bank_info = new UInt64[l1d_num_banks];
+   for (UInt64 i = 0; i < l1d_num_banks; i++) {
+     bank_info[i] = 0;
+   }
+
    for(uint64_t i = 0; i < m_num_in_rob; ++i)
    {
       RobEntry *entry = &rob.at(i);
@@ -790,11 +800,57 @@ SubsecondTime RobTimer::doIssue()
 
 
       // canIssue already marks issue ports as in use, so do this one last
-      if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop))
+      if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
+         // fprintf(stderr, "tryIssue failed\n");
          canIssue = false;          // blocked by structural hazard
+      }
 
-      if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
-        canIssue = false;
+      // if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
+      //   canIssue = false;
+      // }
+
+      if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
+          uop->getMicroOp()->isVector()) {
+
+        if (vector_inorder) {
+          if (issued_vec_inst < 8 &&
+              ((head_of_queue && last_vec_issued_idx == -1) ||
+               static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
+            last_vec_issued_idx = i;
+            issued_vec_inst++;
+            // canIssue = true;
+            canIssue = canIssue; // Keep can issue
+          } else {
+            canIssue = false;
+          }
+        } else { // Vector Out-of-Order
+          // fprintf (stderr, "Vector can Issue? (%s) %s : ",
+          //          canIssue ? "Yes" : "No",
+          //          uop->getMicroOp()->toShortString().c_str());
+          if (issued_vec_inst < 8) {
+            issued_vec_inst++;
+            // canIssue = true;
+            // fprintf (stderr, "Enough entry slot: %s (%ld)\n", canIssue ? "Yes" : "No", issued_vec_inst);
+            canIssue = canIssue; // Keep can issue
+          } else {
+            // fprintf (stderr, "Slot fulled: No %ld\n", issued_vec_inst);
+            canIssue = false;
+          }
+        }
+
+        IntPtr cache_line = uop->getAddress().address & ~(l1d_block_size-1);
+        IntPtr banked_cache_line = cache_line & ~(l1d_block_size * l1d_num_banks - 1);
+        IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
+
+        if (bank_info[bank_index] == 0 ||           // first bank acces
+            bank_info[bank_index] == banked_cache_line) {
+          // fprintf (stderr, "cacheline bank can be access %08lx with %08lx. bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+        } else {
+          // fprintf (stderr, "cacheline bank conflict %08lx with %08lx, bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+          canIssue = false;
+        }
+
+        bank_info[bank_index] = banked_cache_line;
       }
 
       if (canIssue)

@@ -151,6 +151,7 @@ class Decoder
     virtual bool is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst* ins) = 0;
 
     virtual bool is_vector(decoder_opcode opcd, const DecodedInst* ins) = 0;
+    virtual bool can_vec_squash(decoder_opcode opcd, const DecodedInst* ins) = 0;
 
     /// Get the value of the last register in the enumeration
     virtual decoder_reg last_reg() = 0;
@@ -240,6 +241,7 @@ class DecodedInst
     virtual bool is_writeback() const = 0;
 
     virtual bool is_vector () const = 0;
+    virtual bool can_vec_squash() const = 0;
 
   protected:
     /// True if the decoding phase has already happened

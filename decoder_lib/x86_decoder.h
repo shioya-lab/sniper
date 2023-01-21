@@ -49,6 +49,7 @@ class X86Decoder : public Decoder
     virtual bool is_fpvector_muldiv_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual bool is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual bool is_vector(decoder_opcode opcd, const DecodedInst* ins) override;
+    virtual bool can_vec_squash(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual decoder_reg last_reg() override;
     virtual uint32_t map_register(decoder_reg reg) override { return reg; }
     virtual unsigned int num_read_implicit_registers(const DecodedInst *inst) override {return 0;}
@@ -87,6 +88,7 @@ class X86DecodedInst : public DecodedInst
     virtual bool is_writeback() const override { return false; }
 
     virtual bool is_vector () const override { return false; }
+    bool can_vec_squash () const override { return false; }
 
   private:
     void set_disassembly();

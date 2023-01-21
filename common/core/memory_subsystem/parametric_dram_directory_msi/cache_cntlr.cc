@@ -16,7 +16,7 @@
 //#define PRIVATE_L2_OPTIMIZATION
 
 Lock iolock;
-#if 0
+#if DEBUG_MYLOG
 #  define LOCKED(...) { ScopedLock sl(iolock); fflush(stderr); __VA_ARGS__; fflush(stderr); }
 #  define LOGID() fprintf(stderr, "[%s] %2u%c [ %2d(%2d)-L%u%c ] %-25s@%3u: ", \
                      itostr(getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD)).c_str(), Sim()->getCoreManager()->getCurrentCoreID(), \
@@ -1143,6 +1143,7 @@ CacheCntlr::initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr address, 
    switch (mem_op_type)
    {
       case Core::READ:
+      case Core::READ_VEC:
          exclusive = false;
          break;
 
@@ -1268,6 +1269,7 @@ CacheCntlr::operationPermissibleinCache(
    switch (mem_op_type)
    {
       case Core::READ:
+      case Core::READ_VEC:
          cache_hit = CacheState(cstate).readable();
          break;
 
@@ -1295,6 +1297,7 @@ CacheCntlr::accessCache(
    {
       case Core::READ:
       case Core::READ_EX:
+      case Core::READ_VEC:
          m_master->m_cache->accessSingleLine(ca_address + offset, Cache::LOAD, data_buf, data_length,
                                              getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD), update_replacement);
          break;

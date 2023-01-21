@@ -206,6 +206,7 @@ class RISCVDecoder : public Decoder
     virtual bool is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
 
     virtual bool is_vector(decoder_opcode opcd, const DecodedInst* ins) override;
+    virtual bool can_vec_squash(decoder_opcode opcd, const DecodedInst* ins) override;
 
     /// Get the value of the last register in the enumeration
     virtual decoder_reg last_reg() override;
@@ -280,6 +281,7 @@ class RISCVDecodedInst : public DecodedInst
     virtual bool is_writeback() const override { return false; }
 
     bool is_vector () const override;
+    bool can_vec_squash () const override;
 
     private:
      riscv::decode rv8_dec;

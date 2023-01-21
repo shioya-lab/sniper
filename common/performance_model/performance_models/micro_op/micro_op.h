@@ -62,6 +62,8 @@ struct MicroOp
 
    // Added : Is this Vector instruction?
    bool is_vector;
+   // In Vector Load/Store, Can be squashed in ROB issue condition checker?
+   bool can_vec_squash;
 
    enum uop_subtype_t {
       UOP_SUBTYPE_FP_ADDSUB,
@@ -133,9 +135,9 @@ struct MicroOp
    uint16_t operand_size;
    uint16_t memoryAccessSize;
 
-  void makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false);
+  void makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false, bool can_vec_squash = false);
   void makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch, bool is_vector = false);
-  void makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false);
+  void makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false, bool can_vec_squash = false);
    void makeDynamic(const String& instructionOpcodeName, uint32_t execLatency);
 
    static uop_subtype_t getSubtype_Exec(const MicroOp& uop);
@@ -207,6 +209,7 @@ struct MicroOp
    bool isStore() const { return this->uop_type == UOP_STORE; }
 
    bool isVector() const { return this->is_vector; }
+   bool canVecSquash() const { return this->can_vec_squash; }
 
    void setDebugInfo(String debugInfo);
    String toString() const;

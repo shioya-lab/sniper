@@ -1,22 +1,22 @@
 #include "x86_decoder.h"
 #include <iostream>
 
-extern "C" 
+extern "C"
 {
   #include <xed-iclass-enum.h>
-  #include <xed-reg-class.h>  
+  #include <xed-reg-class.h>
   #include <xed-interface.h>
 }
 
-namespace dl 
+namespace dl
 {
 
 X86Decoder::X86Decoder(dl_arch arch, dl_mode mode, dl_syntax syntax)
 {
   xed_state_t init;
-  
-  xed_tables_init();      
-  
+
+  xed_tables_init();
+
   switch(mode)
   {
     case DL_MODE_32:
@@ -26,7 +26,7 @@ X86Decoder::X86Decoder(dl_arch arch, dl_mode mode, dl_syntax syntax)
     default:
       init = { XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b };
   }
-  
+
   m_xed_state_init = init;
 
   this->m_arch = arch;
@@ -43,14 +43,14 @@ X86Decoder::~X86Decoder()
 }
 
 void X86Decoder::decode(DecodedInst * inst)
-{  
+{
   xed_state_t xed_state;
   xed_error_enum_t res_decode;
   xed_decoded_inst_t* xi;
-  
+
   if(inst->get_already_decoded())
     return;
-  
+
   xed_state = m_xed_state_init;
   xi = ((X86DecodedInst *)inst)->get_xed_inst();
   xed_decoded_inst_zero_set_mode(const_cast<xed_decoded_inst_t*>(xi), &xed_state);
@@ -70,12 +70,12 @@ void X86Decoder::change_isa_mode(dl_isa new_isa)
 {
   this->m_isa = new_isa;
 }
- 
+
 const char* X86Decoder::inst_name(unsigned int inst_id)
 {
   return xed_iclass_enum_t2str(static_cast<xed_iclass_enum_t>(inst_id));
 }
- 
+
 const char* X86Decoder::reg_name(unsigned int reg_id)
 {
   return xed_reg_enum_t2str(static_cast<xed_reg_enum_t>(reg_id));
@@ -108,20 +108,20 @@ unsigned int X86Decoder::num_memory_operands(const DecodedInst * inst)
 }
 
 unsigned int X86Decoder::num_operands(const DecodedInst * inst)
-{   
+{
   const xed_inst_t *i = xed_decoded_inst_inst(
               static_cast<const xed_decoded_inst_t*>(((X86DecodedInst *)inst)->get_xed_inst()));
 
   return xed_inst_noperands(i);
 }
 
-Decoder::decoder_reg X86Decoder::mem_base_reg (const DecodedInst * inst, unsigned int mem_idx) 
+Decoder::decoder_reg X86Decoder::mem_base_reg (const DecodedInst * inst, unsigned int mem_idx)
 {
   return xed_decoded_inst_get_base_reg(
         static_cast<const xed_decoded_inst_t*>(((X86DecodedInst *)inst)->get_xed_inst()), mem_idx);
 }
 
-Decoder::decoder_reg X86Decoder::mem_index_reg (const DecodedInst * inst, unsigned int mem_idx) 
+Decoder::decoder_reg X86Decoder::mem_index_reg (const DecodedInst * inst, unsigned int mem_idx)
 {
   return xed_decoded_inst_get_index_reg(
         static_cast<const xed_decoded_inst_t*>(((X86DecodedInst *)inst)->get_xed_inst()), mem_idx);
@@ -142,14 +142,14 @@ bool X86Decoder::op_write_mem(const DecodedInst * inst, unsigned int mem_idx)
 bool X86Decoder::op_read_reg (const DecodedInst * inst, unsigned int idx)
 {
   const xed_operand_t *op = get_operand(inst, idx);
-  
+
   return xed_operand_read(op);
 }
 
 bool X86Decoder::op_write_reg (const DecodedInst * inst, unsigned int idx)
 {
   const xed_operand_t *op = get_operand(inst, idx);
-  
+
   return xed_operand_written(op);
 }
 
@@ -166,14 +166,14 @@ const xed_operand_t * X86Decoder::get_operand(const DecodedInst * inst, unsigned
 xed_operand_enum_t X86Decoder::get_operand_name(const DecodedInst * inst, unsigned int idx)
 {
   const xed_operand_t *op = get_operand(inst, idx);
-  
+
   return xed_operand_name(op);
 }
 
 bool X86Decoder::is_addr_gen(const DecodedInst * inst, unsigned int idx)
 {
   xed_operand_enum_t name = get_operand_name(inst, idx);
-  
+
   return (name == XED_OPERAND_AGEN);
 }
 
@@ -202,9 +202,9 @@ unsigned int X86Decoder::size_mem_op (const DecodedInst * inst, unsigned int mem
 unsigned int X86Decoder::get_exec_microops(const DecodedInst *ins, int numLoads, int numStores)
 {
   xed_decoded_inst_t * ins_xed = ((X86DecodedInst *)ins)->get_xed_inst();
-  if (xed_decoded_inst_get_category(ins_xed) == XED_CATEGORY_DATAXFER 
-      || xed_decoded_inst_get_category(ins_xed) == XED_CATEGORY_CMOV 
-      || xed_decoded_inst_get_iclass(ins_xed) == XED_ICLASS_PUSH 
+  if (xed_decoded_inst_get_category(ins_xed) == XED_CATEGORY_DATAXFER
+      || xed_decoded_inst_get_category(ins_xed) == XED_CATEGORY_CMOV
+      || xed_decoded_inst_get_iclass(ins_xed) == XED_ICLASS_PUSH
       || xed_decoded_inst_get_iclass(ins_xed) == XED_ICLASS_POP)
   {
     unsigned int numExecs = 0;
@@ -251,7 +251,7 @@ unsigned int X86Decoder::get_exec_microops(const DecodedInst *ins, int numLoads,
 uint16_t X86Decoder::get_operand_size(const DecodedInst *ins)
 {
   uint16_t operand_size = 0;
-    
+
   const xed_inst_t *inst = xed_decoded_inst_inst(
         static_cast<const xed_decoded_inst_t*>(((X86DecodedInst *)ins)->get_xed_inst()));
   for(uint32_t idx = 0; idx < xed_inst_noperands(inst); ++idx)
@@ -275,15 +275,15 @@ uint16_t X86Decoder::get_operand_size(const DecodedInst *ins)
       }
     }
     operand_size = std::max(operand_size, (uint16_t)xed_decoded_inst_get_operand_width(
-          static_cast<const xed_decoded_inst_t*>(((X86DecodedInst *)ins)->get_xed_inst()))); 
+          static_cast<const xed_decoded_inst_t*>(((X86DecodedInst *)ins)->get_xed_inst())));
   }
   if (operand_size == 0)
     operand_size = 64;
-      
+
   return operand_size;
 }
 
-bool X86Decoder::is_cache_flush_opcode(decoder_opcode opcd) 
+bool X86Decoder::is_cache_flush_opcode(decoder_opcode opcd)
 {
   // FIXME (from Sniper): Old decoder only listed these three instructions, but there may be more (INVEPT, INVLPGA, INVVPID)
   //        Currently, no-one is using isCacheFlush though.
@@ -292,20 +292,20 @@ bool X86Decoder::is_cache_flush_opcode(decoder_opcode opcd)
       || opcd == XED_ICLASS_INVLPG;
 }
 
-bool X86Decoder::is_div_opcode(decoder_opcode opcd) 
+bool X86Decoder::is_div_opcode(decoder_opcode opcd)
 {
   return opcd == XED_ICLASS_DIV || opcd == XED_ICLASS_IDIV;
 }
 
-bool X86Decoder::is_pause_opcode(decoder_opcode opcd) 
+bool X86Decoder::is_pause_opcode(decoder_opcode opcd)
 {
   return opcd == XED_ICLASS_PAUSE;
 }
 
-bool X86Decoder::is_branch_opcode(decoder_opcode opcd) 
+bool X86Decoder::is_branch_opcode(decoder_opcode opcd)
 {
   bool is_b = false;
-  
+
   switch(opcd)
   {
     case XED_ICLASS_CALL_FAR:
@@ -336,14 +336,14 @@ bool X86Decoder::is_branch_opcode(decoder_opcode opcd)
     default:
       break;
   }
-  
+
   return is_b;
 }
 
 bool X86Decoder::is_fpvector_addsub_opcode(decoder_opcode opcd, const DecodedInst* ins)
 {
   bool is_vas = false;
-  
+
   switch(opcd)
   {
     case XED_ICLASS_ADDPD:
@@ -371,16 +371,16 @@ bool X86Decoder::is_fpvector_addsub_opcode(decoder_opcode opcd, const DecodedIns
     default:
       break;
   }
-  
+
   return is_vas;
 }
 
 bool X86Decoder::is_fpvector_muldiv_opcode(decoder_opcode opcd, const DecodedInst* ins)
 {
   bool is_vmd = false;
-  
+
   switch(opcd)
-  {      
+  {
     case XED_ICLASS_MULPD:
     case XED_ICLASS_MULPS:
     case XED_ICLASS_MULSD:
@@ -396,13 +396,13 @@ bool X86Decoder::is_fpvector_muldiv_opcode(decoder_opcode opcd, const DecodedIns
     case XED_ICLASS_VDIVPD:
     case XED_ICLASS_VDIVPS:
     case XED_ICLASS_VDIVSD:
-    case XED_ICLASS_VDIVSS:       
+    case XED_ICLASS_VDIVSS:
       is_vmd = true;
       break;
     default:
       break;
   }
-  
+
   return is_vmd;
 }
 
@@ -495,6 +495,12 @@ bool X86Decoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
   return false;
 }
 
+bool X86Decoder::can_vec_squash (decoder_opcode opcd, const DecodedInst* ins)
+{
+  return false;
+}
+
+
 Decoder::decoder_reg X86Decoder::last_reg()
 {
     return XED_REG_LAST;
@@ -527,7 +533,7 @@ void X86DecodedInst::set_disassembly()
 {
   xed_syntax_enum_t s;
   char temp_buffer[64];
-  
+
   // Choose the XED syntax
   switch(m_dec->get_syntax()){
     case DL_SYNTAX_ATT:
@@ -536,16 +542,16 @@ void X86DecodedInst::set_disassembly()
     case DL_SYNTAX_XED:
       s = XED_SYNTAX_XED;
       break;
-    case DL_SYNTAX_INTEL: 
+    case DL_SYNTAX_INTEL:
     case DL_SYNTAX_DEFAULT:
     default:
       s = XED_SYNTAX_INTEL;
   }
-  
+
   // Disassemble the decoded instruction to out_buffer using the specified syntax
-  xed_format_context(s, (&(this->xed_inst)), temp_buffer, 
+  xed_format_context(s, (&(this->xed_inst)), temp_buffer,
                       sizeof(temp_buffer) - 1, this->m_address, 0, 0);
-  
+
   m_disassembly.assign(temp_buffer, sizeof(temp_buffer));
 }
 
@@ -562,7 +568,7 @@ bool X86DecodedInst::is_nop() const
 
 bool X86DecodedInst::is_atomic() const
 {
-  const xed_operand_values_t* ops = 
+  const xed_operand_values_t* ops =
       xed_decoded_inst_operands_const(static_cast<const xed_decoded_inst_t*>(&(this->xed_inst)));
   return xed_operand_values_get_atomic(ops);
 }
@@ -613,7 +619,7 @@ bool X86DecodedInst::is_conditional_branch() const
 bool X86DecodedInst::is_indirect_branch() const
 {
   bool is_b = false;
-  
+
   switch(xed_decoded_inst_get_iclass(static_cast<const xed_decoded_inst_t*>(&(this->xed_inst))))
   {
     case XED_ICLASS_JMP:
@@ -623,7 +629,7 @@ bool X86DecodedInst::is_indirect_branch() const
     default:
       break;
   }
-  
+
   return is_b;
 }
 
