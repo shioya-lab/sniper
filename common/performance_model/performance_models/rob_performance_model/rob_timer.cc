@@ -600,7 +600,8 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    {
       MemoryResult res = m_core->accessMemory(
          Core::NONE,
-         uop.getMicroOp()->isLoad() ? uop.getMicroOp()->isVector() ? Core::READ_VEC : Core::READ : Core::WRITE,
+         uop.getMicroOp()->isVector() ? (uop.getMicroOp()->isLoad() ? Core::READ_VEC : Core::WRITE_VEC) :
+         uop.getMicroOp()->isLoad() ? Core::READ : Core::WRITE,
          uop.getAddress().address,
          NULL,
          uop.getMicroOp()->getMemoryAccessSize(),

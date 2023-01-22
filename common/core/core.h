@@ -64,6 +64,7 @@ class Core
          READ_EX,
          READ_VEC,
          WRITE,
+         WRITE_VEC,
          MAX_MEM_OP = WRITE,
          NUM_MEM_OP_TYPES = MAX_MEM_OP - MIN_MEM_OP + 1
       };

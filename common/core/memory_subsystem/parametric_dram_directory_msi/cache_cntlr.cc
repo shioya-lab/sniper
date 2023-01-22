@@ -400,6 +400,9 @@ LOG_ASSERT_ERROR(offset + data_length <= getCacheBlockSize(), "access until %u >
    {
 MYLOG("L1 hit");
       getMemoryManager()->incrElapsedTime(m_mem_component, CachePerfModel::ACCESS_CACHE_DATA_AND_TAGS, ShmemPerfModel::_USER_THREAD);
+      if (mem_op_type == Core::READ_VEC) {
+        getShmemPerfModel()->incrElapsedTime(SubsecondTime::NS(1), ShmemPerfModel::_USER_THREAD);
+      }
       hit_where = (HitWhere::where_t)m_mem_component;
 
       if (cache_block_info->hasOption(CacheBlockInfo::WARMUP) && Sim()->getInstrumentationMode() != InstMode::CACHE_ONLY)
@@ -1120,11 +1123,13 @@ CacheCntlr::accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefet
    switch (mem_op_type)
    {
       case Core::READ:
+      case Core::READ_VEC:
          boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->getDataFromDram(address, m_core_id_master, data_buf, t_issue, m_shmem_perf);
          break;
 
       case Core::READ_EX:
       case Core::WRITE:
+      case Core::WRITE_VEC:
          boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->putDataToDram(address, m_core_id_master, data_buf, t_issue);
          break;
 
@@ -1149,6 +1154,7 @@ CacheCntlr::initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr address, 
 
       case Core::READ_EX:
       case Core::WRITE:
+      case Core::WRITE_VEC:
          exclusive = true;
          break;
 
@@ -1275,6 +1281,7 @@ CacheCntlr::operationPermissibleinCache(
 
       case Core::READ_EX:
       case Core::WRITE:
+      case Core::WRITE_VEC:
          cache_hit = CacheState(cstate).writable();
          break;
 
@@ -1303,6 +1310,7 @@ CacheCntlr::accessCache(
          break;
 
       case Core::WRITE:
+      case Core::WRITE_VEC:
          m_master->m_cache->accessSingleLine(ca_address + offset, Cache::STORE, data_buf, data_length,
                                              getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD), update_replacement);
          // Write-through cache - Write the next level cache also
