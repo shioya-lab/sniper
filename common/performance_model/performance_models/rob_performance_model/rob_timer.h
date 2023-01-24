@@ -55,6 +55,7 @@ private:
    const bool m_no_address_disambiguation;
    const bool inorder;
    const bool vector_inorder;
+   const bool m_gather_scatter_merge;
 
    Core *m_core;
 

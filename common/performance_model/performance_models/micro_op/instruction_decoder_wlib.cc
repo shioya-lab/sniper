@@ -3,6 +3,7 @@
 #include "micro_op.h"
 #include "simulator.h"
 #include <x86_decoder.h>  // TODO delete
+#include "config.hpp"
 
 //extern "C" {
 //#include <xed-reg-class.h>
@@ -154,6 +155,8 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
      numExecs = totalMicroOps = 1;
    }
 
+   UInt16 l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
+
    for(int index = 0; index < totalMicroOps; ++index)
    {
       MicroOp *currentMicroOp = new MicroOp();
@@ -174,7 +177,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  loadIndex
                  , ins->inst_num_id()
                  , dec->inst_name(ins->inst_num_id())
-                 , memop_load_size[loadIndex]
+                 , is_vector ? l1d_block_size : memop_load_size[loadIndex]
                  , is_vector
                  , can_vector_squash
                );
@@ -199,7 +202,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  , numExecs
                  , ins->inst_num_id()
                  , dec->inst_name(ins->inst_num_id())
-                 , memop_store_size[storeIndex]
+                 , is_vector ? l1d_block_size : memop_store_size[storeIndex]
                  , is_vector
                  , can_vector_squash
                );

@@ -36,6 +36,8 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
 
    first = m_uop->isFirst();
    last = m_uop->isLast();
+
+   this->m_mem_access_merge = false;
 }
 
 DynamicMicroOp::~DynamicMicroOp()

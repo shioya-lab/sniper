@@ -29,6 +29,9 @@ class DynamicMicroOp
       /** The microop has been squashed */
       bool squashed;
 
+      /** For Vector, this request can be skiped due to preivous instruction merged **/
+      bool m_mem_access_merge;
+
       /** Initially copied from MicroOp, but can be changed by removeDependency */
       uint32_t intraInstructionDependencies;
       /** Initially copied from MicroOp, but can be changed in case of squashing */
@@ -90,6 +93,9 @@ class DynamicMicroOp
       // Mark this micro-op as squashed so it will be ignored in further pipeline stages
       void squash(std::vector<DynamicMicroOp*>* array = NULL);
       bool isSquashed() { return squashed; }
+
+      void setMemAccessMerge () { m_mem_access_merge = true; }
+      bool getMemAccessMerge () { return m_mem_access_merge; }
 
       uint32_t getDependenciesLength() const { return this->intraInstructionDependencies + this->dependenciesLength; }
       uint64_t getDependency(uint32_t index) const;
