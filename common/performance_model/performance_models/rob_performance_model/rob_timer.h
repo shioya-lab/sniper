@@ -67,6 +67,12 @@ private:
    RobContention *m_rob_contention;
 
    bool m_roi_started; // due to record roi_start time
+   bool m_enable_konata;
+
+   // When getMemAccessMerge=true, use this value
+   uint64_t m_previous_latency;
+   HitWhere::where_t m_previous_hit_where;
+
    ComponentTime now;
    SubsecondTime frontend_stalled_until;
    bool in_icache_miss;
@@ -179,7 +185,7 @@ public:
     std::cout << "CycleTrace " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << '\n';
     // std::cout << "CycleTrace End\n";
     enable_debug_printf = !enable_debug_printf;
-    enable_konata = 0;
+    m_enable_konata = 0;
   }
 
 };

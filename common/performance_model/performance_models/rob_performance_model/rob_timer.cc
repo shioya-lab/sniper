@@ -180,6 +180,7 @@ RobTimer::RobTimer(
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, RobTimer::hookRoiBegin, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
    m_roi_started = false;
+   m_enable_konata = false;
 }
 
 RobTimer::~RobTimer()
@@ -604,21 +605,28 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    {
       // Vector instruction, previous access merge, it can be skipped
       if (!uop.getMemAccessMerge()) {
+         UInt64 block_start = uop.getAddress().address % uop.getMicroOp()->getMemoryAccessSize();
+         UInt64 block_load_size = uop.getMicroOp()->getMemoryAccessSize() - block_start;
          MemoryResult res = m_core->accessMemory(
             Core::NONE,
             uop.getMicroOp()->isVector() ? (uop.getMicroOp()->isLoad() ? Core::READ_VEC : Core::WRITE_VEC) :
             uop.getMicroOp()->isLoad() ? Core::READ : Core::WRITE,
             uop.getAddress().address,
             NULL,
-            uop.getMicroOp()->getMemoryAccessSize(),
+            uop.getMicroOp()->isVector() ? block_load_size : uop.getMicroOp()->getMemoryAccessSize(),
             Core::MEM_MODELED_RETURN,
             uop.getMicroOp()->getInstruction() ? uop.getMicroOp()->getInstruction()->getAddress() : static_cast<uint64_t>(NULL),
             now.getElapsedTime()
          );
          uint64_t latency = SubsecondTime::divideRounded(res.latency, now.getPeriod());
+         m_previous_latency = latency;
+         m_previous_hit_where = res.hit_where;
 
          uop.setExecLatency(uop.getExecLatency() + latency); // execlatency already contains bypass latency
          uop.setDCacheHitWhere(res.hit_where);
+      } else {
+         uop.setExecLatency(uop.getExecLatency() + m_previous_latency); // execlatency already contains bypass latency
+         uop.setDCacheHitWhere(m_previous_hit_where);
       }
    }
 
@@ -854,10 +862,14 @@ SubsecondTime RobTimer::doIssue()
           if (bank_info[bank_index] == 0) {           // first bank acces
           } else if (bank_info[bank_index] == banked_cache_line) {
             // Same Bank Access and Can be Merge:
-            // fprintf (stderr, "cacheline bank can be access %08lx with %08lx. bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+#ifdef DEBUG_PERCYCLE
+            fprintf (stderr, "cacheline bank can be access %08lx with %08lx. bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+#endif // DEBUG_PERCYCLE
             uop->setMemAccessMerge();
           } else {
-            // fprintf (stderr, "cacheline bank conflict %08lx with %08lx, bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+#ifdef DEBUG_PERCYCLE
+            fprintf (stderr, "cacheline bank conflict %08lx with %08lx, bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+#endif // DEBUG_PERCYCLE
             canIssue = false;
           }
 
@@ -930,7 +942,6 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 {
    uint64_t num_committed = 0;
    static bool cycle_activated = false;
-   static int enable_konata = false;
    static int konata_count = 0;
 
    while(rob.size() && (rob.front().done <= now))
@@ -967,7 +978,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
           cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos &&
           konata_count < KONATA_CNT_MAX) {
-        enable_konata = 1;
+        m_enable_konata = 1;
         std::cout << "KonataStart " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
                   << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
@@ -975,17 +986,17 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (enable_debug_printf &&
           cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, sp") != std::string::npos) {
-        enable_konata = 0;
+        m_enable_konata = 0;
         std::cout << "KonataStop " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
                   << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
-      if (enable_konata &&
+      if (m_enable_konata &&
           konata_count >= KONATA_CNT_MAX) {
-        enable_konata = 0;
+        m_enable_konata = 0;
       }
 
-      if (enable_konata) {
+      if (m_enable_konata) {
         konata_count ++;
       }
 
@@ -995,7 +1006,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         cycle_activated = false;
       }
 
-      if (enable_konata) {
+      if (m_enable_konata) {
 
         uint64_t cycle_fetch    = SubsecondTime::divideRounded(entry->fetch,      m_core->getDvfsDomain()->getPeriod());
         uint64_t cycle_dispatch = SubsecondTime::divideRounded(entry->dispatched, m_core->getDvfsDomain()->getPeriod());
