@@ -177,6 +177,9 @@ RobTimer::RobTimer(
       }
    }
 
+   Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, RobTimer::hookRoiBegin, (UInt64)this);
+   Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
+   m_roi_started = false;
 }
 
 RobTimer::~RobTimer()
@@ -851,7 +854,7 @@ SubsecondTime RobTimer::doIssue()
           if (bank_info[bank_index] == 0) {           // first bank acces
           } else if (bank_info[bank_index] == banked_cache_line) {
             // Same Bank Access and Can be Merge:
-            fprintf (stderr, "cacheline bank can be access %08lx with %08lx. bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+            // fprintf (stderr, "cacheline bank can be access %08lx with %08lx. bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
             uop->setMemAccessMerge();
           } else {
             // fprintf (stderr, "cacheline bank conflict %08lx with %08lx, bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
@@ -958,12 +961,6 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       Instruction *inst = entry->uop->getMicroOp()->getInstruction();
       if (cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, zero") != std::string::npos) {
-        enable_debug_printf = !enable_debug_printf;
-
-        // Display Instruction Log
-        std::cout << "CycleTrace " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
-                  << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
-                  << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
 
       if (enable_debug_printf &&
@@ -1051,6 +1048,11 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    std::cout<<std::endl;
    std::cout<<"Running cycles "<< std::dec << SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
 #endif
+
+   if (m_roi_started) {
+     std::cout << "CycleTrace " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << '\n';
+     m_roi_started = false;
+   }
 
    // If frontend not stalled
    if (frontend_stalled_until <= now)

@@ -757,6 +757,8 @@ uint64_t Sift::Writer::Magic(uint64_t a, uint64_t b, uint64_t c)
    output->write(reinterpret_cast<char*>(&c), sizeof(uint64_t));
    output->flush();
 
+   return 0;
+
    initResponse();
 
    // wait for reply

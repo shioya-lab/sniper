@@ -22,19 +22,16 @@
 #define SIM_OPT_INSTRUMENT_WARMUP      1
 #define SIM_OPT_INSTRUMENT_FASTFORWARD 2
 
-#if defined(__riscv64__)
+#if defined(__riscv)
 
 unsigned long save0;
 unsigned long save1;
 unsigned long save2;
 
 #define SimMagic0(cmd) ({                       \
-   unsigned long _cmd = (cmd), _res;            \
    asm volatile (           \
-   "mv x1,(%[x]\n"         \
-   "\tadd x0, x0, x0\n"   \
-   : [ret]"=r"(_res)        \
-   : [x]"r"(_cmd)           \
+   "addi x0, x0, %0\n"   \
+   :: "i"(cmd)             \
    );                       \
 })
 

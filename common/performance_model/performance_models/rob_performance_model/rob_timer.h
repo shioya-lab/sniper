@@ -8,6 +8,7 @@
 #include "interval_timer.h"
 #include "rob_contention.h"
 #include "stats.h"
+#include "hooks_manager.h"
 
 #include <deque>
 
@@ -65,6 +66,7 @@ private:
    uint64_t m_rs_entries_used;
    RobContention *m_rob_contention;
 
+   bool m_roi_started; // due to record roi_start time
    ComponentTime now;
    SubsecondTime frontend_stalled_until;
    bool in_icache_miss;
@@ -159,6 +161,27 @@ public:
 
    boost::tuple<uint64_t,SubsecondTime> simulate(const std::vector<DynamicMicroOp*>& insts);
    void synchronize(SubsecondTime time);
+
+  static SInt64 hookRoiBegin(UInt64 object, UInt64 argument) {
+    ((RobTimer*)object)->roiBegin(); return 0;
+  }
+
+  static SInt64 hookRoiEnd(UInt64 object, UInt64 argument) {
+    ((RobTimer*)object)->roiEnd(); return 0;
+  }
+
+  void roiBegin() {
+    m_roi_started = true;
+    enable_debug_printf = !enable_debug_printf;
+  }
+
+  void roiEnd() {
+    std::cout << "CycleTrace " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << '\n';
+    // std::cout << "CycleTrace End\n";
+    enable_debug_printf = !enable_debug_printf;
+    enable_konata = 0;
+  }
+
 };
 
 #endif /* ROBTIMER_H_ */

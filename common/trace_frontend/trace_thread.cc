@@ -574,7 +574,8 @@ void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruc
       // Ignore memory-referencing operands in NOP instructions
       if (!dec_inst.is_nop())
       {
-         for(uint32_t mem_idx = 0; mem_idx <  Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+         // for(uint32_t mem_idx = 0; mem_idx <  Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+         for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx)
          {
             if (Sim()->getDecoder()->op_read_mem(&dec_inst, mem_idx))
             {
@@ -603,13 +604,15 @@ void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruc
                      (is_atomic_update) ? Core::READ_EX : Core::READ,
                      pa,
                      NULL,
-                     Sim()->getDecoder()->size_mem_op(&dec_inst, mem_idx),
+                     // Sim()->getDecoder()->size_mem_op(&dec_inst, mem_idx),
+                     64,
                      Core::MEM_MODELED_COUNT,
                      va2pa(inst.sinst->addr));
             }
          }
 
-         for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
+         for(uint32_t mem_idx = 0; mem_idx < inst.num_addresses; ++mem_idx)
+         // for(uint32_t mem_idx = 0; mem_idx < Sim()->getDecoder()->num_memory_operands(&dec_inst); ++mem_idx)
          {
             if (Sim()->getDecoder()->op_write_mem(&dec_inst, mem_idx))
             {
@@ -641,7 +644,8 @@ void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruc
                         Core::WRITE,
                         pa,
                         NULL,
-                        Sim()->getDecoder()->size_mem_op(&dec_inst, mem_idx),
+                        // Sim()->getDecoder()->size_mem_op(&dec_inst, mem_idx),
+                        64,
                         Core::MEM_MODELED_COUNT,
                         va2pa(inst.sinst->addr));
             }

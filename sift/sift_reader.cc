@@ -752,21 +752,21 @@ void Sift::Reader::sendSimpleResponse(RecOtherType type, void *data, uint32_t si
    std::cerr << "[DEBUG:" << m_id << "] Write SimpleResponse type=" << type << std::endl;
    #endif
 
-   if (!initResponse())
-   {
-      std::cerr << "[SIFT:" << m_id << "] Error: initResponse failed\n";
-   }
-
-   Record rec;
-   rec.Other.zero = 0;
-   rec.Other.type = type;
-   rec.Other.size = size;
-   response->write(reinterpret_cast<char*>(&rec), sizeof(rec.Other));
-   if (size > 0)
-   {
-      response->write(reinterpret_cast<char*>(data), size);
-   }
-   response->flush();
+   // if (!initResponse())
+   // {
+   //    std::cerr << "[SIFT:" << m_id << "] Error: initResponse failed\n";
+   // }
+   //
+   // Record rec;
+   // rec.Other.zero = 0;
+   // rec.Other.type = type;
+   // rec.Other.size = size;
+   // response->write(reinterpret_cast<char*>(&rec), sizeof(rec.Other));
+   // if (size > 0)
+   // {
+   //    response->write(reinterpret_cast<char*>(data), size);
+   // }
+   // response->flush();
 }
 
 uint64_t Sift::Reader::getPosition()
