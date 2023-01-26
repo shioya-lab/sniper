@@ -1756,9 +1756,9 @@ bool RISCVDecodedInst::is_barrier() const
   switch (dec.op) {
     case rv_op_fence:		/* Fence */
     case rv_op_fence_i:		/* Fence Instruction */
-    case rv_op_vsetvli:     /* VSETVLI Instruction */
-    case rv_op_vsetvl:     /* VSETVLI Instruction */
-    case rv_op_vsetivli:     /* VSETVLI Instruction */
+    // case rv_op_vsetvli:     /* VSETVLI Instruction */
+    // case rv_op_vsetvl:     /* VSETVLI Instruction */
+    // case rv_op_vsetivli:     /* VSETVLI Instruction */
       // case rv_op_vsetvli:     /* VSETVLI Instruction */
       res = true;
       break;
