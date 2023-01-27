@@ -1707,9 +1707,9 @@ bool RISCVDecodedInst::is_serializing() const
   bool res = false;
   riscv::decode dec = this->rv8_dec;
   switch (dec.op) {
-    case rv_op_vsetvli:     /* VSETVLI Instruction */
-    case rv_op_vsetvl:     /* VSETVLI Instruction */
-    case rv_op_vsetivli:     /* VSETVLI Instruction */
+    // case rv_op_vsetvli:     /* VSETVLI Instruction */
+    // case rv_op_vsetvl:     /* VSETVLI Instruction */
+    // case rv_op_vsetivli:     /* VSETVLI Instruction */
       res = true;
       break;
   }
