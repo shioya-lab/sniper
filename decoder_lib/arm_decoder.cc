@@ -1150,6 +1150,13 @@ bool ARMDecoder::can_vec_squash (decoder_opcode opcd, const DecodedInst* ins)
 }
 
 
+bool ARMDecoder::is_vsetvl (decoder_opcode opcd)
+{
+  return false;
+}
+
+
+
 Decoder::decoder_reg ARMDecoder::last_reg()
 {
   if (m_arch == DL_ARCH_ARMv7)

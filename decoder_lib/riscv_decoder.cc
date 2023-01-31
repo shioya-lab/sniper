@@ -1541,6 +1541,18 @@ bool RISCVDecoder::can_vec_squash (decoder_opcode opcd, const DecodedInst* ins)
 }
 
 
+bool RISCVDecoder::is_vsetvl(decoder_opcode opcd) {
+  switch (opcd) {
+    case rv_op_vsetvli:     /* VSETVLI Instruction */
+    case rv_op_vsetvl:     /* VSETVLI Instruction */
+    case rv_op_vsetivli:     /* VSETVLI Instruction */
+      return true;
+    default:
+      return false;
+  }
+}
+
+
 /// Get the value of the last register in the enumeration
 Decoder::decoder_reg RISCVDecoder::last_reg()
 {
@@ -1870,7 +1882,5 @@ bool RISCVDecodedInst::can_vec_squash () const
       return false;
   }
 }
-
-
 
 } // namespace dl;

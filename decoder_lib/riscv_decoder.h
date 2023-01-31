@@ -207,6 +207,7 @@ class RISCVDecoder : public Decoder
 
     virtual bool is_vector(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual bool can_vec_squash(decoder_opcode opcd, const DecodedInst* ins) override;
+    virtual bool is_vsetvl(decoder_opcode opcd) override;
 
     /// Get the value of the last register in the enumeration
     virtual decoder_reg last_reg() override;

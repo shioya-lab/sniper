@@ -500,6 +500,11 @@ bool X86Decoder::can_vec_squash (decoder_opcode opcd, const DecodedInst* ins)
   return false;
 }
 
+bool X86Decoder::is_vsetvl (decoder_opcode opcd)
+{
+  return false;
+}
+
 
 Decoder::decoder_reg X86Decoder::last_reg()
 {

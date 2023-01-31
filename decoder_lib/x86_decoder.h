@@ -50,6 +50,7 @@ class X86Decoder : public Decoder
     virtual bool is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual bool is_vector(decoder_opcode opcd, const DecodedInst* ins) override;
     virtual bool can_vec_squash(decoder_opcode opcd, const DecodedInst* ins) override;
+    virtual bool is_vsetvl(decoder_opcode opcd) override;
     virtual decoder_reg last_reg() override;
     virtual uint32_t map_register(decoder_reg reg) override { return reg; }
     virtual unsigned int num_read_implicit_registers(const DecodedInst *inst) override {return 0;}

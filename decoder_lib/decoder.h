@@ -152,6 +152,7 @@ class Decoder
 
     virtual bool is_vector(decoder_opcode opcd, const DecodedInst* ins) = 0;
     virtual bool can_vec_squash(decoder_opcode opcd, const DecodedInst* ins) = 0;
+    virtual bool is_vsetvl(decoder_opcode opcd) = 0;
 
     /// Get the value of the last register in the enumeration
     virtual decoder_reg last_reg() = 0;
