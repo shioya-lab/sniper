@@ -181,6 +181,7 @@ RobTimer::RobTimer(
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
    m_roi_started = false;
    m_enable_konata = false;
+   m_vsetvl_producer = 0;
 }
 
 RobTimer::~RobTimer()
@@ -300,6 +301,9 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       this->registerDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
       this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
+      if (entry->uop->getMicroOp()->isVector()) {
+        setVSETDependencise (*entry->uop, lowestValidSequenceNumber);
+      }
 
       if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad())
       {
@@ -860,20 +864,37 @@ SubsecondTime RobTimer::doIssue()
           IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
 
           if (bank_info[bank_index] == 0) {           // first bank acces
+#ifdef DEBUG_PERCYCLE
+            fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
+                     uop->getSequenceNumber(),
+                     uop->getMicroOp()->toShortString().c_str(),
+                     uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+#endif // DEBUG_PERCYCLE
+            bank_info[bank_index] = banked_cache_line;
           } else if (bank_info[bank_index] == banked_cache_line) {
             // Same Bank Access and Can be Merge:
-#ifdef DEBUG_PERCYCLE
-            fprintf (stderr, "cacheline bank can be access %08lx with %08lx. bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
-#endif // DEBUG_PERCYCLE
             uop->setMemAccessMerge();
-          } else {
 #ifdef DEBUG_PERCYCLE
-            fprintf (stderr, "cacheline bank conflict %08lx with %08lx, bank=%ld\n", uop->getAddress().address, bank_info[bank_index], bank_index);
+            fprintf (stderr, "%ld %s cacheline bank can be access %08lx with %08lx. bank=%ld, CanIssue = %d\n",
+                     uop->getSequenceNumber(),
+                     uop->getMicroOp()->toShortString().c_str(),
+                     uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
 #endif // DEBUG_PERCYCLE
+          } else {
             canIssue = false;
+#ifdef DEBUG_PERCYCLE
+            fprintf (stderr, "%ld %s cacheline bank conflict %08lx with %08lx, bank=%ld, CanIssue = %d\n",
+                     uop->getSequenceNumber(),
+                     uop->getMicroOp()->toShortString().c_str(),
+                     uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+#endif // DEBUG_PERCYCLE
           }
 
           bank_info[bank_index] = banked_cache_line;
+        } else {   // Gather Scatter Merge doesn't happen
+          if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
+            canIssue = false;
+          }
         }
       }
 
@@ -1219,4 +1240,19 @@ void RobTimer::printRob()
          std::cout<<"(dynamic)";
       std::cout<<std::endl;
    }
+}
+
+
+void RobTimer::setVSETDependencise(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber)
+{
+  dl::Decoder *dec = Sim()->getDecoder();
+
+  if (dec->is_vsetvl(microOp.getMicroOp()->getInstructionOpcode())) {
+    m_vsetvl_producer = microOp.getSequenceNumber();
+  } else if (dec->is_vector(microOp.getMicroOp()->getInstructionOpcode(),
+                            microOp.getMicroOp()->getDecodedInstruction())) {
+    if (m_vsetvl_producer >= lowestValidSequenceNumber) {
+      microOp.addDependency(m_vsetvl_producer);
+    }
+  }
 }

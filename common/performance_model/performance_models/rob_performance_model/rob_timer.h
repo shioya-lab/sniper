@@ -57,6 +57,7 @@ private:
    const bool inorder;
    const bool vector_inorder;
    const bool m_gather_scatter_merge;
+   uint64_t m_vsetvl_producer;
 
    Core *m_core;
 
@@ -160,6 +161,8 @@ private:
 
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
 
+   void setVSETDependencise(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
+
 public:
 
    RobTimer(Core *core, PerformanceModel *perf, const CoreModel *core_model, int misprediction_penalty, int dispatch_width, int window_size);
@@ -167,6 +170,8 @@ public:
 
    boost::tuple<uint64_t,SubsecondTime> simulate(const std::vector<DynamicMicroOp*>& insts);
    void synchronize(SubsecondTime time);
+
+
 
   static SInt64 hookRoiBegin(UInt64 object, UInt64 argument) {
     ((RobTimer*)object)->roiBegin(); return 0;
