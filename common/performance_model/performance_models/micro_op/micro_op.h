@@ -64,6 +64,8 @@ struct MicroOp
    bool is_vector;
    // In Vector Load/Store, Can be squashed in ROB issue condition checker?
    bool can_vec_squash;
+   int num_uop;
+   int uop_idx;
 
    enum uop_subtype_t {
       UOP_SUBTYPE_FP_ADDSUB,
@@ -135,9 +137,16 @@ struct MicroOp
    uint16_t operand_size;
    uint16_t memoryAccessSize;
 
-  void makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false, bool can_vec_squash = false);
-  void makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch, bool is_vector = false);
-  void makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false, bool can_vec_squash = false);
+  void makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size, bool is_vector = false,
+                bool can_vec_squash = false,
+                int num_uop = 1, int uop_idx = 0);
+  void makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch,
+                   bool is_vector = false,
+                   int num_uop = 1, int uop_idx = 0);
+  void makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size,
+                 bool is_vector = false,
+                 bool can_vec_squash = false,
+                 int num_uop = 1, int uop_idx = 0);
    void makeDynamic(const String& instructionOpcodeName, uint32_t execLatency);
 
    static uop_subtype_t getSubtype_Exec(const MicroOp& uop);
@@ -220,6 +229,9 @@ struct MicroOp
    bool isWriteback() const { return decodedInstruction->is_writeback(); }
 
    uop_type_t getType() const { return uop_type; }
+
+   int NumUop() const { return num_uop; }
+   int UopIdx() const { return uop_idx; }
 
 #ifdef ENABLE_MICROOP_STRINGS
    const String& getInstructionOpcodeName() { return instructionOpcodeName; }

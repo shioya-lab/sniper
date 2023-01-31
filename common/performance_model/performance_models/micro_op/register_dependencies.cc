@@ -29,6 +29,20 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
       }
    }
 
+   // Intermediate Vector Instruction doent' update producer register
+   // VLUXEI case
+   // vluxei v24,(a0),v24
+   // -->
+   // (0) vluxei v24,(a0),v24 // index-0
+   // (1) vluxei v24,(a0),v24 // index-1
+   // Then 1 and 0 are issued in same time, it may apper dependencies v24 between (0) and (1)
+   // So, in this case (0) doesn't update producer denependency
+   //
+   if (microOp.getMicroOp()->isVector() &&
+       !microOp.getMicroOp()->canVecSquash() &&  // Not UnitStride, Gather/Scatter instructions are Issued in same time, then prevent Intermeditae Update
+       (microOp.getMicroOp()->UopIdx() != microOp.getMicroOp()->NumUop() - 1)) {
+     return;
+   }
    // Update the producers
    for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
    {

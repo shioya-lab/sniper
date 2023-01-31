@@ -72,7 +72,7 @@ MicroOp::MicroOp()
 }
 
 void MicroOp::makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size,
-                       bool is_vector, bool can_vec_squash) {
+                       bool is_vector, bool can_vec_squash, int num_uop, int uop_idx) {
    this->uop_type = UOP_LOAD;
    this->is_vector = is_vector;
    this->can_vec_squash = can_vec_squash;
@@ -84,10 +84,12 @@ void MicroOp::makeLoad(uint32_t offset, dl::Decoder::decoder_opcode instructionO
    this->instructionOpcode = instructionOpcode;
    this->intraInstructionDependencies = 0;
    this->setTypes();
+   this->num_uop = num_uop;
+   this->uop_idx = uop_idx;
 }
 
 void MicroOp::makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, bool isBranch,
-                          bool is_vector) {
+                          bool is_vector, int num_uop, int uop_idx) {
    this->uop_type = UOP_EXECUTE;
    this->is_vector = is_vector;
    this->can_vec_squash = false;
@@ -99,10 +101,12 @@ void MicroOp::makeExecute(uint32_t offset, uint32_t num_loads, dl::Decoder::deco
 #endif
    this->branch = isBranch;
    this->setTypes();
+   this->num_uop = num_uop;
+   this->uop_idx = uop_idx;
 }
 
 void MicroOp::makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::decoder_opcode instructionOpcode, const String& instructionOpcodeName, uint16_t mem_size,
-                        bool is_vector, bool can_vec_squash) {
+                        bool is_vector, bool can_vec_squash, int num_uop, int uop_idx) {
    this->uop_type = UOP_STORE;
    this->is_vector = is_vector;
    this->can_vec_squash = can_vec_squash;
@@ -114,6 +118,8 @@ void MicroOp::makeStore(uint32_t offset, uint32_t num_execute, dl::Decoder::deco
    this->instructionOpcode = instructionOpcode;
    this->intraInstructionDependencies = num_execute;
    this->setTypes();
+   this->num_uop = num_uop;
+   this->uop_idx = uop_idx;
 }
 
 void MicroOp::makeDynamic(const String& instructionOpcodeName, uint32_t execLatency) {
@@ -128,6 +134,8 @@ void MicroOp::makeDynamic(const String& instructionOpcodeName, uint32_t execLate
 #endif
    this->branch = false;
    this->setTypes();
+   this->num_uop = 1;
+   this->uop_idx = 0;
 }
 
 

@@ -179,7 +179,9 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  , dec->inst_name(ins->inst_num_id())
                  , is_vector ? l1d_block_size : memop_load_size[loadIndex]
                  , is_vector
-                 , can_vector_squash
+                 , can_vector_squash,
+                 totalMicroOps,
+                 index
                );
       }
       else if (index < numLoads + numExecs) /* EXEC */
@@ -192,7 +194,9 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
              , ins->inst_num_id()
              , dec->inst_name(ins->inst_num_id())
              , ins->is_conditional_branch() /* is conditional branch? */
-             , is_vector);
+             , is_vector,
+             totalMicroOps,
+             index);
       }
       else /* STORE */
       {
@@ -204,7 +208,9 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  , dec->inst_name(ins->inst_num_id())
                  , is_vector ? l1d_block_size : memop_store_size[storeIndex]
                  , is_vector
-                 , can_vector_squash
+                 , can_vector_squash,
+                 totalMicroOps,
+                 index
                );
          if (is_atomic)
             currentMicroOp->setMemBarrier(true);
