@@ -589,7 +589,7 @@ MYLOG("access done");
       }
       #endif
 
-      if (mem_op_type == Core::WRITE)
+      if (mem_op_type == Core::WRITE || mem_op_type == Core::WRITE_VEC)
          stats.stores_where[hit_where]++;
       else
          stats.loads_where[hit_where]++;
@@ -2090,7 +2090,7 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
    bool cache_data_hit = (state != CacheState::INVALID);
    m_master->accessATDs(mem_op_type, cache_data_hit, address, m_core_id - m_core_id_master);
 
-   if (mem_op_type == Core::WRITE)
+   if (mem_op_type == Core::WRITE || mem_op_type == Core::WRITE_VEC)
    {
       if (isPrefetch != Prefetch::NONE)
          stats.stores_prefetch++;

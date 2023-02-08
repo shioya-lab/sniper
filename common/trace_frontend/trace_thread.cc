@@ -952,9 +952,11 @@ void TraceThread::handleAccessMemory(Core::lock_signal_t lock_signal, Core::mem_
    {
       case (Core::READ):
       case (Core::READ_EX):
+      case (Core::READ_VEC):
          sift_mem_op = Sift::MemRead;
          break;
       case (Core::WRITE):
+      case (Core::WRITE_VEC):
          sift_mem_op = Sift::MemWrite;
          break;
       default:
