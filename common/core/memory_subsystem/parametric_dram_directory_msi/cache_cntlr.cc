@@ -221,6 +221,10 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    registerStatsMetric(name, core_id, "stores", &stats.stores);
    registerStatsMetric(name, core_id, "load-misses", &stats.load_misses);
    registerStatsMetric(name, core_id, "store-misses", &stats.store_misses);
+   registerStatsMetric(name, core_id, "vec_loads", &stats.vec_loads);
+   registerStatsMetric(name, core_id, "vec_stores", &stats.vec_stores);
+   registerStatsMetric(name, core_id, "vec_load-misses", &stats.vec_load_misses);
+   registerStatsMetric(name, core_id, "vec_store-misses", &stats.vec_store_misses);
    // Does not work for loads, since the interval core model doesn't issue the loads until after the first miss has completed
    registerStatsMetric(name, core_id, "load-overlapping-misses", &stats.load_overlapping_misses);
    registerStatsMetric(name, core_id, "store-overlapping-misses", &stats.store_overlapping_misses);
@@ -1285,7 +1289,8 @@ CacheCntlr::operationPermissibleinCache(
          cache_hit = CacheState(cstate).writable();
          break;
 
-      default:
+        break;
+       default:
          LOG_PRINT_ERROR("Unsupported mem_op_type: %u", mem_op_type);
          break;
    }
@@ -2096,10 +2101,18 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
          stats.stores_prefetch++;
       if (isPrefetch != Prefetch::OWN)
       {
-         stats.stores++;
+         if (mem_op_type == Core::WRITE_VEC) {
+           stats.vec_stores++;
+         } else {
+           stats.stores++;
+         }
          stats.stores_state[state]++;
          if (! cache_hit || overlapping) {
-            stats.store_misses++;
+            if (mem_op_type == Core::WRITE_VEC) {
+              stats.vec_store_misses++;
+            } else {
+              stats.store_misses++;
+            }
             stats.store_misses_state[state]++;
             if (overlapping) stats.store_overlapping_misses++;
          }
@@ -2111,10 +2124,18 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
          stats.loads_prefetch++;
       if (isPrefetch != Prefetch::OWN)
       {
-         stats.loads++;
+         if (mem_op_type == Core::READ_VEC) {
+           stats.vec_loads++;
+         } else {
+           stats.loads++;
+         }
          stats.loads_state[state]++;
          if (! cache_hit) {
-            stats.load_misses++;
+            if (mem_op_type == Core::READ_VEC) {
+              stats.vec_load_misses++;
+            } else {
+              stats.load_misses++;
+            }
             stats.load_misses_state[state]++;
             if (overlapping) stats.load_overlapping_misses++;
          }

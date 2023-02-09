@@ -221,6 +221,8 @@ namespace ParametricDramDirectoryMSI
            UInt64 loads, stores;
            UInt64 load_misses, store_misses;
            UInt64 load_overlapping_misses, store_overlapping_misses;
+           UInt64 vec_loads, vec_stores;
+           UInt64 vec_load_misses, vec_store_misses;
            UInt64 loads_state[CacheState::NUM_CSTATE_STATES], stores_state[CacheState::NUM_CSTATE_STATES];
            UInt64 loads_where[HitWhere::NUM_HITWHERES], stores_where[HitWhere::NUM_HITWHERES];
            UInt64 load_misses_state[CacheState::NUM_CSTATE_STATES], store_misses_state[CacheState::NUM_CSTATE_STATES];
