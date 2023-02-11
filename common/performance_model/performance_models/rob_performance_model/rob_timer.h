@@ -80,6 +80,8 @@ private:
    SubsecondTime last_store_done;
    ContentionModel load_queue;
    ContentionModel store_queue;
+   ContentionModel vec_load_queue;
+   ContentionModel vec_store_queue;
 
    uint64_t nextSequenceNumber;
    bool will_skip;

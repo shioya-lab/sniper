@@ -56,6 +56,8 @@ RobTimer::RobTimer(
       , last_store_done(SubsecondTime::Zero())
       , load_queue("rob_timer.load_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()))
       , store_queue("rob_timer.store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()))
+      , vec_load_queue("rob_timer.vec_load_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_loads", core->getId()))
+      , vec_store_queue("rob_timer.vec_store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_stores", core->getId()))
       , nextSequenceNumber(0)
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
@@ -397,6 +399,12 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       }
       #endif
 
+#ifdef DEBUG_PERCYCLE
+      std::cerr << "Type = " << (*it)->getMicroOp()->getSubtype() <<
+          " count = " <<
+          m_uop_type_count[(*it)->getMicroOp()->getSubtype()] << '\n';
+#endif // DEBUG_PERCYCLE
+
       m_uop_type_count[(*it)->getMicroOp()->getSubtype()]++;
       m_uops_total++;
       if ((*it)->getMicroOp()->isX87()) m_uops_x87++;
@@ -636,11 +644,19 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
    if (uop.getMicroOp()->isLoad())
    {
-      load_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
+      if (uop.getMicroOp()->isVector()) {
+         vec_load_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
+      } else {
+         load_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
+      }
    }
    else if (uop.getMicroOp()->isStore())
    {
-      store_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
+      if (uop.getMicroOp()->isVector()) {
+         vec_store_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
+      } else {
+         store_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
+      }
    }
 
    ComponentTime cycle_depend = now + uop.getExecLatency();        // When result is available for dependent instructions
@@ -806,13 +822,17 @@ SubsecondTime RobTimer::doIssue()
       else if (!m_rob_contention && num_issued == dispatchWidth)
          canIssue = false;          // no issue contention: issue width == dispatch width
 
-      else if (uop->getMicroOp()->isLoad() && !load_queue.hasFreeSlot(now))
+      else if (uop->getMicroOp()->isLoad() &&
+               ( (uop->getMicroOp()->isVector() && !vec_load_queue.hasFreeSlot(now)) ||
+                (!uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now))))
          canIssue = false;          // load queue full
 
       else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store)
          canIssue = false;          // preceding store with unknown address
 
-      else if (uop->getMicroOp()->isStore() && (!head_of_queue || !store_queue.hasFreeSlot(now)))
+      else if (uop->getMicroOp()->isStore() && (!head_of_queue ||
+                                                ( uop->getMicroOp()->isVector() && !vec_store_queue.hasFreeSlot(now)) ||
+                                                (!uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now))))
          canIssue = false;          // store queue full
 
       else
@@ -1192,6 +1212,7 @@ void RobTimer::printRob()
    }
    std::cout<<"   RS entries: "<<m_rs_entries_used<<std::endl;
    std::cout<<"   Outstanding loads: "<<load_queue.getNumUsed(now)<<"  stores: "<<store_queue.getNumUsed(now)<<std::endl;
+   std::cout<<"   Outstanding Vec loads: "<<vec_load_queue.getNumUsed(now)<<"  Vec stores: "<<vec_store_queue.getNumUsed(now)<<std::endl;
    for(unsigned int i = 0; i < rob.size(); ++i)
    {
       std::cout<<"   ["<<std::setw(3)<<i<<"]  ";
