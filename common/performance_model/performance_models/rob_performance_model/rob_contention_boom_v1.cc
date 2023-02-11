@@ -45,10 +45,14 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
          ports_generic012++;
    }
    else if (uop_port == DynamicMicroOpBoomV1::UOP_PORT3) {
-     if (ports_vecmem >= 4) {
-       return false;
+     if (uop.getMicroOp()->canVecSquash()) {
+       return ports_vecmem++ == 0;
      } else {
-       ports_vecmem++;
+       if (ports_vecmem >= 4) {
+         return false;
+       } else {
+         ports_vecmem++;
+       }
      }
    }
    else
