@@ -842,19 +842,126 @@ bool RISCVDecoder::is_branch_opcode(decoder_opcode opcd)
 /// Check if the opcode is an add/sub instruction that operates in vector and FP registers
 bool RISCVDecoder::is_fpvector_addsub_opcode(decoder_opcode opcd, const DecodedInst* ins)
 {
-  return false;
+  bool res = false;
+  switch(opcd) {
+	case rv_op_fadd_s     :
+	case rv_op_fsub_s     :
+	case rv_op_fsgnj_s    :
+	case rv_op_fsgnjn_s   :
+	case rv_op_fsgnjx_s   :
+	case rv_op_fmin_s     :
+	case rv_op_fmax_s     :
+	case rv_op_fsqrt_s    :
+	case rv_op_fle_s      :
+	case rv_op_flt_s      :
+	case rv_op_feq_s      :
+	case rv_op_fmv_x_s    :
+	case rv_op_fclass_s   :
+	case rv_op_fmv_s_x    :
+	case rv_op_fcvt_l_s   :
+	case rv_op_fcvt_lu_s  :
+	case rv_op_fcvt_s_l   :
+	case rv_op_fcvt_s_lu  :
+	case rv_op_fadd_d     :
+	case rv_op_fsub_d     :
+	case rv_op_fsgnj_d    :
+	case rv_op_fsgnjn_d   :
+	case rv_op_fsgnjx_d   :
+	case rv_op_fmin_d     :
+	case rv_op_fmax_d     :
+	case rv_op_fcvt_s_d   :
+	case rv_op_fcvt_d_s   :
+	case rv_op_fsqrt_d    :
+	case rv_op_fle_d      :
+	case rv_op_flt_d      :
+	case rv_op_feq_d      :
+	case rv_op_fcvt_w_d   :
+	case rv_op_fcvt_wu_d  :
+	case rv_op_fcvt_d_w   :
+	case rv_op_fcvt_d_wu  :
+	case rv_op_fclass_d   :
+	case rv_op_fcvt_l_d   :
+	case rv_op_fcvt_lu_d  :
+	case rv_op_fmv_x_d    :
+	case rv_op_fcvt_d_l   :
+	case rv_op_fcvt_d_lu  :
+	case rv_op_fmv_d_x    :
+	case rv_op_fadd_q     :
+	case rv_op_fsub_q     :
+	case rv_op_fsgnj_q    :
+	case rv_op_fsgnjn_q   :
+	case rv_op_fsgnjx_q   :
+	case rv_op_fmin_q     :
+	case rv_op_fmax_q     :
+	case rv_op_fcvt_s_q   :
+	case rv_op_fcvt_q_s   :
+	case rv_op_fcvt_d_q   :
+	case rv_op_fcvt_q_d   :
+	case rv_op_fle_q      :
+	case rv_op_flt_q      :
+	case rv_op_feq_q      :
+	case rv_op_fcvt_w_q   :
+	case rv_op_fcvt_wu_q  :
+	case rv_op_fcvt_q_w   :
+	case rv_op_fcvt_q_wu  :
+	case rv_op_fclass_q   :
+	case rv_op_fcvt_l_q   :
+	case rv_op_fcvt_lu_q  :
+	case rv_op_fcvt_q_l   :
+	case rv_op_fcvt_q_lu  :
+	case rv_op_fmv_x_q    :
+	case rv_op_fmv_q_x    :
+      res = true;
+  }
+
+  return res;
 }
 
 /// Check if the opcode is a mul/div instruction that operates in vector and FP registers
 bool RISCVDecoder::is_fpvector_muldiv_opcode(decoder_opcode opcd, const DecodedInst* ins)
 {
-  return false;
+
+  bool res = false;
+  switch(opcd) {
+	case rv_op_fmadd_s  :
+	case rv_op_fmsub_s  :
+	case rv_op_fnmsub_s :
+	case rv_op_fnmadd_s :
+	case rv_op_fmul_d   :
+	case rv_op_fdiv_d   :
+	case rv_op_fmadd_d  :
+	case rv_op_fmsub_d  :
+	case rv_op_fnmsub_d :
+	case rv_op_fnmadd_d :
+	case rv_op_fmadd_q  :
+	case rv_op_fmsub_q  :
+	case rv_op_fnmsub_q :
+	case rv_op_fnmadd_q :
+	case rv_op_fmul_q   :
+	case rv_op_fdiv_q   :
+	case rv_op_fsqrt_q  :
+      res = true;
+  }
+
+  return res;
 }
 
 /// Check if the opcode is an instruction that loads or store data on vector and FP registers
 bool RISCVDecoder::is_fpvector_ldst_opcode(decoder_opcode opcd, const DecodedInst* ins)
 {
-  return false;
+
+  bool res = false;
+  switch(opcd) {
+	case rv_op_c_fld     :
+	case rv_op_c_lw      :
+	case rv_op_c_flw     :
+	case rv_op_fld       :
+	case rv_op_fsd       :
+	case rv_op_flq       :
+	case rv_op_fsq       :
+      res = true;
+  }
+  return res;
 }
 
 
