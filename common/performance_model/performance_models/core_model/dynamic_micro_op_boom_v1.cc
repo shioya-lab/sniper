@@ -16,6 +16,7 @@ const char* DynamicMicroOpBoomV1::PortTypeString(DynamicMicroOpBoomV1::uop_port_
       case UOP_PORT1:         return "port1";
       case UOP_PORT2:         return "port2";
       case UOP_PORT3:         return "port_vec_mem";
+      case UOP_PORT4:         return "port_vec_arith";
       case UOP_PORT012:       return "port012";
       default:
          LOG_PRINT_ERROR("Unknown port type %d", port);
@@ -24,7 +25,10 @@ const char* DynamicMicroOpBoomV1::PortTypeString(DynamicMicroOpBoomV1::uop_port_
 
 DynamicMicroOpBoomV1::uop_port_t DynamicMicroOpBoomV1::getPort(const MicroOp *uop)
 {
-      if(instrlist[uop->getInstructionOpcode()].has_fpu || instrlist[uop->getInstructionOpcode()].has_fdiv || instrlist[uop->getInstructionOpcode()].has_mul ) {
+      if(instrlist[uop->getInstructionOpcode()].is_vector &&
+         !instrlist[uop->getInstructionOpcode()].is_memory) {
+        return DynamicMicroOpBoomV1::UOP_PORT4;
+      } else if(instrlist[uop->getInstructionOpcode()].has_fpu || instrlist[uop->getInstructionOpcode()].has_fdiv || instrlist[uop->getInstructionOpcode()].has_mul ) {
             return DynamicMicroOpBoomV1::UOP_PORT0;
       } else if(instrlist[uop->getInstructionOpcode()].has_div ) {
             return DynamicMicroOpBoomV1::UOP_PORT1;
