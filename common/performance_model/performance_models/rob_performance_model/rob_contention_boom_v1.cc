@@ -38,6 +38,8 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
    const DynamicMicroOpBoomV1 *core_uop_info = uop.getCoreSpecificInfo<DynamicMicroOpBoomV1>();
    DynamicMicroOpBoomV1::uop_port_t uop_port = core_uop_info->getPort();
 
+   LOG_ASSERT_ERROR( uop_port < DynamicMicroOpBoomV1::UOP_PORT_SIZE, "Port Strange");
+
    if (uop_port == DynamicMicroOpBoomV1::UOP_PORT012)
    {
       if (ports_generic012 >= 3)
@@ -47,7 +49,11 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
    }
    else if (uop_port == DynamicMicroOpBoomV1::UOP_PORT3) {
      if (uop.getMicroOp()->canVecSquash()) {
-       return ports_vecmem++ == 0;
+       if (ports_vecmem >= 2) {
+         return false;
+       } else {
+         ports_vecmem++;
+       }
      } else {
        if (ports_vecmem >= 4) {
          return false;
@@ -57,7 +63,7 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
      }
    }
    else if (uop_port == DynamicMicroOpBoomV1::UOP_PORT4) {
-     if (ports_vecarith >= 1) {
+     if (ports_vecarith >= 2) {
        return false;
      } else {
        ports_vecarith++;

@@ -865,21 +865,6 @@ SubsecondTime RobTimer::doIssue()
       }
 
 
-      // Checks WAR hazard for Inorder Vector instruction
-      uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
-      if (vector_inorder &&
-          uop->getMicroOp()->isVector() &&
-          uop->war_dependenciesLength > 0 &&
-          uop->war_dependencies[0] >= lowestValidSequenceNumber) {
-#ifdef DEBUG_PERCYCLE
-        std::cerr << "  WAR hazard detection " << uop->getMicroOp()->toShortString() <<
-            ", index = " << uop->getSequenceNumber() <<
-            "hazard exist with " << uop->war_dependencies[0] <<
-            " and " << lowestValidSequenceNumber << std::endl;
-#endif // DEBUG_PERCYCLE
-        canIssue = false;
-      }
-
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
         if (m_gather_scatter_merge) {
