@@ -762,6 +762,8 @@ SubsecondTime RobTimer::doIssue()
    SubsecondTime next_event = SubsecondTime::MaxTime();
    bool head_of_queue = true, no_more_load = false, no_more_store = false, have_unresolved_store = false;
 
+   bool vector_someone_cant_be_issued = false;
+
    if (m_rob_contention)
       m_rob_contention->initCycle(now);
 
@@ -873,7 +875,9 @@ SubsecondTime RobTimer::doIssue()
                  static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
               last_vec_issued_idx = i;
               issued_vec_inst++;
-              canIssue = canIssue; // Keep can issue
+              if (vector_someone_cant_be_issued) {
+                canIssue = false;
+              }
             } else {
               canIssue = false;
             }
@@ -925,11 +929,11 @@ SubsecondTime RobTimer::doIssue()
 
           bank_info[bank_index] = banked_cache_line;
         } else {   // Gather Scatter Merge doesn't happen
-            if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
+            if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
               canIssue = false;
             }
           }
-      } else if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
+      } else if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
           canIssue = false;
         }
 
@@ -970,8 +974,8 @@ SubsecondTime RobTimer::doIssue()
       {
          head_of_queue = false;     // Subsequent instructions are not at the head of the ROB
 
-         if (uop->getMicroOp()->isVector() && uop->isVirtuallyIssued()) {
-           head_of_queue = true; // Can continue
+         if (uop->getMicroOp()->isVector() && vector_inorder && !uop->isVirtuallyIssued()) {
+           vector_someone_cant_be_issued = true; // Can continue
          }
 
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
@@ -988,6 +992,7 @@ SubsecondTime RobTimer::doIssue()
         std::cerr << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
             ", index = " << uop->getSequenceNumber() << '\n';
 #endif // DEBUG_PERCYCLE
+        uop->setVirtuallyIssued();
         for (uint64_t j = i+1; j < m_num_in_rob; ++j) {
           RobEntry *subseq_entry = &rob.at(j);
           DynamicMicroOp *subseq_uop = subseq_entry->uop;
