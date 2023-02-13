@@ -842,7 +842,6 @@ SubsecondTime RobTimer::doIssue()
                                                 ( uop->getMicroOp()->isVector() && !vec_store_queue.hasFreeSlot(now)) ||
                                                 (!uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now))))
       {
-        std::cerr << "  store\n";
          canIssue = false;          // store queue full
       }
       else
@@ -971,10 +970,14 @@ SubsecondTime RobTimer::doIssue()
       {
          head_of_queue = false;     // Subsequent instructions are not at the head of the ROB
 
+         if (uop->getMicroOp()->isVector() && uop->isVirtuallyIssued()) {
+           head_of_queue = true; // Can continue
+         }
+
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
             have_unresolved_store = true;
 
-         if (inorder || (uop->getMicroOp()->isVector() && !uop->isVirtuallyIssued()))
+         if (inorder)
             // In-order: only issue from head of the ROB
             break;
       }
