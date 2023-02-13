@@ -818,47 +818,77 @@ SubsecondTime RobTimer::doIssue()
             // FIXME: L/SFENCE
       }
 
-      else if (!m_rob_contention && num_issued == dispatchWidth)
+      else if (!m_rob_contention && num_issued == dispatchWidth) {
+        std::cerr << "  dispatch Width exceeded\n";
          canIssue = false;          // no issue contention: issue width == dispatch width
-
+      }
       else if (uop->getMicroOp()->isLoad() &&
                ( (uop->getMicroOp()->isVector() && !vec_load_queue.hasFreeSlot(now)) ||
-                (!uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now))))
+                 (!uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now)))) {
+#ifdef DEBUG_PERCYCLE
+        std::cerr << "  load_queue.hasFreeSlot failed " << uop->getMicroOp()->toShortString() <<
+            ", index = " << uop->getSequenceNumber() << '\n';
+#endif // DEBUG_PERCYCLE
          canIssue = false;          // load queue full
 
-      else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store)
+      } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
+#ifdef DEBUG_PERCYCLE
+        std::cerr << "  disambiguation" <<
+            ", index = " << uop->getSequenceNumber() << '\n';
+#endif // DEBUG_PERCYCLE
          canIssue = false;          // preceding store with unknown address
-
+      }
       else if (uop->getMicroOp()->isStore() && (!head_of_queue ||
                                                 ( uop->getMicroOp()->isVector() && !vec_store_queue.hasFreeSlot(now)) ||
                                                 (!uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now))))
+      {
+        std::cerr << "  store\n";
          canIssue = false;          // store queue full
-
+      }
       else
          canIssue = true;           // issue!
 
+#ifdef DEBUG_PERCYCLE
+        std::cerr << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
+            ", index = " << uop->getSequenceNumber() <<
+            (canIssue ? " True" : " False") << std::endl;
+#endif // DEBUG_PERCYCLE
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
+#ifdef DEBUG_PERCYCLE
+        std::cerr << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
+            ", index = " << uop->getSequenceNumber() << '\n';
+#endif // DEBUG_PERCYCLE
          // fprintf(stderr, "tryIssue failed\n");
          canIssue = false;          // blocked by structural hazard
       }
 
-      // if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
-      //   canIssue = false;
-      // }
+
+      // Checks WAR hazard for Inorder Vector instruction
+      uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
+      if (vector_inorder &&
+          uop->getMicroOp()->isVector() &&
+          uop->war_dependenciesLength > 0 &&
+          uop->war_dependencies[0] >= lowestValidSequenceNumber) {
+#ifdef DEBUG_PERCYCLE
+        std::cerr << "  WAR hazard detection " << uop->getMicroOp()->toShortString() <<
+            ", index = " << uop->getSequenceNumber() <<
+            "hazard exist with " << uop->war_dependencies[0] <<
+            " and " << lowestValidSequenceNumber << std::endl;
+#endif // DEBUG_PERCYCLE
+        canIssue = false;
+      }
 
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
-
         if (m_gather_scatter_merge) {
           if (vector_inorder) {
             if (issued_vec_inst < 8 &&
-                ((head_of_queue && last_vec_issued_idx == -1) ||
+                (issued_vec_inst == 0 ||
                  static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
               last_vec_issued_idx = i;
               issued_vec_inst++;
-              // canIssue = true;
               canIssue = canIssue; // Keep can issue
             } else {
               canIssue = false;
@@ -911,11 +941,13 @@ SubsecondTime RobTimer::doIssue()
 
           bank_info[bank_index] = banked_cache_line;
         } else {   // Gather Scatter Merge doesn't happen
-          if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
-            canIssue = false;
+            if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
+              canIssue = false;
+            }
           }
+      } else if (uop->getMicroOp()->isVector() && vector_inorder && !head_of_queue) {
+          canIssue = false;
         }
-      }
 
       if (canIssue)
       {
