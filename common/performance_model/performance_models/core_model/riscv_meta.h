@@ -1281,7 +1281,7 @@ const riscvinstr instrlist[] = {
 	{ rv_op_fsrmi,          1, 0, 0, 0, 0, 0, 0, 0 },  //    316      RV32FD csr
 	{ rv_op_fsflagsi,       1, 0, 0, 0, 0, 0, 0, 0 },  //    317      RV32FD csr
 
-	{ rv_op_vsetvli        ,1, 0, 0, 0, 0, 0, 0, 1 },  // 319,
+	{ rv_op_vsetvli        ,1, 0, 0, 0, 0, 0, 0, 0 },  // 319,
 	{ rv_op_vle8_v         ,0, 0, 0, 0, 0, 0, 1, 1 },  // 320,
 	{ rv_op_vse8_v         ,0, 0, 0, 0, 0, 0, 1, 1 },  // 321,
 	{ rv_op_vle16_v        ,0, 0, 0, 0, 0, 0, 1, 1 },  // 322,
