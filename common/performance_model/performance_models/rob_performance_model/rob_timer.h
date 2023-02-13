@@ -163,7 +163,7 @@ private:
 
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
 
-   void setVSETDependencise(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
+   void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
 
 public:
 

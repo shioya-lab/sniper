@@ -303,9 +303,8 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       this->registerDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
       this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
-      if (entry->uop->getMicroOp()->isVector()) {
-        setVSETDependencise (*entry->uop, lowestValidSequenceNumber);
-      }
+
+      setVSETDependencies (*entry->uop, lowestValidSequenceNumber);
 
       if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad())
       {
@@ -1264,7 +1263,7 @@ void RobTimer::printRob()
 }
 
 
-void RobTimer::setVSETDependencise(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber)
+void RobTimer::setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber)
 {
   dl::Decoder *dec = Sim()->getDecoder();
 
