@@ -957,11 +957,33 @@ SubsecondTime RobTimer::doIssue()
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
             have_unresolved_store = true;
 
-         if (inorder)
+         if (inorder || (uop->getMicroOp()->isVector() && !uop->isVirtuallyIssued()))
             // In-order: only issue from head of the ROB
             break;
       }
 
+      if (canIssue && uop->getMicroOp()->isVector() &&
+          uop->getMicroOp()->UopIdx() == 0) {
+#ifdef DEBUG_PERCYCLE
+        std::cerr << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
+            ", index = " << uop->getSequenceNumber() << '\n';
+#endif // DEBUG_PERCYCLE
+        for (uint64_t j = i+1; j < m_num_in_rob; ++j) {
+          RobEntry *subseq_entry = &rob.at(j);
+          DynamicMicroOp *subseq_uop = subseq_entry->uop;
+
+          if (subseq_uop->getMicroOp()->getInstruction()->getAddress() ==
+              uop->getMicroOp()->getInstruction()->getAddress()) {
+#ifdef DEBUG_PERCYCLE
+            std::cerr << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
+                ", index = " << subseq_uop->getSequenceNumber() << '\n';
+#endif // DEBUG_PERCYCLE
+            subseq_uop->setVirtuallyIssued();
+          } else {
+            break;
+          }
+        }
+      }
 
       if (m_rob_contention)
       {

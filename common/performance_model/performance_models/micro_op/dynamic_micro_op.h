@@ -68,6 +68,7 @@ class DynamicMicroOp
 
       // architecture-specific information to be defined in derived classes
 
+  bool is_virtually_issued;
 
    public:
 
@@ -154,6 +155,9 @@ class DynamicMicroOp
       void setForceLongLatencyLoad(bool forceLLL) { m_forceLongLatencyLoad = forceLLL; }
 
       SubsecondTime getPeriod() const { LOG_ASSERT_ERROR(m_period != SubsecondTime::Zero(), "MicroOp Period is == SubsecondTime::Zero()"); return m_period; }
+
+      void setVirtuallyIssued() { is_virtually_issued = true; }
+      bool isVirtuallyIssued() { return is_virtually_issued; }
 
 
       // More dynamic, architecture-dependent information to be defined by derived classes
