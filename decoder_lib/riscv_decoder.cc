@@ -1275,7 +1275,7 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
 	case rv_op_vmadc_vv          :
 	case rv_op_vsbc_vv           :
 	case rv_op_vmsbc_vv          :
-	case rv_op_vmerge_vv         :
+	case rv_op_vmerge_vvm        :
 	case rv_op_vmseq_vv          :
 	case rv_op_vmsne_vv          :
 	case rv_op_vmsltu_vv         :
@@ -1321,7 +1321,7 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
 	case rv_op_vmadc_vx          :
 	case rv_op_vsbc_vx           :
 	case rv_op_vmsbc_vx          :
-	case rv_op_vmerge_vx         :
+	case rv_op_vmerge_vxm        :
 	case rv_op_vmseq_vx          :
 	case rv_op_vmsne_vx          :
 	case rv_op_vmsltu_vx         :
@@ -1597,54 +1597,7 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
 
 bool RISCVDecoder::can_vec_squash (decoder_opcode opcd, const DecodedInst* ins)
 {
-  switch(opcd) {
-	case rv_op_vle8_v            :
-	case rv_op_vse8_v            :
-	case rv_op_vle16_v           :
-	case rv_op_vse16_v           :
-	case rv_op_vle32_v           :
-	case rv_op_vse32_v           :
-	case rv_op_vle64_v           :
-	case rv_op_vse64_v           :
-	case rv_op_vle8ff_v          :
-	case rv_op_vle16ff_v         :
-	case rv_op_vle32ff_v         :
-	case rv_op_vle64ff_v         :
-	case rv_op_vl1re8_v          :
-	case rv_op_vl1re16_v         :
-	case rv_op_vl1re32_v         :
-	case rv_op_vl1re64_v         :
-	case rv_op_vl2re8_v          :
-	case rv_op_vl2re16_v         :
-	case rv_op_vl2re32_v         :
-	case rv_op_vl2re64_v         :
-	case rv_op_vl4re8_v          :
-	case rv_op_vl4re16_v         :
-	case rv_op_vl4re32_v         :
-	case rv_op_vl4re64_v         :
-	case rv_op_vl8re8_v          :
-	case rv_op_vl8re16_v         :
-	case rv_op_vl8re32_v         :
-	case rv_op_vl8re64_v         :
-	case rv_op_vs1re8_v          :
-	case rv_op_vs1re16_v         :
-	case rv_op_vs1re32_v         :
-	case rv_op_vs1re64_v         :
-	case rv_op_vs2re8_v          :
-	case rv_op_vs2re16_v         :
-	case rv_op_vs2re32_v         :
-	case rv_op_vs2re64_v         :
-	case rv_op_vs4re8_v          :
-	case rv_op_vs4re16_v         :
-	case rv_op_vs4re32_v         :
-	case rv_op_vs4re64_v         :
-	case rv_op_vs8re8_v          :
-	case rv_op_vs8re16_v         :
-	case rv_op_vs8re32_v         :
-      return true;
-    default:
-      return false;
-  }
+  return ((RISCVDecodedInst *)ins)->can_vec_squash();
 }
 
 
@@ -1824,14 +1777,14 @@ bool RISCVDecodedInst::is_prefetch() const
 bool RISCVDecodedInst::is_serializing() const
 {
   bool res = false;
-  riscv::decode dec = this->rv8_dec;
-  switch (dec.op) {
-    // case rv_op_vsetvli:     /* VSETVLI Instruction */
-    // case rv_op_vsetvl:     /* VSETVLI Instruction */
-    // case rv_op_vsetivli:     /* VSETVLI Instruction */
-      res = true;
-      break;
-  }
+  // riscv::decode dec = this->rv8_dec;
+  // switch (dec.op) {
+  //   // case rv_op_vsetvli:     /* VSETVLI Instruction */
+  //   // case rv_op_vsetvl:     /* VSETVLI Instruction */
+  //   // case rv_op_vsetivli:     /* VSETVLI Instruction */
+  //     res = true;
+  //     break;
+  // }
   return res;
 }
 
@@ -1985,6 +1938,16 @@ bool RISCVDecodedInst::can_vec_squash () const
 	case rv_op_vs8re16_v         :
 	case rv_op_vs8re32_v         :
       return true;
+    case rv_op_vlse8_v  :
+    case rv_op_vlse16_v :
+    case rv_op_vlse32_v :
+    case rv_op_vlse64_v :
+    case rv_op_vsse8_v  :
+    case rv_op_vsse16_v :
+    case rv_op_vsse32_v :
+    case rv_op_vsse64_v : {
+      return (this->rv8_dec.rs2 == rv_ireg_zero);
+    }
     default:
       return false;
   }

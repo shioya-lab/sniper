@@ -262,10 +262,6 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
          // }
          const std::vector<const MicroOp*> *uops = dynins->instruction->getMicroOps();
          const MicroOp* uop0 = (*uops)[0];
-         bool prohibitVecSquash = false;
-         if (uop0->isVector()) {
-           prohibitVecSquash = !uop0->canVecSquash();
-         }
 
          // IntPtr cache_line = info.addr & ~63; // FIXME: hard-coded cache line size
 
@@ -285,7 +281,7 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
                // for (auto c : m_cache_lines_read) {
                //   fprintf (stderr, "cache line list = %08lx\n", c);
                // }
-               if (!prohibitVecSquash &&
+               if (uop0->canVecSquash() &&
                    std::find(m_cache_lines_read.begin(), m_cache_lines_read.end(), cache_line) != m_cache_lines_read.end())
                {
                   // fprintf (stderr, "cache line merged. Addr = %08lx, cache_line = %08lx\n",
