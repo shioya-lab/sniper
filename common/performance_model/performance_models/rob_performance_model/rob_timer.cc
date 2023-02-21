@@ -975,7 +975,7 @@ SubsecondTime RobTimer::doIssue()
          head_of_queue = false;     // Subsequent instructions are not at the head of the ROB
 
          if (uop->getMicroOp()->isVector() && vector_inorder && !uop->isVirtuallyIssued()) {
-           vector_someone_cant_be_issued = true; // Can continue
+           vector_someone_cant_be_issued = true; // Vector can't continue
          }
 
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
