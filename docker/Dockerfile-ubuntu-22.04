@@ -1,8 +1,13 @@
-FROM ubuntu:16.04
+FROM ubuntu:22.04
+# Necessary for tzdata
+ENV DEBIAN_FRONTEND=noninteractive
+ARG TZ_ARG=UTC
+ENV TZ=${TZ_ARG}
 # Add i386 support for support for Pin
 RUN dpkg --add-architecture i386
 RUN apt-get update && apt-get install -y \
-    python \
+    python2 \
+    python3 \
     screen \
     tmux \
     binutils \
@@ -21,7 +26,6 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     zlib1g-dev \
     libbz2-dev \
-    g++-5 \
  && rm -rf /var/lib/apt/lists/*
 # For building RISC-V Tools
 RUN apt-get update && apt-get install -y \
@@ -51,5 +55,6 @@ RUN apt-get update && apt-get install -y \
     gdb \
     gfortran \
     git \
+    g++-9 \
     vim \
  && rm -rf /var/lib/apt/lists/*
