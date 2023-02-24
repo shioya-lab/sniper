@@ -1,3 +1,4 @@
+#include "config.hpp"
 #include "dynamic_micro_op.h"
 #include "log.h"
 #include "core_model.h"
@@ -6,6 +7,7 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
    : m_uop(uop)
    , m_core_model(core_model)
    , m_period(period)
+   , m_vector_issue_times_max(Sim()->getCfg()->getInt("general/vlen") / Sim()->getCfg()->getInt("general/dlen"))
 {
    LOG_ASSERT_ERROR(period != SubsecondTime::Zero(), "MicroOp Period is == SubsecondTime::Zero()");
 
@@ -39,6 +41,9 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
 
    this->m_mem_access_merge = false;
    this->is_virtually_issued = false;
+
+   this->m_vector_issue_times = 0;
+
 }
 
 DynamicMicroOp::~DynamicMicroOp()
