@@ -71,7 +71,6 @@ class DynamicMicroOp
       bool is_virtually_issued;
 
       const uint8_t m_vector_issue_times_max;
-      uint8_t       m_vector_issue_times;
 
    public:
 
@@ -162,9 +161,7 @@ class DynamicMicroOp
       void setVirtuallyIssued() { is_virtually_issued = true; }
       bool isVirtuallyIssued() { return is_virtually_issued; }
 
-      uint8_t getVectorIssueTimes() { return m_vector_issue_times; }
-      void    incrVectorIssueTimes() { m_vector_issue_times = m_vector_issue_times + 1; }
-      bool    isVectorAllIssued() { return m_vector_issue_times + 1 >= m_vector_issue_times_max; }
+      uint8_t getVectorIssueMax() { return m_vector_issue_times_max; }
 
       // More dynamic, architecture-dependent information to be defined by derived classes
       virtual const char* getType() const = 0; // Make this class pure virtual

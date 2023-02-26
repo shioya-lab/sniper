@@ -658,8 +658,14 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       }
    }
 
+   uint64_t additional_latency = uop.getVectorIssueMax() - 1;
+
    ComponentTime cycle_depend = now + uop.getExecLatency();        // When result is available for dependent instructions
-   SubsecondTime cycle_done = cycle_depend + 1ul;                  // When the instruction can be committed
+   ComponentTime cycle_done_raw = cycle_depend;
+   if (uop.getMicroOp()->isVector()) {
+     cycle_done_raw.addCycleLatency(additional_latency);
+   }
+   SubsecondTime cycle_done = cycle_done_raw + 1ul;  // When the instruction can be committed
 
    if (uop.getMicroOp()->isLoad())
    {
