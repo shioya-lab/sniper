@@ -26,6 +26,20 @@ class DynamicMicroOpBoomV1 : public DynamicMicroOp
       };
       uop_alu_t uop_alu;
 
+      enum uop_vecalu_t {
+         UOP_VECALU_NONE = 0,
+         UOP_VECALU_TRIG,
+         UOP_VECALU_SIZE,
+      };
+      uop_vecalu_t uop_vecalu;
+
+      enum uop_vecmem_t {
+         UOP_VECMEM_NONE = 0,
+         UOP_VECMEM_TRIG,
+         UOP_VECMEM_SIZE,
+      };
+      uop_vecmem_t uop_vecmem;
+
       enum uop_bypass_t {
          UOP_BYPASS_NONE,
          UOP_BYPASS_LOAD_FP,

@@ -15,6 +15,9 @@ RobContentionBoomV1::RobContentionBoomV1(const Core *core, const CoreModel *core
    , m_cache_block_mask(~(core->getMemoryManager()->getCacheBlockSize() - 1))
    , m_now(core->getDvfsDomain())
    , alu_used_until(DynamicMicroOpBoomV1::UOP_ALU_SIZE, SubsecondTime::Zero())
+   , vecalu_used_until(DynamicMicroOpBoomV1::UOP_ALU_SIZE, SubsecondTime::Zero())
+   , vecmem_used_until(DynamicMicroOpBoomV1::UOP_ALU_SIZE, SubsecondTime::Zero())
+   , m_vector_issue_times_max(Sim()->getCfg()->getInt("general/vlen") / Sim()->getCfg()->getInt("general/dlen"))
 {
 }
 
@@ -48,6 +51,10 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
          ports_generic012++;
    }
    else if (uop_port == DynamicMicroOpBoomV1::UOP_PORT3) {
+     // VectorMEM contension
+     if (ports_vecmem == 0 && vecmem_used_until > m_now) {
+       return false;
+     }
      if (uop.getMicroOp()->canVecSquash()) {
        if (ports_vecmem >= 2) {
          return false;
@@ -63,6 +70,10 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
      }
    }
    else if (uop_port == DynamicMicroOpBoomV1::UOP_PORT4) {
+     // VectorALU contension
+     if (ports_vecarith == 0 && vecalu_used_until > m_now) {
+       return false;
+     }
      if (ports_vecarith >= 2) {
        return false;
      } else {
@@ -89,6 +100,8 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
          return false;
    }
 
+
+
    return true;
 }
 
@@ -98,6 +111,20 @@ void RobContentionBoomV1::doIssue(DynamicMicroOp &uop)
    DynamicMicroOpBoomV1::uop_alu_t alu = core_uop_info->getAlu();
    if (alu)
       alu_used_until[alu] = m_now + m_core_model->getAluLatency(uop.getMicroOp());
+
+   if (uop.getMicroOp()->isVector() && (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
+     if (uop.getMicroOp()->canVecSquash()) {
+       vecmem_used_until = m_now + m_vector_issue_times_max;
+     } else {
+       vecmem_used_until = m_now;
+     }
+   }
+
+   if (uop.getMicroOp()->isVector() && !(uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
+     vecalu_used_until = m_now + m_vector_issue_times_max;
+   }
+
+
 }
 
 bool RobContentionBoomV1::noMore()

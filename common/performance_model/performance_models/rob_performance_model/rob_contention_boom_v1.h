@@ -25,6 +25,9 @@ class RobContentionBoomV1 : public RobContention {
       int ports_generic012;
 
       std::vector<SubsecondTime> alu_used_until;
+      SubsecondTime vecalu_used_until;
+      SubsecondTime vecmem_used_until;
+      const uint8_t m_vector_issue_times_max;
 
    public:
       RobContentionBoomV1(const Core *core, const CoreModel *core_model);

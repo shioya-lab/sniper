@@ -659,6 +659,10 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    }
 
    uint64_t additional_latency = uop.getVectorIssueMax() - 1;
+   if (!uop.getMicroOp()->canVecSquash()) {
+     // Gather / Scatter
+     additional_latency = 0;
+   }
 
    ComponentTime cycle_depend = now + uop.getExecLatency();        // When result is available for dependent instructions
    ComponentTime cycle_done_raw = cycle_depend;
