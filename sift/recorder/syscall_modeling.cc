@@ -66,7 +66,7 @@ VOID emulateSyscallFunc(THREADID threadid, CONTEXT *ctxt)
       args[3] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_GSI);
       args[4] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_GDI);
       args[5] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_GBP);
-   #elif defined(TARGET_INTEL64)
+   #elif defined(TARGET_INTEL64) || defined(TARGET_IA32E)
       args[0] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_GDI);
       args[1] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_GSI);
       args[2] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_GDX);
@@ -74,7 +74,7 @@ VOID emulateSyscallFunc(THREADID threadid, CONTEXT *ctxt)
       args[4] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_R8);
       args[5] = PIN_GetContextReg(ctxt, LEVEL_BASE::REG_R9);
    #else
-      #error "Unknown target architecture, require either TARGET_IA32 or TARGET_INTEL64"
+      #error "Unknown target architecture, require either TARGET_IA32 or TARGET_INTEL64 | TARGET_IA32E"
    #endif
 
    if (thread_data[threadid].icount_reported > 0)
@@ -103,16 +103,39 @@ VOID emulateSyscallFunc(THREADID threadid, CONTEXT *ctxt)
          // Handle SYS_clone child tid capture for proper pthread_join emulation.
          // When the CLONE_CHILD_CLEARTID option is enabled, remember its child_tidptr and
          // then when the thread ends, write 0 to the tid mutex and futex_wake it
+         case SYS_clone3_sniper:
+         {
+            if (args[0] && CLONE_THREAD)
+            {
+               struct clone_args_sniper* clone3_args = (struct clone_args_sniper*)args[0];
+               ADDRINT tidptr = clone3_args->parent_tid;
+               PIN_GetLock(&new_threadid_lock, threadid);
+               tidptrs.push_back(tidptr);
+               PIN_ReleaseLock(&new_threadid_lock);
+               /* New thread */
+               thread_data[threadid].output->NewThread();
+            }
+            else
+            {
+               /* New process */
+               // Nothing to do there, handled in fork() -> to check SYS_clone3 is new
+            }
+            break;
+         }
          case SYS_clone:
          {
             if (args[0] & CLONE_THREAD)
             {
                // Store the thread's tid ptr for later use
+
                #if defined(TARGET_IA32)
                   ADDRINT tidptr = args[2];
-               #elif defined(TARGET_INTEL64)
+               #elif defined(TARGET_INTEL64) || defined(TARGET_IA32E)
                   ADDRINT tidptr = args[3];
+               #else
+                  #error "Unknown target architecture, require either TARGET_IA32 or TARGET_INTEL64 | TARGET_IA32E"
                #endif
+
                PIN_GetLock(&new_threadid_lock, threadid);
                tidptrs.push_back(tidptr);
                PIN_ReleaseLock(&new_threadid_lock);

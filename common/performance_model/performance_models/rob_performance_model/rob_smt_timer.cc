@@ -1,5 +1,5 @@
 /*
- * This file is covered under the Interval Academic License, see LICENCE.interval
+ * This file is covered under the Interval Academic License, see LICENCE.academic
  */
 
 #include "rob_smt_timer.h"
@@ -392,7 +392,7 @@ void RobSmtTimer::setDependencies(smtthread_id_t thread_id, RobEntry *entry)
    }
 
    // If there are any dependencies to be removed, do this after iterating over them (don't mess with the list we're reading)
-   LOG_ASSERT_ERROR(num_dtr < sizeof(deps_to_remove)/sizeof(8), "Have to remove more dependencies than I expected");
+   LOG_ASSERT_ERROR(num_dtr < sizeof(deps_to_remove)/sizeof(deps_to_remove[0]), "Have to remove more dependencies than I expected");
    for(uint64_t i = 0; i < num_dtr; ++i)
       entry->uop->removeDependency(deps_to_remove[i]);
    if (entry->uop->getDependenciesLength() == 0)

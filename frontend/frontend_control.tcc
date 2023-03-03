@@ -11,7 +11,7 @@ thread_data_t* FrontendControl<T>::m_thread_data;
 template <typename T>
 FrontendOptions<T>* FrontendControl<T>::m_options;
 template <typename T>
-std::shared_ptr<FrontendSyscallModel<T>> FrontendControl<T>::m_sysmodel;
+rombauts::shared_ptr<FrontendSyscallModel<T>> FrontendControl<T>::m_sysmodel;
 
 template <typename T>
 void FrontendControl <T>::setInstrumentationMode(Sift::Mode mode)
@@ -176,7 +176,10 @@ void FrontendControl <T>::closeFile(threadid_t threadid)
    Sift::Writer *output = m_thread_data[threadid].output;
    m_thread_data[threadid].output = NULL;
    // Thread will stop writing to output from this point on
-           std::cerr << "[SNIPER_FRONTEND] Invoking End" << std::endl;
+   if (m_options->get_verbose())
+   {
+      std::cerr << "[SNIPER_FRONTEND] Invoking End" << std::endl;
+   }
 
    output->End();
    delete output;
