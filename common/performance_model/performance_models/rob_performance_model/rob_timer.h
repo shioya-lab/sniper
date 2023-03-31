@@ -45,6 +45,8 @@ private:
          SubsecondTime addressReadyMax;
          SubsecondTime issued;
          SubsecondTime done;
+
+         bool kanata_registered;  // Indicate Kanata Format Instruction Registered
    };
 
    const uint64_t dispatchWidth;
@@ -70,6 +72,9 @@ private:
 
    bool m_roi_started; // due to record roi_start time
    bool m_enable_konata;
+   SubsecondTime m_last_kanata_time;
+
+   FILE *m_kanata_fp;
 
    // When getMemAccessMerge=true, use this value
    uint64_t m_previous_latency;
