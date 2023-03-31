@@ -56,6 +56,7 @@ private:
    const bool m_no_address_disambiguation;
    const bool inorder;
    const bool vector_inorder;
+   const bool v_to_s_fence;
    const bool m_gather_scatter_merge;
    uint64_t m_vsetvl_producer;
 

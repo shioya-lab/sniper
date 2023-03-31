@@ -41,6 +41,7 @@ RobTimer::RobTimer(
       , m_no_address_disambiguation(!Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/address_disambiguation", core->getId()))
       , inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/in_order", core->getId()))
       , vector_inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/vector_inorder", core->getId()))
+      , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
       , m_core(core)
       , rob(window_size + 255)
@@ -778,7 +779,9 @@ SubsecondTime RobTimer::doIssue()
       m_rob_contention->initCycle(now);
 
    int64_t last_vec_issued_idx = -1;
-   int64_t issued_vec_inst = 0;
+   int64_t issued_vec_mem = 0;
+   bool inhead_vector_exisetd = false;
+   bool v_to_s_fenced = false;
    UInt64  l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
    UInt64  l1d_num_banks  = Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks");
 
@@ -880,11 +883,11 @@ SubsecondTime RobTimer::doIssue()
           uop->getMicroOp()->isVector()) {
         if (m_gather_scatter_merge) {
           if (vector_inorder) {
-            if (issued_vec_inst < 8 &&
-                (issued_vec_inst == 0 ||
+            if (issued_vec_mem < 8 &&
+                (issued_vec_mem == 0 ||
                  static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
               last_vec_issued_idx = i;
-              issued_vec_inst++;
+              issued_vec_mem++;
               if (vector_someone_cant_be_issued) {
                 canIssue = false;
               }
@@ -895,13 +898,13 @@ SubsecondTime RobTimer::doIssue()
             // fprintf (stderr, "Vector can Issue? (%s) %s : ",
             //          canIssue ? "Yes" : "No",
             //          uop->getMicroOp()->toShortString().c_str());
-            if (issued_vec_inst < 8) {
-              issued_vec_inst++;
+            if (issued_vec_mem < 8) {
+              issued_vec_mem++;
               // canIssue = true;
-              // fprintf (stderr, "Enough entry slot: %s (%ld)\n", canIssue ? "Yes" : "No", issued_vec_inst);
+              // fprintf (stderr, "Enough entry slot: %s (%ld)\n", canIssue ? "Yes" : "No", issued_vec_mem);
               canIssue = canIssue; // Keep can issue
             } else {
-              // fprintf (stderr, "Slot fulled: No %ld\n", issued_vec_inst);
+              // fprintf (stderr, "Slot fulled: No %ld\n", issued_vec_mem);
               canIssue = false;
             }
           }
@@ -945,7 +948,20 @@ SubsecondTime RobTimer::doIssue()
           }
       } else if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
           canIssue = false;
-        }
+      }
+
+      // Vector to Scalar, Fence mode, Scalar can't continue to isssue.
+      inhead_vector_exisetd |= uop->getMicroOp()->isVector();
+      if (v_to_s_fence & inhead_vector_exisetd & !uop->getMicroOp()->isVector()) {
+#ifdef DEBUG_PERCYCLE
+        fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08x, %s\n",
+                 uop->getSequenceNumber(),
+                 uop->getAddress().address,
+                 uop->getMicroOp()->toShortString().c_str());
+#endif // DEBUG_PERCYCLE
+        canIssue = false;
+        v_to_s_fenced = true;
+      }
 
       if (canIssue)
       {
@@ -991,7 +1007,7 @@ SubsecondTime RobTimer::doIssue()
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
             have_unresolved_store = true;
 
-         if (inorder)
+         if (inorder || v_to_s_fenced)
             // In-order: only issue from head of the ROB
             break;
       }
