@@ -912,7 +912,12 @@ SubsecondTime RobTimer::doIssue()
 
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
-        if (m_gather_scatter_merge) {
+        // fprintf (stderr, "m_gather_scatter_merge = %d\n", m_gather_scatter_merge);
+        if (m_gather_scatter_merge &&
+            uop->getMicroOp()->isVector() &&
+            !uop->getMicroOp()->canVecSquash()) {
+          // Gather Scatter
+          // fprintf (stderr, "Target instruction : %s\n", uop->getMicroOp()->toShortString().c_str());
           if (vector_inorder) {
             if (issued_vec_mem < 8 &&
                 (issued_vec_mem == 0 ||
@@ -973,10 +978,10 @@ SubsecondTime RobTimer::doIssue()
 
           bank_info[bank_index] = banked_cache_line;
         } else {   // Gather Scatter Merge doesn't happen
-            if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
-              canIssue = false;
-            }
+          if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
+            canIssue = false;
           }
+        }
       } else if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
           canIssue = false;
       }

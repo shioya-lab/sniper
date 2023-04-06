@@ -62,7 +62,8 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
          ports_vecmem++;
        }
      } else {
-       if (ports_vecmem >= 4) {
+       // Gather&Scatter
+       if (ports_vecmem >= Sim()->getCfg()->getInt("general/vlen") / 64) {
          return false;
        } else {
          ports_vecmem++;
