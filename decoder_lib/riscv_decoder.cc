@@ -247,6 +247,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vluxei8_v ||
              dec->op == rv_op_vloxei8_v ||
              dec->op == rv_op_vsuxei8_v ||
+             dec->op == rv_op_vsoxei8_v ||
              dec->op == rv_op_vl1re8_v ||
              dec->op == rv_op_vl2re8_v ||
              dec->op == rv_op_vl4re8_v ||
@@ -264,6 +265,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vluxei16_v ||
              dec->op == rv_op_vloxei16_v ||
              dec->op == rv_op_vsuxei16_v ||
+             dec->op == rv_op_vsoxei16_v ||
              dec->op == rv_op_vl1re16_v ||
              dec->op == rv_op_vl2re16_v ||
              dec->op == rv_op_vl4re16_v ||
@@ -282,6 +284,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vluxei32_v ||
              dec->op == rv_op_vloxei32_v ||
              dec->op == rv_op_vsuxei32_v ||
+             dec->op == rv_op_vsoxei32_v ||
              dec->op == rv_op_vl1re32_v ||
              dec->op == rv_op_vl2re32_v ||
              dec->op == rv_op_vl4re32_v ||
@@ -302,6 +305,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
              dec->op == rv_op_vluxei64_v ||
              dec->op == rv_op_vloxei64_v ||
              dec->op == rv_op_vsuxei64_v ||
+             dec->op == rv_op_vsoxei64_v ||
              dec->op == rv_op_vl1re64_v ||
              dec->op == rv_op_vl2re64_v ||
              dec->op == rv_op_vl4re64_v ||
@@ -546,6 +550,7 @@ unsigned int RISCVDecoder::size_mem_op (const DecodedInst * inst, unsigned int m
     case rv_op_vluxei8_v :
     case rv_op_vloxei8_v :
     case rv_op_vsuxei8_v :
+    case rv_op_vsoxei8_v :
     case rv_op_vl1re8_v  :
     case rv_op_vl2re8_v  :
     case rv_op_vl4re8_v  :
@@ -564,6 +569,7 @@ unsigned int RISCVDecoder::size_mem_op (const DecodedInst * inst, unsigned int m
     case rv_op_vluxei16_v :
     case rv_op_vloxei16_v :
     case rv_op_vsuxei16_v :
+    case rv_op_vsoxei16_v :
     case rv_op_vl1re16_v  :
     case rv_op_vl2re16_v  :
     case rv_op_vl4re16_v  :
@@ -583,6 +589,7 @@ unsigned int RISCVDecoder::size_mem_op (const DecodedInst * inst, unsigned int m
     case rv_op_vluxei32_v   :
     case rv_op_vloxei32_v   :
     case rv_op_vsuxei32_v   :
+    case rv_op_vsoxei32_v   :
     case rv_op_vl1re32_v    :
     case rv_op_vl2re32_v    :
     case rv_op_vl4re32_v    :
@@ -604,6 +611,7 @@ unsigned int RISCVDecoder::size_mem_op (const DecodedInst * inst, unsigned int m
     case rv_op_vluxei64_v :
     case rv_op_vloxei64_v :
     case rv_op_vsuxei64_v :
+    case rv_op_vsoxei64_v :
     case rv_op_vl1re64_v  :
     case rv_op_vl2re64_v  :
     case rv_op_vl4re64_v  :
@@ -750,12 +758,15 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
     case rv_op_vluxei8_v :
     case rv_op_vloxei8_v :
     case rv_op_vsuxei8_v :
+    case rv_op_vsoxei8_v :
     case rv_op_vluxei16_v :
     case rv_op_vloxei16_v :
     case rv_op_vsuxei16_v :
+    case rv_op_vsoxei16_v :
     case rv_op_vluxei32_v :
     case rv_op_vloxei32_v :
     case rv_op_vsuxei32_v :
+    case rv_op_vsoxei32_v :
     case rv_op_vlseg4e32_v :
     case rv_op_vlseg8e32_v :
     case rv_op_vsseg4e32_v :
@@ -763,6 +774,7 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
     case rv_op_vluxei64_v :
     case rv_op_vloxei64_v :
     case rv_op_vsuxei64_v :
+    case rv_op_vsoxei64_v :
       num_exec_uops = 0;
       break;
   }
