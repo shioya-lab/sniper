@@ -314,13 +314,15 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       setVSETDependencies (*entry->uop, lowestValidSequenceNumber);
 
-      if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad())
+      if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad() &&
+          !entry->uop->getMicroOp()->isVector()) // In Vector, remove dependency for forwarding not support.
       {
          for(unsigned int i = 0; i < entry->uop->getDependenciesLength(); ++i)
          {
             RobEntry *prodEntry = this->findEntryBySequenceNumber(entry->uop->getDependency(i));
             // If we depend on a store
-            if (prodEntry->uop->getMicroOp()->isStore())
+            if (prodEntry->uop->getMicroOp()->isStore() &&
+                !prodEntry->uop->getMicroOp()->isVector())  // In Vector, remove dependency for forwarding not support.
             {
                // Remove dependency on the store (which won't execute until it reaches the front of the ROB)
                entry->uop->removeDependency(entry->uop->getDependency(i));
@@ -913,8 +915,7 @@ SubsecondTime RobTimer::doIssue()
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
         // fprintf (stderr, "m_gather_scatter_merge = %d\n", m_gather_scatter_merge);
-        if (m_gather_scatter_merge &&
-            uop->getMicroOp()->isVector() &&
+        if (uop->getMicroOp()->isVector() &&
             !uop->getMicroOp()->canVecSquash()) {
           // Gather Scatter
           // fprintf (stderr, "Target instruction : %s\n", uop->getMicroOp()->toShortString().c_str());

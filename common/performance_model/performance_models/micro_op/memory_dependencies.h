@@ -4,14 +4,20 @@
 #include "fixed_types.h"
 #include "circular_queue.h"
 #include "dynamic_micro_op.h"
+#include "config.hpp"
+#include "instruction.h"
 
 class MemoryDependencies
 {
    private:
-      struct Producer
+  bool m_gather_scatter_merge;
+  UInt64 m_l1d_block_size;
+
+  struct Producer
       {
          uint64_t seqnr;
          uint64_t address;
+         uint64_t size;
       };
       // List of all active writers, ordered by sequence number
       // This makes it easy to remove old entries, just compare the front of the queue with lowestValidSequenceNumber
@@ -24,8 +30,8 @@ class MemoryDependencies
       CircularQueue<Producer> producers;
       uint64_t membar;
 
-      void add(uint64_t sequenceNumber, uint64_t address);
-      uint64_t find(uint64_t address);
+      void add(uint64_t sequenceNumber, uint64_t address, uint64_t size);
+      uint64_t find(uint64_t address, uint64_t size);
       void clean(uint64_t lowestValidSequenceNumber);
 
    public:
