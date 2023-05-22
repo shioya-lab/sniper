@@ -44,7 +44,7 @@ RobTimer::RobTimer(
       , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
       , m_core(core)
-      , rob(window_size + 255)
+      , rob(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/rob_size", core->getId()))
       , m_num_in_rob(0)
       , m_rs_entries_used(0)
       , m_rob_contention(
@@ -180,12 +180,25 @@ RobTimer::RobTimer(
       }
    }
 
+   registerStatsMetric("rob_timer", core->getId(), "VtoS_RdRequests", &m_VtoS_RdRequests);
+   registerStatsMetric("rob_timer", core->getId(), "VtoS_WrRequests", &m_VtoS_WrRequests);
+
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, RobTimer::hookRoiBegin, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
    m_roi_started = false;
    m_enable_konata = false;
    m_last_kanata_time = SubsecondTime::Zero();
    m_vsetvl_producer = 0;
+
+   m_alu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/alu_window_size", core->getId());
+   m_lsu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/lsu_window_size", core->getId());
+   m_fpu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/fpu_window_size", core->getId());
+   m_vec_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/vec_window_size", core->getId());
+
+   m_alu_num_in_rob = 0;
+   m_lsu_num_in_rob = 0;
+   m_fpu_num_in_rob = 0;
+   m_vec_num_in_rob = 0;
 
    m_kanata_fp = fopen("kanata_trace.log", "w");
    fprintf (m_kanata_fp, "Kanata\t0004\n");
@@ -493,6 +506,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
       while(m_num_in_rob < windowSize)
       {
+         if (m_alu_num_in_rob > m_alu_window_size ||
+             m_lsu_num_in_rob > m_lsu_window_size ||
+             m_fpu_num_in_rob > m_fpu_window_size ||
+             m_vec_num_in_rob > m_vec_window_size) {
+            break;
+         }
+
          LOG_ASSERT_ERROR(m_num_in_rob < rob.size(), "Expected sufficient uops for dispatching in pre-ROB buffer, but didn't find them");
          RobEntry *entry = &rob.at(m_num_in_rob);
          DynamicMicroOp &uop = *entry->uop;
@@ -546,6 +566,27 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          entry->dispatched = now;
          ++m_num_in_rob;
          ++m_rs_entries_used;
+
+         switch (uop.getMicroOp()->getSubtype()) {
+            case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
+            case MicroOp::UOP_SUBTYPE_FP_MULDIV :
+               m_fpu_num_in_rob++;
+               break;
+            case MicroOp::UOP_SUBTYPE_LOAD :
+            case MicroOp::UOP_SUBTYPE_STORE :
+            case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
+               m_lsu_num_in_rob ++;
+               break;
+            case MicroOp::UOP_SUBTYPE_GENERIC :
+            case MicroOp::UOP_SUBTYPE_BRANCH :
+               m_alu_num_in_rob++;
+               break;
+            case MicroOp::UOP_SUBTYPE_VEC_ARITH :
+               m_vec_num_in_rob++;
+               break;
+            default :
+               LOG_ASSERT_ERROR(false, "Not expected to this point");
+         }
 
          if (m_enable_konata) {
            DynamicMicroOp *uop = entry->uop;
@@ -918,7 +959,7 @@ SubsecondTime RobTimer::doIssue()
         if (uop->getMicroOp()->isVector() &&
             !uop->getMicroOp()->canVecSquash()) {
           // Gather Scatter
-          // fprintf (stderr, "Target instruction : %s\n", uop->getMicroOp()->toShortString().c_str());
+
           if (vector_inorder) {
             if (issued_vec_mem < 8 &&
                 (issued_vec_mem == 0 ||
@@ -946,6 +987,16 @@ SubsecondTime RobTimer::doIssue()
             }
           }
 
+          // If Gather/Scatter Merge NOT, number of Vector Store request into Scalar LoadQ is,
+          // same as # of request
+          if (!m_gather_scatter_merge && canIssue) {
+            if (uop->getMicroOp()->isLoad()) {
+              m_VtoS_RdRequests ++;
+            } else {
+              m_VtoS_WrRequests ++;
+            }
+          }
+
           IntPtr cache_line = uop->getAddress().address & ~(l1d_block_size-1);
           IntPtr banked_cache_line = cache_line & ~(l1d_block_size * l1d_num_banks - 1);
           IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
@@ -958,6 +1009,13 @@ SubsecondTime RobTimer::doIssue()
                      uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
 #endif // DEBUG_PERCYCLE
             bank_info[bank_index] = banked_cache_line;
+            if (m_gather_scatter_merge && canIssue) {
+              if (uop->getMicroOp()->isLoad()) {
+                m_VtoS_RdRequests ++;
+              } else {
+                m_VtoS_WrRequests ++;
+              }
+            }
           } else if (bank_info[bank_index] == banked_cache_line) {
             // Same Bank Access and Can be Merge:
             uop->setMemAccessMerge();
@@ -982,6 +1040,13 @@ SubsecondTime RobTimer::doIssue()
           if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
             canIssue = false;
           }
+          if (canIssue) {
+            if (uop->getMicroOp()->isLoad()) {
+              m_VtoS_RdRequests ++;
+            } else {
+              m_VtoS_WrRequests ++;
+            }
+          }
         }
       } else if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
           canIssue = false;
@@ -991,7 +1056,7 @@ SubsecondTime RobTimer::doIssue()
       inhead_vector_exisetd |= uop->getMicroOp()->isVector();
       if (v_to_s_fence & inhead_vector_exisetd & !uop->getMicroOp()->isVector()) {
 #ifdef DEBUG_PERCYCLE
-        fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08x, %s\n",
+        fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
                  uop->getSequenceNumber(),
                  uop->getAddress().address,
                  uop->getMicroOp()->toShortString().c_str());
@@ -1182,6 +1247,27 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (m_enable_konata && entry->kanata_registered) {
         fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", entry->uop->getSequenceNumber(), 0, "Cm");
         fprintf(m_kanata_fp, "R\t%ld\t%ld\t%d\n", entry->uop->getSequenceNumber(), entry->uop->getSequenceNumber(), 0);
+      }
+
+      switch (entry->uop->getMicroOp()->getSubtype()) {
+         case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
+         case MicroOp::UOP_SUBTYPE_FP_MULDIV :
+            m_fpu_num_in_rob--;
+            break;
+         case MicroOp::UOP_SUBTYPE_LOAD :
+         case MicroOp::UOP_SUBTYPE_STORE :
+         case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
+            m_lsu_num_in_rob--;
+            break;
+         case MicroOp::UOP_SUBTYPE_GENERIC :
+         case MicroOp::UOP_SUBTYPE_BRANCH :
+            m_alu_num_in_rob--;
+            break;
+         case MicroOp::UOP_SUBTYPE_VEC_ARITH :
+           m_vec_num_in_rob--;
+            break;
+         default :
+           LOG_ASSERT_ERROR(false, "Not expected to this point");
       }
 
       entry->free();

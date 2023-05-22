@@ -128,6 +128,19 @@ private:
    uint64_t m_stores_count;
    SubsecondTime m_stores_latency;
 
+   uint64_t m_VtoS_RdRequests;
+   uint64_t m_VtoS_WrRequests;
+
+   uint64_t m_alu_num_in_rob;
+   uint64_t m_lsu_num_in_rob;
+   uint64_t m_fpu_num_in_rob;
+   uint64_t m_vec_num_in_rob;
+
+   uint64_t m_alu_window_size;
+   uint64_t m_lsu_window_size;
+   uint64_t m_fpu_window_size;
+   uint64_t m_vec_window_size;
+
    uint64_t m_totalProducerInsDistance;
    uint64_t m_totalConsumers;
    std::vector<uint64_t> m_producerInsDistance;
