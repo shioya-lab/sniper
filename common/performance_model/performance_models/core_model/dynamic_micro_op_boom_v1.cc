@@ -87,6 +87,9 @@ DynamicMicroOpBoomV1::uop_alu_t DynamicMicroOpBoomV1::getAlu(const MicroOp *uop)
            case rv_op_vdiv_vx:
            case rv_op_vremu_vx:
            case rv_op_vrem_vx:
+           case rv_op_vfdiv_vv:
+           case rv_op_vfdiv_vf:
+           case rv_op_vfsqrt_v:
                return UOP_ALU_TRIG;
             default:
                return UOP_ALU_NONE;

@@ -81,8 +81,12 @@ unsigned int CoreModelBoomV1::getAluLatency(const MicroOp *uop) const
 	case rv_op_vdiv_vx:
 	case rv_op_vremu_vx:
 	case rv_op_vrem_vx:
-	case rv_op_vfsqrt_v:
       return 32;     // TODO: Latency of div operations need to be more accurately determined
+	case rv_op_vfdiv_vv  :
+	case rv_op_vfdiv_vf  :
+	case rv_op_vfrdiv_vf :
+	case rv_op_vfsqrt_v  :
+      return 12;
     default:
       return getInstructionLatency(uop);
       // LOG_PRINT_ERROR("Don't know the ALU latency for this MicroOp.");
