@@ -324,7 +324,8 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
                LOG_ASSERT_ERROR(m_current_uops[store_index]->getMicroOp()->isStore(),
                                 "Expected uop %d to be a store. [%d|%s]", store_index, m_current_uops[store_index]->getMicroOp()->getType(), m_current_uops[store_index]->getMicroOp()->toString().c_str());
 
-               if (std::find(m_cache_lines_written.begin(), m_cache_lines_written.end(), cache_line) != m_cache_lines_written.end())
+               if (uop0->canVecSquash() &&
+                   std::find(m_cache_lines_written.begin(), m_cache_lines_written.end(), cache_line) != m_cache_lines_written.end())
                {
                  // fprintf (stderr, "Write Do Squashing Activated\n");
                   m_current_uops[store_index]->squash(&m_current_uops);
