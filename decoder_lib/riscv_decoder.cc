@@ -682,6 +682,10 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
 	case rv_op_sb        :                    	/* Store Byte */
 	case rv_op_sh        :                    	/* Store Half */
 	case rv_op_sw        :                    	/* Store Word */
+	case rv_op_flw       :                     	/* Load Word */
+    case rv_op_fld       :                     	/* Load Double */
+	case rv_op_fsd       :                    	/* Store Double */
+	case rv_op_fsw       :                    	/* Store Word */
 	case rv_op_c_fld     :
 	case rv_op_c_lw      :
 	case rv_op_c_flw     :
@@ -1509,7 +1513,7 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
 	case rv_op_vmfle_vx          :
 	case rv_op_vmflt_vx          :
 	case rv_op_vmfne_vx          :
-	case rv_op_vfdiv_vx          :
+	case rv_op_vfdiv_vv          :
 	case rv_op_vfcvt_xu_f_v      :
 	case rv_op_vfcvt_x_f_v       :
 	case rv_op_vfcvt_f_xu_v      :
@@ -1532,7 +1536,6 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
 	case rv_op_vfncvt_rtz_xu_f_w :
 	case rv_op_vfncvt_rtz_x_f_w  :
 	case rv_op_vfmul_vv          :
-	case rv_op_vfrsub_vv         :
 	case rv_op_vfmadd_vv         :
 	case rv_op_vfnmadd_vv        :
 	case rv_op_vfmsub_vv         :
