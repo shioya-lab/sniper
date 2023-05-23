@@ -506,16 +506,34 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
       while(m_num_in_rob < windowSize)
       {
-         if (m_alu_num_in_rob > m_alu_window_size ||
-             m_lsu_num_in_rob > m_lsu_window_size ||
-             m_fpu_num_in_rob > m_fpu_window_size ||
-             m_vec_num_in_rob > m_vec_window_size) {
-            break;
-         }
-
          LOG_ASSERT_ERROR(m_num_in_rob < rob.size(), "Expected sufficient uops for dispatching in pre-ROB buffer, but didn't find them");
          RobEntry *entry = &rob.at(m_num_in_rob);
          DynamicMicroOp &uop = *entry->uop;
+
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
+            m_fpu_num_in_rob > m_fpu_window_size) {
+            fprintf(stderr, "FPU Instruction Window Overflow\n");
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
+              m_alu_num_in_rob > m_alu_window_size) {
+            fprintf(stderr, "ALU Instruction Window Overflow\n");
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_MEMACC) &&
+             m_lsu_num_in_rob > m_lsu_window_size) {
+            fprintf(stderr, "LSU Instruction Window Overflow\n");
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
+             m_vec_num_in_rob > m_vec_window_size) {
+            fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
+            break;   
+         }
 
          // Dispatch up to 4 instructions
          if (uops_dispatched == dispatchWidth)
