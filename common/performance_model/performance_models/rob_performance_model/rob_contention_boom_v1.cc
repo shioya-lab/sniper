@@ -2,6 +2,8 @@
  * This file is covered under the Interval Academic License, see LICENCE.academic
  */
 
+#include <math.h>
+
 #include "rob_contention_boom_v1.h"
 #include "core_model.h"
 #include "dynamic_micro_op.h"
@@ -9,6 +11,8 @@
 #include "config.hpp"
 #include "simulator.h"
 #include "memory_manager_base.h"
+
+#include "config.hpp"
 
 RobContentionBoomV1::RobContentionBoomV1(const Core *core, const CoreModel *core_model)
    : m_core_model(core_model)
@@ -56,7 +60,7 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
        return false;
      }
      if (uop.getMicroOp()->canVecSquash()) {
-       if (ports_vecmem >= 2) {
+       if (ports_vecmem >= 1) {
          return false;
        } else {
          ports_vecmem++;
@@ -75,7 +79,7 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
      if (ports_vecarith == 0 && vecalu_used_until > m_now) {
        return false;
      }
-     if (ports_vecarith >= 2) {
+     if (ports_vecarith >= 1) {
        return false;
      } else {
        ports_vecarith++;
@@ -108,24 +112,36 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
 
 void RobContentionBoomV1::doIssue(DynamicMicroOp &uop)
 {
-   const DynamicMicroOpBoomV1 *core_uop_info = uop.getCoreSpecificInfo<DynamicMicroOpBoomV1>();
-   DynamicMicroOpBoomV1::uop_alu_t alu = core_uop_info->getAlu();
-   if (alu)
-      alu_used_until[alu] = m_now + m_core_model->getAluLatency(uop.getMicroOp());
+  const DynamicMicroOpBoomV1 *core_uop_info = uop.getCoreSpecificInfo<DynamicMicroOpBoomV1>();
+  DynamicMicroOpBoomV1::uop_alu_t alu = core_uop_info->getAlu();
+  if (alu)
+    alu_used_until[alu] = m_now + m_core_model->getAluLatency(uop.getMicroOp());
 
-   if (uop.getMicroOp()->isVector() && (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
-     if (uop.getMicroOp()->canVecSquash()) {
-       vecmem_used_until = m_now + m_vector_issue_times_max;
+  if (uop.getMicroOp()->isVector() && (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
+    if (uop.getMicroOp()->canVecSquash()) {
+      UInt64 l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
+      UInt64 dlen = Sim()->getCfg()->getInt("general/dlen");
+
+      UInt64 address_low  = uop.getAddress().address % l1d_block_size;
+      UInt64 access_times = m_vector_issue_times_max;
+
+      if (address_low + uop.getMicroOp()->getMemoryAccessSize() > l1d_block_size) {
+        access_times = std::ceil((float)(l1d_block_size - address_low) / (dlen / 8));
+      }
+
+      // printf("%ld : pc=%08x, address = %08x, size = %ld, access_times = %ld\n", uop.getSequenceNumber(), uop.getMicroOp()->getInstructionPointer().address,
+      //           uop.getAddress().address,
+      //           uop.getMicroOp()->getMemoryAccessSize(), access_times);
+
+      vecmem_used_until = m_now + access_times;
      } else {
-       vecmem_used_until = m_now;
+      vecmem_used_until = m_now;
      }
-   }
+    }
 
-   if (uop.getMicroOp()->isVector() && !(uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
-     vecalu_used_until = m_now + m_vector_issue_times_max;
-   }
-
-
+    if (uop.getMicroOp()->isVector() && !(uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
+      vecalu_used_until = m_now + m_vector_issue_times_max;
+    }
 }
 
 bool RobContentionBoomV1::noMore()

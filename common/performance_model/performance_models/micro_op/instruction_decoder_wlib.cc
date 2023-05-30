@@ -155,7 +155,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
      numExecs = totalMicroOps = 1;
    }
 
-   UInt16 l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
+   UInt16 vlen = Sim()->getCfg()->getInt("general/vlen");
 
    for(int index = 0; index < totalMicroOps; ++index)
    {
@@ -177,7 +177,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  loadIndex
                  , ins->inst_num_id()
                  , dec->inst_name(ins->inst_num_id())
-                 , is_vector ? l1d_block_size : memop_load_size[loadIndex]
+                 , is_vector ? vlen / 8 : memop_load_size[loadIndex]
                  , is_vector
                  , can_vector_squash,
                  totalMicroOps,
@@ -206,7 +206,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  , numExecs
                  , ins->inst_num_id()
                  , dec->inst_name(ins->inst_num_id())
-                 , is_vector ? l1d_block_size : memop_store_size[storeIndex]
+                 , is_vector ? vlen / 8: memop_store_size[storeIndex]
                  , is_vector
                  , can_vector_squash,
                  totalMicroOps,
