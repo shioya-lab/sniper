@@ -513,25 +513,25 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
             m_fpu_num_in_rob > m_fpu_window_size) {
-            fprintf(stderr, "FPU Instruction Window Overflow\n");
+            // fprintf(stderr, "FPU Instruction Window Overflow\n");
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
               m_alu_num_in_rob > m_alu_window_size) {
-            fprintf(stderr, "ALU Instruction Window Overflow\n");
+            // fprintf(stderr, "ALU Instruction Window Overflow\n");
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_MEMACC) &&
              m_lsu_num_in_rob > m_lsu_window_size) {
-            fprintf(stderr, "LSU Instruction Window Overflow\n");
+            // fprintf(stderr, "LSU Instruction Window Overflow\n");
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
              m_vec_num_in_rob > m_vec_window_size) {
-            fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
+            // fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
             break;   
          }
 
