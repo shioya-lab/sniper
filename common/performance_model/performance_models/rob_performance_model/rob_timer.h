@@ -58,6 +58,7 @@ private:
    const bool m_no_address_disambiguation;
    const bool inorder;
    const bool vector_inorder;
+   const bool lsu_inorder;
    const bool v_to_s_fence;
    const bool m_gather_scatter_merge;
    uint64_t m_vsetvl_producer;
@@ -140,6 +141,8 @@ private:
    uint64_t m_lsu_window_size;
    uint64_t m_fpu_window_size;
    uint64_t m_vec_window_size;
+
+   SubsecondTime m_latest_vecmem_commit_time;
 
    uint64_t m_totalProducerInsDistance;
    uint64_t m_totalConsumers;

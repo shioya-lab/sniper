@@ -220,6 +220,9 @@ struct MicroOp
    bool isVector() const { return this->is_vector; }
    bool canVecSquash() const { return this->can_vec_squash; }
 
+   bool isVecMem()    const { return  this->is_vector && (this->isLoad() || this->isStore()); }
+   bool isScalarMem() const { return !this->is_vector && (this->isLoad() || this->isStore()); }
+
    void setDebugInfo(String debugInfo);
    String toString() const;
    String toShortString(bool withDisassembly = false) const;

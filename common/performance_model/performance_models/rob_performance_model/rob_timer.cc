@@ -41,6 +41,7 @@ RobTimer::RobTimer(
       , m_no_address_disambiguation(!Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/address_disambiguation", core->getId()))
       , inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/in_order", core->getId()))
       , vector_inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/vector_inorder", core->getId()))
+      , lsu_inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/lsu_inorder", core->getId()))
       , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
       , m_core(core)
@@ -199,6 +200,8 @@ RobTimer::RobTimer(
    m_lsu_num_in_rob = 0;
    m_fpu_num_in_rob = 0;
    m_vec_num_in_rob = 0;
+
+   m_latest_vecmem_commit_time = SubsecondTime::Zero();
 
    m_kanata_fp = fopen("kanata_trace.log", "w");
    fprintf (m_kanata_fp, "Kanata\t0004\n");
@@ -872,7 +875,9 @@ SubsecondTime RobTimer::doIssue()
 
    int64_t last_vec_issued_idx = -1;
    int64_t issued_vec_mem = 0;
-   bool inhead_vector_exisetd = false;
+   bool inhead_vector_existed = false;
+   bool inhead_vecmem_existed = false;
+
    bool v_to_s_fenced = false;
    UInt64  l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
    UInt64  l1d_num_banks  = Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks");
@@ -887,6 +892,7 @@ SubsecondTime RobTimer::doIssue()
       RobEntry *entry = &rob.at(i);
       DynamicMicroOp *uop = entry->uop;
 
+      inhead_vecmem_existed |= uop->getMicroOp()->isVecMem();
 
       if (entry->done != SubsecondTime::MaxTime())
       {
@@ -970,6 +976,30 @@ SubsecondTime RobTimer::doIssue()
          canIssue = false;          // blocked by structural hazard
       }
 
+      // Vector Inorder Protocol:
+      // vector_inorder=true : Arith/Mem Vector issued in-order
+      // lsu_inorder: Mem Vector issued in-order
+      bool dyn_vector_inorder = vector_inorder;
+      // Vec/Scalar Inorder Protocl
+      // inorder : Whole instruction inorder
+      // dyn_vector_inorder 
+      bool dyn_inorder = inorder;
+
+      bool scalar_lsu_fence = uop->getMicroOp()->isScalarMem() && lsu_inorder && ((m_latest_vecmem_commit_time > now) ||
+                                                                                  inhead_vecmem_existed);
+      bool v_to_s_block = (v_to_s_fence && inhead_vector_existed && !uop->getMicroOp()->isVector()) || scalar_lsu_fence;
+
+#ifdef DEBUG_PERCYCLE
+      if (!uop->getMicroOp()->isVector() && 
+                              (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore())) {
+         fprintf(stderr, "Instr %ld, inflight_vecmem_block condition?: %s\n", uop->getSequenceNumber(),
+                  uop->getMicroOp()->toShortString().c_str());
+         fprintf(stderr, "  commit_time = %ld, now = %ld, inhead_vecmem_existed = %d, scalar_lsu_fence = %d\n",
+                 SubsecondTime::divideRounded(m_latest_vecmem_commit_time, m_core->getDvfsDomain()->getPeriod()),
+                 SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()),
+                 inhead_vecmem_existed, scalar_lsu_fence);
+      }
+#endif // DEBUG_PERCYCLE
 
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
@@ -978,7 +1008,7 @@ SubsecondTime RobTimer::doIssue()
             !uop->getMicroOp()->canVecSquash()) {
           // Gather Scatter
 
-          if (vector_inorder) {
+          if (dyn_vector_inorder) {
             if (issued_vec_mem < 8 &&
                 (issued_vec_mem == 0 ||
                  static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
@@ -1055,7 +1085,7 @@ SubsecondTime RobTimer::doIssue()
 
           bank_info[bank_index] = banked_cache_line;
         } else {   // Gather Scatter Merge doesn't happen
-          if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
+          if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
             canIssue = false;
           }
           if (canIssue) {
@@ -1066,13 +1096,14 @@ SubsecondTime RobTimer::doIssue()
             }
           }
         }
-      } else if (uop->getMicroOp()->isVector() && vector_inorder && vector_someone_cant_be_issued) {
+      } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
           canIssue = false;
       }
 
       // Vector to Scalar, Fence mode, Scalar can't continue to isssue.
-      inhead_vector_exisetd |= uop->getMicroOp()->isVector();
-      if (v_to_s_fence & inhead_vector_exisetd & !uop->getMicroOp()->isVector()) {
+      inhead_vector_existed |= uop->getMicroOp()->isVector();
+
+      if (v_to_s_block) {
 #ifdef DEBUG_PERCYCLE
         fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
                  uop->getSequenceNumber(),
@@ -1120,14 +1151,14 @@ SubsecondTime RobTimer::doIssue()
       {
          head_of_queue = false;     // Subsequent instructions are not at the head of the ROB
 
-         if (uop->getMicroOp()->isVector() && vector_inorder && !uop->isVirtuallyIssued()) {
+         if (uop->getMicroOp()->isVector() && dyn_vector_inorder && !uop->isVirtuallyIssued()) {
            vector_someone_cant_be_issued = true; // Vector can't continue
          }
 
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
             have_unresolved_store = true;
 
-         if (inorder || v_to_s_fenced)
+         if (dyn_inorder || v_to_s_fenced)
             // In-order: only issue from head of the ROB
             break;
       }
@@ -1286,6 +1317,16 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
             break;
          default :
            LOG_ASSERT_ERROR(false, "Not expected to this point");
+      }
+
+      if (entry->uop->getMicroOp()->isVector() &&
+          (entry->uop->getMicroOp()->isLoad() || entry->uop->getMicroOp()->isStore())) {
+#ifdef DEBUG_PERCYCLE
+         fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n", 
+               SubsecondTime::divideRounded(times.commit, m_core->getDvfsDomain()->getPeriod()),
+               entry->uop->getMicroOp()->toShortString(true).c_str());
+#endif // DEBUG_PERCYCLE
+         m_latest_vecmem_commit_time = times.commit;
       }
 
       entry->free();
