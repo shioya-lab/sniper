@@ -404,9 +404,6 @@ LOG_ASSERT_ERROR(offset + data_length <= getCacheBlockSize(), "access until %u >
    {
 MYLOG("L1 hit");
       getMemoryManager()->incrElapsedTime(m_mem_component, CachePerfModel::ACCESS_CACHE_DATA_AND_TAGS, ShmemPerfModel::_USER_THREAD);
-      if (mem_op_type == Core::READ_VEC) {
-        getShmemPerfModel()->incrElapsedTime(SubsecondTime::NS(1), ShmemPerfModel::_USER_THREAD);
-      }
       hit_where = (HitWhere::where_t)m_mem_component;
 
       if (cache_block_info->hasOption(CacheBlockInfo::WARMUP) && Sim()->getInstrumentationMode() != InstMode::CACHE_ONLY)
