@@ -41,6 +41,7 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
 
    this->m_mem_access_merge = false;
    this->is_virtually_issued = false;
+   this->mergedInstCount = 0;
 
 }
 

@@ -119,15 +119,8 @@ void RobContentionBoomV1::doIssue(DynamicMicroOp &uop)
 
   if (uop.getMicroOp()->isVector() && (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
     if (uop.getMicroOp()->canVecSquash()) {
-      UInt64 l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
       UInt64 dlen = Sim()->getCfg()->getInt("general/dlen");
-
-      UInt64 address_low  = uop.getAddress().address % l1d_block_size;
-      UInt64 access_times = m_vector_issue_times_max;
-
-      if (address_low + uop.getMicroOp()->getMemoryAccessSize() > l1d_block_size) {
-        access_times = std::ceil((float)(l1d_block_size - address_low) / (dlen / 8));
-      }
+      UInt64 access_times = uop.getMicroOp()->getMemoryAccessSize() * (uop.getNumMergedInst() + 1) / dlen;
 
       // printf("%ld : pc=%08x, address = %08x, size = %ld, access_times = %ld\n", uop.getSequenceNumber(), uop.getMicroOp()->getInstructionPointer().address,
       //           uop.getAddress().address,

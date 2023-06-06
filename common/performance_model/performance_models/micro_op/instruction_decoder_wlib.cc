@@ -177,7 +177,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  loadIndex
                  , ins->inst_num_id()
                  , dec->inst_name(ins->inst_num_id())
-                 , is_vector ? vlen / 8 : memop_load_size[loadIndex]
+                 , memop_load_size[loadIndex]
                  , is_vector
                  , can_vector_squash,
                  totalMicroOps,
@@ -206,7 +206,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
                  , numExecs
                  , ins->inst_num_id()
                  , dec->inst_name(ins->inst_num_id())
-                 , is_vector ? vlen / 8: memop_store_size[storeIndex]
+                 , memop_store_size[storeIndex]
                  , is_vector
                  , can_vector_squash,
                  totalMicroOps,

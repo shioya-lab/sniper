@@ -70,6 +70,8 @@ class DynamicMicroOp
 
       bool is_virtually_issued;
 
+      uint32_t mergedInstCount;
+
       const uint8_t m_vector_issue_times_max;
 
    public:
@@ -163,6 +165,9 @@ class DynamicMicroOp
 
       uint8_t getVectorIssueMax() { return m_vector_issue_times_max; }
 
+      void incrMergedInst() { this->mergedInstCount++; }
+      uint32_t getNumMergedInst() { return this->mergedInstCount; }
+      
       // More dynamic, architecture-dependent information to be defined by derived classes
       virtual const char* getType() const = 0; // Make this class pure virtual
 };

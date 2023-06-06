@@ -708,15 +708,14 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    {
       // Vector instruction, previous access merge, it can be skipped
       if (!uop.getMemAccessMerge()) {
-         UInt64 block_start = uop.getAddress().address % uop.getMicroOp()->getMemoryAccessSize();
-         UInt64 block_load_size = uop.getMicroOp()->getMemoryAccessSize() - block_start;
+         uint64_t access_size_scale = uop.getMicroOp()->isVector() ? uop.getNumMergedInst() + 1 : 1;
          MemoryResult res = m_core->accessMemory(
             Core::NONE,
             uop.getMicroOp()->isVector() ? (uop.getMicroOp()->isLoad() ? Core::READ_VEC : Core::WRITE_VEC) :
             uop.getMicroOp()->isLoad() ? Core::READ : Core::WRITE,
             uop.getAddress().address,
             NULL,
-            uop.getMicroOp()->isVector() ? block_load_size : uop.getMicroOp()->getMemoryAccessSize(),
+            uop.getMicroOp()->getMemoryAccessSize() * access_size_scale,
             Core::MEM_MODELED_RETURN,
             uop.getMicroOp()->getInstruction() ? uop.getMicroOp()->getInstruction()->getAddress() : static_cast<uint64_t>(NULL),
             now.getElapsedTime()

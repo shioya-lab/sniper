@@ -110,15 +110,26 @@ void MicroOpPerformanceModel::doSquashing(std::vector<DynamicMicroOp*> &current_
 {
    MicroOp::uop_type_t uop_type = MicroOp::UOP_INVALID;
    uint32_t i, size, squashedCount = 0, microOpTypeOffset = 0;
+   uint32_t latest_unsquashed_inst = 0;
 
    // recalculate microOpTypeOffsets for dynamic uops and
    // collect squashing info
+#ifdef DEBUG_MYLOG
+   fprintf(stderr, "DoSquashing\n");
+#endif // DEBUG_MYLOG
    for(i = 0, size = current_uops.size(); i < size; i++)
    {
       DynamicMicroOp* uop = current_uops[i];
+#ifdef DEBUG_MYLOG
+      fprintf(stderr, "  DoSquashing isSquashed = %d, ", uop->isSquashed());
+#endif // DEBUG_MYLOG
       if(uop->isSquashed())
       {
          squashedCount++;
+         current_uops[latest_unsquashed_inst]->incrMergedInst();
+#ifdef DEBUG_MYLOG
+         fprintf(stderr, "suashedCount = %d, set Merged Inst as %d. ", squashedCount, latest_unsquashed_inst);
+#endif // DEBUG_MYLOG
       }
       else
       {
@@ -127,8 +138,15 @@ void MicroOpPerformanceModel::doSquashing(std::vector<DynamicMicroOp*> &current_
             uop_type = uop->getMicroOp()->getType();
             microOpTypeOffset = 0;
          }
+#ifdef DEBUG_MYLOG
+         fprintf(stderr, "setMicroOpTypeOffset(%d), ", microOpTypeOffset);
+#endif // DEBUG_MYLOG
          uop->setMicroOpTypeOffset(microOpTypeOffset++);
+         latest_unsquashed_inst = i;
       }
+#ifdef DEBUG_MYLOG
+      fprintf(stderr, "setSquashedCount(%d)\n", squashedCount);
+#endif // DEBUG_MYLOG
       uop->setSquashedCount(squashedCount);
    }
 
@@ -145,6 +163,9 @@ void MicroOpPerformanceModel::doSquashing(std::vector<DynamicMicroOp*> &current_
             LOG_ASSERT_ERROR(iBase >= intraDeps, "intraInstructionDependancies (%d) should be <= (%d)", intraDeps, iBase);
             uop->setIntraInstrDependenciesLength(intraDeps - (current_uops[iBase]->getSquashedCount() -
                                            current_uops[iBase-intraDeps]->getSquashedCount()));
+#ifdef DEBUG_MYLOG
+            printf(" uop[%d].setIntraInstrDependenciesLength(%d)\n", i, uop->getIntraInstrDependenciesLength());
+#endif // DEBUG_MYLOG
          }
       }
    }
