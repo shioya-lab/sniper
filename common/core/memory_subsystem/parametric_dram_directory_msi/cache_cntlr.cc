@@ -2100,16 +2100,14 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
       {
          if (mem_op_type == Core::WRITE_VEC) {
            stats.vec_stores++;
-         } else {
-           stats.stores++;
          }
+         stats.stores++;
          stats.stores_state[state]++;
          if (! cache_hit || overlapping) {
             if (mem_op_type == Core::WRITE_VEC) {
               stats.vec_store_misses++;
-            } else {
-              stats.store_misses++;
             }
+            stats.store_misses++;
             stats.store_misses_state[state]++;
             if (overlapping) stats.store_overlapping_misses++;
          }
@@ -2123,16 +2121,14 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
       {
          if (mem_op_type == Core::READ_VEC) {
            stats.vec_loads++;
-         } else {
-           stats.loads++;
          }
+         stats.loads++;
          stats.loads_state[state]++;
          if (! cache_hit) {
             if (mem_op_type == Core::READ_VEC) {
               stats.vec_load_misses++;
-            } else {
-              stats.load_misses++;
             }
+            stats.load_misses++;
             stats.load_misses_state[state]++;
             if (overlapping) stats.load_overlapping_misses++;
          }
