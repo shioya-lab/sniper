@@ -9,9 +9,9 @@ class DynamicMicroOpBoomV1 : public DynamicMicroOp
 {
    public:
       enum uop_port_t {
-         UOP_PORT0,
-         UOP_PORT1,
-         UOP_PORT2,
+         UOP_PORT0,  // FPU, FMUL, MUL
+         UOP_PORT1,  // DIV
+         UOP_PORT2,  // Memory
          UOP_PORT3,  // Vector Memory
          UOP_PORT4,  // Vector Arithmetic
          UOP_PORT012,

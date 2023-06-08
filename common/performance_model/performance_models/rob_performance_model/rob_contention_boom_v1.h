@@ -22,6 +22,7 @@ class RobContentionBoomV1 : public RobContention {
       bool ports[DynamicMicroOpBoomV1::UOP_PORT_SIZE];
       int ports_vecmem;
       int ports_vecarith;
+      int ports_memory;
       int ports_generic012;
 
       std::vector<SubsecondTime> alu_used_until;

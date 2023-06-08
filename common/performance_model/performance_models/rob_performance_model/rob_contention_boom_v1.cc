@@ -30,6 +30,7 @@ void RobContentionBoomV1::initCycle(SubsecondTime now)
    m_now.setElapsedTime(now);
    memset(ports, 0, sizeof(bool) * DynamicMicroOpBoomV1::UOP_PORT_SIZE);
    ports_generic012 = 0;
+   ports_memory = 0;
    ports_vecmem = 0;
    ports_vecarith = 0;
 }
@@ -85,7 +86,14 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
        ports_vecarith++;
      }
    }
-   else
+   else if (uop_port == DynamicMicroOpBoomV1::UOP_PORT2) {
+    // Scalar Memory
+    if (ports_memory >= 2) {
+      return false;
+    } else {
+      ports_memory++;
+    }
+   } else 
    { // PORT0, PORT1 or PORT2
       if (ports[uop_port])
          return false;
