@@ -376,6 +376,10 @@ void MicroOpPerformanceModel::handleInstruction(DynamicInstruction *dynins)
       }
 
    }
+   // remaining uops (VL < VLMAX), are squashed.
+   for (size_t i = std::min(ops_size, dynins->num_memory); i < m_current_uops.size(); i++) {
+      m_current_uops[i]->squash(&m_current_uops);
+   }
 
    if(do_squashing > 0)
       doSquashing(m_current_uops);
