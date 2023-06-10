@@ -25,8 +25,6 @@
 // Define to not skip any cycles, but assert that the skip logic is working fine
 //#define ASSERT_SKIP
 
-#define KONATA_CNT_MAX (100000)
-
 RobTimer::RobTimer(
          Core *core, PerformanceModel *_perf, const CoreModel *core_model,
          int misprediction_penalty,
@@ -68,6 +66,7 @@ RobTimer::RobTimer(
       , memoryDependencies(new MemoryDependencies())
       , perf(_perf)
       , m_cpiCurrentFrontEndStall(NULL)
+      , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
 {
 
@@ -1255,7 +1254,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (enable_debug_printf &&
           cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos &&
-          konata_count < KONATA_CNT_MAX) {
+          konata_count < m_konata_count_max) {
         m_enable_konata = 1;
         std::cout << "KonataStart " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
                   << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
@@ -1270,7 +1269,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
       if (m_enable_konata &&
-          konata_count >= KONATA_CNT_MAX) {
+          konata_count >= m_konata_count_max) {
         m_enable_konata = 0;
       }
 

@@ -63,6 +63,7 @@ private:
    const bool v_to_s_fence;
    const bool m_gather_scatter_merge;
    uint64_t m_vsetvl_producer;
+   uint64_t m_konata_count_max;
 
    Core *m_core;
 
