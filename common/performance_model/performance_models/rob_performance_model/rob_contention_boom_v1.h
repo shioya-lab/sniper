@@ -25,6 +25,16 @@ class RobContentionBoomV1 : public RobContention {
       int ports_memory;
       int ports_generic012;
 
+      size_t m_vlen;
+      size_t m_dlen;
+      size_t m_vl;
+      size_t m_vtype;
+      size_t m_vsize;
+      size_t m_vlmul;
+
+      size_t m_working_vl;
+      IntPtr m_uop_prev_pc;
+
       std::vector<SubsecondTime> alu_used_until;
       SubsecondTime vecalu_used_until;
       SubsecondTime vecmem_used_until;
@@ -37,6 +47,18 @@ class RobContentionBoomV1 : public RobContention {
       bool tryIssue(const DynamicMicroOp &uop);
       bool noMore();
       void doIssue(DynamicMicroOp &uop);
+
+      void setvl(size_t vl) { 
+         m_vl = vl; 
+         std::cout << "Set VL = " << m_vl << '\n';
+      }
+      void setvtype(size_t vtype) { 
+         m_vtype = vtype; 
+         m_vsize = 8 << ((vtype >> 3) & 0x07); 
+         m_vlmul = (vtype & 0x07) + 1; 
+         std::cout << "Set vsize = " << std::dec << m_vsize << ", " << "vlmul = " << m_vlmul << '\n';
+      }
+
 };
 
 #endif // __ROB_CONTENTION_BOOM_V1_H

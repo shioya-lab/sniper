@@ -19,6 +19,10 @@ class RobContention {
       virtual bool tryIssue(const DynamicMicroOp &uop) = 0;
       virtual bool noMore() { return false; } // Optimization: all resources used, nothing more can be issued this cycle
       virtual void doIssue(DynamicMicroOp &uop) = 0;
+
+      virtual void setvl(size_t vl) = 0;
+      virtual void setvtype(size_t vtype) = 0;
+
 };
 
 #endif // __ROB_CONTENTION_H

@@ -9,6 +9,7 @@
 #include "rob_contention.h"
 #include "stats.h"
 #include "hooks_manager.h"
+#include "magic_server.h"
 
 #include <deque>
 
@@ -216,6 +217,14 @@ public:
     enable_debug_printf = !enable_debug_printf;
     m_enable_konata = 0;
   }
+
+   static SInt64 hookSetVL(UInt64 object, UInt64 argument) {
+      MagicServer::MagicMarkerType *args = (MagicServer::MagicMarkerType *)argument;
+
+      ((RobTimer *)object)->m_rob_contention->setvl(args->arg0);
+      ((RobTimer *)object)->m_rob_contention->setvtype(args->arg1);
+      return 0;
+   }
 
 };
 

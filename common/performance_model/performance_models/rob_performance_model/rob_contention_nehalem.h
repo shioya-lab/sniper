@@ -31,6 +31,9 @@ class RobContentionNehalem : public RobContention {
       bool tryIssue(const DynamicMicroOp &uop);
       bool noMore();
       void doIssue(DynamicMicroOp &uop);
+
+      void setvl(size_t vl) { }
+      void setvtype(size_t vtype) { }
 };
 
 #endif // __ROB_CONTENTION_NEHALEM_H

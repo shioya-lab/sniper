@@ -186,6 +186,7 @@ RobTimer::RobTimer(
 
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, RobTimer::hookRoiBegin, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
+   Sim()->getHooksManager()->registerHook(HookType::HOOK_MAGIC_USER, RobTimer::hookSetVL, (UInt64)this);
    m_roi_started = false;
    m_enable_konata = false;
    m_last_kanata_time = SubsecondTime::Zero();
