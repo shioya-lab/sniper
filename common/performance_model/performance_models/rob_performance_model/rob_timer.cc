@@ -300,6 +300,20 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          continue;
       }
 
+      // 緊急措置：robがfullであれば、fullでなくなるまで待つ。
+      while (rob.full())
+      {
+         // fprintf(stderr, "Waiting ROB is not full ...\n");
+         uint64_t instructionsExecuted;
+         SubsecondTime latency;
+         execute(instructionsExecuted, latency);
+         totalInsnExec += instructionsExecuted;
+         totalLat += latency;
+         // if (latency == SubsecondTime::Zero())
+         //    break;
+      }
+      // fprintf(stderr, "Exited ROB\n");
+
       RobEntry *entry = &this->rob.next();
       entry->init(*it, nextSequenceNumber++);
 
