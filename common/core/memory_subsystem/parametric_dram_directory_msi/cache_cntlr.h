@@ -209,6 +209,7 @@ namespace ParametricDramDirectoryMSI
          CacheCntlr* m_last_level;
          AddressHomeLookup* m_tag_directory_home_lookup;
          std::unordered_map<IntPtr, MemComponent::component_t> m_shmem_req_source_map;
+         String m_configName;
          bool m_perfect;
          bool m_passthrough;
          bool m_coherent;
@@ -216,7 +217,9 @@ namespace ParametricDramDirectoryMSI
          bool m_train_prefetcher_on_hit;
          bool m_prefetch_delay;
          bool m_l1_mshr;
+         bool m_enable_log;
 
+         
          struct {
            UInt64 loads, stores;
            UInt64 load_misses, store_misses;

@@ -10,6 +10,7 @@ class SimplePrefetcher : public Prefetcher
       virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, core_id_t core_id);
 
    private:
+      const String configName;
       const core_id_t core_id;
       const UInt32 shared_cores;
       const UInt32 n_flows;
@@ -17,6 +18,7 @@ class SimplePrefetcher : public Prefetcher
       const UInt32 num_prefetches;
       const bool stop_at_page;
       UInt32 n_flow_next;
+      bool m_enable_log;
       std::vector<std::vector<IntPtr> > m_prev_address;
 };
 

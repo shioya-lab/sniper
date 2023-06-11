@@ -136,6 +136,7 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_next_cache_cntlr(NULL),
    m_last_level(NULL),
    m_tag_directory_home_lookup(tag_directory_home_lookup),
+   m_configName(cache_params.configName),
    m_perfect(cache_params.perfect),
    m_passthrough(Sim()->getCfg()->getBoolArray("perf_model/" + cache_params.configName + "/passthrough", core_id)),
    m_coherent(cache_params.coherent),
@@ -152,7 +153,8 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_last_remote_hit_where(HitWhere::UNKNOWN),
    m_shmem_perf(new ShmemPerf()),
    m_shmem_perf_global(NULL),
-   m_shmem_perf_model(shmem_perf_model)
+   m_shmem_perf_model(shmem_perf_model),
+   m_enable_log (Sim()->getCfg()->getBoolArray("log/enable_cache_cntlr_log", core_id))
 {
    m_core_id_master = m_core_id - m_core_id % m_shared_cores;
    Sim()->getStatsManager()->logTopology(name, core_id, m_core_id_master);
@@ -599,18 +601,26 @@ MYLOG("access done");
    if (modeled && m_master->m_prefetcher)
    {
        trainPrefetcher(ca_address, cache_hit, prefetch_hit, false, t_start);
+      if (m_enable_log) {
+         fprintf(stderr, "%s processMemOpFromCore::trainPrefetcher() finished\n", m_configName.c_str());
+      }
    }
 
    // Call Prefetch on next-level caches (but not for atomic instructions as that causes a locking mess)
    if (lock_signal != Core::LOCK && modeled)
    {
+      if (m_enable_log) {
+         fprintf(stderr, "%s processMemOpFromCore::Prefetch(t_start) call\n", m_configName.c_str());
+      }
       Prefetch(t_start);
    }
 
    if (Sim()->getConfig()->getCacheEfficiencyCallbacks().notify_access_func)
       Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_access(cache_block_info->getOwner(), mem_op_type, hit_where);
 
-   MYLOG("returning %s, latency %lu ns", HitWhereString(hit_where), total_latency.getNS());
+   if (m_enable_log) {
+      fprintf(stderr, "returning %s, latency %lu ns", HitWhereString(hit_where), total_latency.getNS());
+   }
    return hit_where;
 }
 
@@ -708,6 +718,11 @@ CacheCntlr::trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, b
 void
 CacheCntlr::Prefetch(SubsecondTime t_now)
 {
+   if (m_enable_log) {
+      fprintf(stderr, "  %s CacheCntlr::Prefetch() called\n", m_configName.c_str());
+      fprintf(stderr, "  %s m_prefetch_list.size = %ld\n", m_configName.c_str(), m_master->m_prefetch_list.size());
+      fprintf(stderr, "  %s time = %ld m_prefetch_nex = %ld\n", m_configName.c_str(), t_now.getPS(), m_master->m_prefetch_next.getPS());
+   }
    IntPtr address_to_prefetch = INVALID_ADDRESS;
    //IntPtr addresses_to_prefetch[32];
    {
@@ -730,6 +745,10 @@ CacheCntlr::Prefetch(SubsecondTime t_now)
             }
          }
       }
+   }
+
+   if (m_enable_log) {
+      fprintf(stderr, "%s CacheCntlr::Prefetch() address_to_prefetch = %08lx\n", m_configName.c_str(), address_to_prefetch);
    }
 
    if (address_to_prefetch != INVALID_ADDRESS)

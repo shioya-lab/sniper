@@ -10,12 +10,14 @@ const IntPtr PAGE_MASK = ~(PAGE_SIZE-1);
 SimplePrefetcher::SimplePrefetcher(String configName, core_id_t _core_id, UInt32 _shared_cores)
    : core_id(_core_id)
    , shared_cores(_shared_cores)
+   , configName(configName)
    , n_flows(Sim()->getCfg()->getIntArray("perf_model/" + configName + "/prefetcher/simple/flows", core_id))
    , flows_per_core(Sim()->getCfg()->getBoolArray("perf_model/" + configName + "/prefetcher/simple/flows_per_core", core_id))
    , num_prefetches(Sim()->getCfg()->getIntArray("perf_model/" + configName + "/prefetcher/simple/num_prefetches", core_id))
    , stop_at_page(Sim()->getCfg()->getBoolArray("perf_model/" + configName + "/prefetcher/simple/stop_at_page_boundary", core_id))
    , n_flow_next(0)
    , m_prev_address(flows_per_core ? shared_cores : 1)
+   , m_enable_log (Sim()->getCfg()->getBoolArray("log/enable_simple_prefetcher_log", core_id))
 {
    for(UInt32 idx = 0; idx < (flows_per_core ? shared_cores : 1); ++idx)
       m_prev_address.at(idx).resize(n_flows);
@@ -46,6 +48,10 @@ SimplePrefetcher::getNextAddress(IntPtr current_address, core_id_t _core_id)
 
    // Simple linear stride prefetcher
    IntPtr stride = current_address - prev_address[n_flow];
+   if (m_enable_log) {
+      fprintf(stderr, " %s: getNextAddress::current_address = %08lx\n", configName.c_str(), current_address);
+      fprintf(stderr, " %s: getNextAddress::stride = %d, prev_address = %08lx\n", configName.c_str(), stride, prev_address[n_flow]);
+   }
    prev_address[n_flow] = current_address;
 
    std::vector<IntPtr> addresses;
@@ -57,6 +63,12 @@ SimplePrefetcher::getNextAddress(IntPtr current_address, core_id_t _core_id)
          // But stay within the page if requested
          if (!stop_at_page || ((prefetch_address & PAGE_MASK) == (current_address & PAGE_MASK)))
             addresses.push_back(prefetch_address);
+      }
+   }
+
+   if (m_enable_log) {
+      for (auto a: addresses) {
+         fprintf(stderr, " %s: getNextAddress::address = %08lx\n", configName.c_str(), a);
       }
    }
 
