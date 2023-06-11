@@ -62,6 +62,7 @@ RobTimer::RobTimer(
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
       , enable_debug_printf(false)
+      , enable_rob_timer_log(Sim()->getCfg()->getBoolArray("log/enable_rob_timer_log", core->getId()))
       , registerDependencies(new RegisterDependencies())
       , memoryDependencies(new MemoryDependencies())
       , perf(_perf)
@@ -388,25 +389,25 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          }
       }
 
-      #ifdef DEBUG_PERCYCLE
-      // Make sure we are in the dependant list of all of our address producers
-      for(unsigned int i = 0; i < entry->getNumAddressProducers(); ++i)
-      {
-         if (rob.size() && entry->getAddressProducer(i) >= rob[0].uop->getSequenceNumber())
+      if (enable_rob_timer_log) {
+         // Make sure we are in the dependant list of all of our address producers
+         for(unsigned int i = 0; i < entry->getNumAddressProducers(); ++i)
          {
-            RobEntry *prodEntry = this->findEntryBySequenceNumber(entry->getAddressProducer(i));
-            bool found = false;
-            for(unsigned int j = 0; j < prodEntry->getNumDependants(); ++j)
-               if (prodEntry->getDependant(j) == entry)
-               {
-                  found = true;
-                  break;
-               }
-            LOG_ASSERT_ERROR(found == true, "Store %ld depends on %ld for address production, but is not in its dependants list",
-                             entry->uop->getSequenceNumber(), prodEntry->uop->getSequenceNumber());
+            if (rob.size() && entry->getAddressProducer(i) >= rob[0].uop->getSequenceNumber())
+            {
+               RobEntry *prodEntry = this->findEntryBySequenceNumber(entry->getAddressProducer(i));
+               bool found = false;
+               for(unsigned int j = 0; j < prodEntry->getNumDependants(); ++j)
+                  if (prodEntry->getDependant(j) == entry)
+                  {
+                     found = true;
+                     break;
+                  }
+               LOG_ASSERT_ERROR(found == true, "Store %ld depends on %ld for address production, but is not in its dependants list",
+                                entry->uop->getSequenceNumber(), prodEntry->uop->getSequenceNumber());
+            }
          }
       }
-      #endif
 
       if (minProducerDistance != UINT64_MAX)
       {
@@ -432,17 +433,17 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          entry->ready = entry->readyMax;
       }
 
-      #ifdef DEBUG_PERCYCLE
-      if (enable_debug_printf) {
-         std::cout<<"** simulate: "<< entry->uop->getMicroOp()->toShortString(true) << std::endl << entry->uop->getMicroOp()->toString()<<std::endl;
+      if (enable_rob_timer_log) {
+         if (enable_debug_printf) {
+            std::cout<<"** simulate: "<< entry->uop->getMicroOp()->toShortString(true) << std::endl << entry->uop->getMicroOp()->toString()<<std::endl;
+         }
       }
-      #endif
 
-#ifdef DEBUG_PERCYCLE
-      std::cerr << "Type = " << (*it)->getMicroOp()->getSubtype() <<
-          " count = " <<
-          m_uop_type_count[(*it)->getMicroOp()->getSubtype()] << '\n';
-#endif // DEBUG_PERCYCLE
+      if (enable_rob_timer_log) {
+         std::cerr << "Type = " << (*it)->getMicroOp()->getSubtype() <<
+             " count = " <<
+             m_uop_type_count[(*it)->getMicroOp()->getSubtype()] << '\n';
+      }
 
       m_uop_type_count[(*it)->getMicroOp()->getSubtype()]++;
       m_uops_total++;
@@ -453,12 +454,13 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          LOG_PRINT_WARNING_ONCE("Significant fraction of x87 instructions encountered, accuracy will be low. Compile without -mno-sse2 -mno-sse3 to avoid.");
    }
 
-#ifdef DEBUG_PERCYCLE
+   if (enable_rob_timer_log) {
 #ifdef STOP_PERCYCLE
    char a;
    std::cin >> a;
 #endif
-#endif
+   }
+
    while (true)
    {
       uint64_t instructionsExecuted;
@@ -468,11 +470,11 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       totalLat += latency;
       if (latency == SubsecondTime::Zero())
          break;
-#ifdef DEBUG_PERCYCLE
+      if (enable_rob_timer_log) {
 #ifdef STOP_PERCYCLE
           std::cin >> a;
 #endif
-#endif
+      }
    }
 
    return boost::tuple<uint64_t,SubsecondTime>(totalInsnExec, totalLat);
@@ -569,16 +571,16 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             if (in_icache_miss)
             {
                // We just took the latency for this instruction, now dispatch it
-               #ifdef DEBUG_PERCYCLE
+               if (enable_rob_timer_log) {
                   std::cout<<"-- icache return"<<std::endl;
-               #endif
+               }
                in_icache_miss = false;
             }
             else
             {
-               #ifdef DEBUG_PERCYCLE
-              std::cout<<"-- icache miss (" << std::hex << uop.getMicroOp()->getInstruction()->getAddress() << ") ("<<uop.getICacheLatency()<<")"<<std::endl;
-               #endif
+               if (enable_rob_timer_log) {
+                  std::cout<<"-- icache miss (" << std::hex << uop.getMicroOp()->getInstruction()->getAddress() << ") ("<<uop.getICacheLatency()<<")"<<std::endl;
+               }
                frontend_stalled_until = now + uop.getICacheLatency();
                in_icache_miss = true;
                entry->fetch = now;
@@ -651,9 +653,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          entry->ready = std::max(entry->ready, (now + 1ul).getElapsedTime());
          next_event = std::min(next_event, entry->ready);
 
-         #ifdef DEBUG_PERCYCLE
+         if (enable_rob_timer_log) {
             std::cout<<"DISPATCH "<<entry->uop->getMicroOp()->toShortString()<<std::endl;
-         #endif
+         }
 
          #ifdef ASSERT_SKIP
             LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
@@ -663,9 +665,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.getMicroOp()->isBranch() && uop.isBranchMispredicted())
          {
             frontend_stalled_until = SubsecondTime::MaxTime();
-            #ifdef DEBUG_PERCYCLE
+            if (enable_rob_timer_log) {
                std::cout<<"-- branch mispredict"<<std::endl;
-            #endif
+            }
             cpiFrontEnd = &m_cpiBranchPredictor;
             break;
          }
@@ -813,9 +815,9 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
    --m_rs_entries_used;
 
-   #ifdef DEBUG_PERCYCLE
+   if (enable_rob_timer_log) {
       std::cout<<"ISSUE    "<<entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
-   #endif
+   }
 
    for(size_t idx = 0; idx < entry->getNumDependants(); ++idx)
    {
@@ -869,9 +871,9 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    if (uop.getMicroOp()->isBranch() && uop.isBranchMispredicted())
    {
       frontend_stalled_until = now + (misprediction_penalty - 2); // The frontend needs to start 2 cycles earlier to get a total penalty of <misprediction_penalty>
-      #ifdef DEBUG_PERCYCLE
+      if (enable_rob_timer_log) {
          std::cout<<"-- branch resolve"<<std::endl;
-      #endif
+      }
    }
 }
 
@@ -951,17 +953,17 @@ SubsecondTime RobTimer::doIssue()
       else if (uop->getMicroOp()->isLoad() &&
                ( (uop->getMicroOp()->isVector() && !vec_load_queue.hasFreeSlot(now)) ||
                  (!uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now)))) {
-#ifdef DEBUG_PERCYCLE
-        std::cerr << "  load_queue.hasFreeSlot failed " << uop->getMicroOp()->toShortString() <<
-            ", index = " << uop->getSequenceNumber() << '\n';
-#endif // DEBUG_PERCYCLE
+         if (enable_rob_timer_log) {
+            std::cerr << "  load_queue.hasFreeSlot failed " << uop->getMicroOp()->toShortString() <<
+                         ", index = " << uop->getSequenceNumber() << '\n';
+         }
          canIssue = false;          // load queue full
 
       } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
-#ifdef DEBUG_PERCYCLE
-        std::cerr << "  disambiguation" <<
-            ", index = " << uop->getSequenceNumber() << '\n';
-#endif // DEBUG_PERCYCLE
+         if (enable_rob_timer_log) {
+            std::cerr << "  disambiguation" <<
+                ", index = " << uop->getSequenceNumber() << '\n';
+         }
          canIssue = false;          // preceding store with unknown address
       }
       else if (uop->getMicroOp()->isStore() && (!head_of_queue ||
@@ -973,18 +975,18 @@ SubsecondTime RobTimer::doIssue()
       else
          canIssue = true;           // issue!
 
-#ifdef DEBUG_PERCYCLE
+      if (enable_rob_timer_log) {
         std::cerr << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
             ", index = " << uop->getSequenceNumber() <<
             (canIssue ? " True" : " False") << std::endl;
-#endif // DEBUG_PERCYCLE
+      }
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-#ifdef DEBUG_PERCYCLE
-        std::cerr << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
-            ", index = " << uop->getSequenceNumber() << '\n';
-#endif // DEBUG_PERCYCLE
+         if (enable_rob_timer_log) {
+            std::cerr << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
+                ", index = " << uop->getSequenceNumber() << '\n';
+         }
          // fprintf(stderr, "tryIssue failed\n");
          canIssue = false;          // blocked by structural hazard
       }
@@ -1002,17 +1004,17 @@ SubsecondTime RobTimer::doIssue()
                                                                                   inhead_vecmem_existed);
       bool v_to_s_block = (v_to_s_fence && inhead_vector_existed && !uop->getMicroOp()->isVector()) || scalar_lsu_fence;
 
-#ifdef DEBUG_PERCYCLE
-      if (!uop->getMicroOp()->isVector() && 
-                              (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore())) {
-         fprintf(stderr, "Instr %ld, inflight_vecmem_block condition?: %s\n", uop->getSequenceNumber(),
-                  uop->getMicroOp()->toShortString().c_str());
-         fprintf(stderr, "  commit_time = %ld, now = %ld, inhead_vecmem_existed = %d, scalar_lsu_fence = %d\n",
-                 SubsecondTime::divideRounded(m_latest_vecmem_commit_time, m_core->getDvfsDomain()->getPeriod()),
-                 SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()),
-                 inhead_vecmem_existed, scalar_lsu_fence);
+      if (enable_rob_timer_log) {
+         if (!uop->getMicroOp()->isVector() && 
+                                 (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore())) {
+            fprintf(stderr, "Instr %ld, inflight_vecmem_block condition?: %s\n", uop->getSequenceNumber(),
+                     uop->getMicroOp()->toShortString().c_str());
+            fprintf(stderr, "  commit_time = %ld, now = %ld, inhead_vecmem_existed = %d, scalar_lsu_fence = %d\n",
+                    SubsecondTime::divideRounded(m_latest_vecmem_commit_time, m_core->getDvfsDomain()->getPeriod()),
+                    SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()),
+                    inhead_vecmem_existed, scalar_lsu_fence);
+         }
       }
-#endif // DEBUG_PERCYCLE
 
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
@@ -1058,17 +1060,17 @@ SubsecondTime RobTimer::doIssue()
             }
           }
 
-          IntPtr cache_line = uop->getAddress().address & ~(l1d_block_size-1);
-          IntPtr banked_cache_line = cache_line & ~(l1d_block_size * l1d_num_banks - 1);
-          IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
+         IntPtr cache_line = uop->getAddress().address & ~(l1d_block_size-1);
+         IntPtr banked_cache_line = cache_line & ~(l1d_block_size * l1d_num_banks - 1);
+         IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
 
-          if (bank_info[bank_index] == 0) {           // first bank acces
-#ifdef DEBUG_PERCYCLE
-            fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
-                     uop->getSequenceNumber(),
-                     uop->getMicroOp()->toShortString().c_str(),
-                     uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
-#endif // DEBUG_PERCYCLE
+         if (bank_info[bank_index] == 0) {           // first bank acces
+            if (enable_rob_timer_log) {   
+               fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
+                        uop->getSequenceNumber(),
+                        uop->getMicroOp()->toShortString().c_str(),
+                        uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+            }
             bank_info[bank_index] = banked_cache_line;
             if (m_gather_scatter_merge && canIssue) {
               if (uop->getMicroOp()->isLoad()) {
@@ -1080,20 +1082,20 @@ SubsecondTime RobTimer::doIssue()
           } else if (bank_info[bank_index] == banked_cache_line) {
             // Same Bank Access and Can be Merge:
             uop->setMemAccessMerge();
-#ifdef DEBUG_PERCYCLE
-            fprintf (stderr, "%ld %s cacheline bank can be access %08lx with %08lx. bank=%ld, CanIssue = %d\n",
-                     uop->getSequenceNumber(),
-                     uop->getMicroOp()->toShortString().c_str(),
-                     uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
-#endif // DEBUG_PERCYCLE
+            if (enable_rob_timer_log) {
+               fprintf (stderr, "%ld %s cacheline bank can be access %08lx with %08lx. bank=%ld, CanIssue = %d\n",
+                        uop->getSequenceNumber(),
+                        uop->getMicroOp()->toShortString().c_str(),
+                        uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+            }
           } else {
             canIssue = false;
-#ifdef DEBUG_PERCYCLE
-            fprintf (stderr, "%ld %s cacheline bank conflict %08lx with %08lx, bank=%ld, CanIssue = %d\n",
-                     uop->getSequenceNumber(),
-                     uop->getMicroOp()->toShortString().c_str(),
-                     uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
-#endif // DEBUG_PERCYCLE
+            if (enable_rob_timer_log) {
+               fprintf (stderr, "%ld %s cacheline bank conflict %08lx with %08lx, bank=%ld, CanIssue = %d\n",
+                        uop->getSequenceNumber(),
+                        uop->getMicroOp()->toShortString().c_str(),
+                        uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+            }
           }
 
           bank_info[bank_index] = banked_cache_line;
@@ -1117,14 +1119,14 @@ SubsecondTime RobTimer::doIssue()
       inhead_vector_existed |= uop->getMicroOp()->isVector();
 
       if (v_to_s_block) {
-#ifdef DEBUG_PERCYCLE
-        fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
-                 uop->getSequenceNumber(),
-                 uop->getAddress().address,
-                 uop->getMicroOp()->toShortString().c_str());
-#endif // DEBUG_PERCYCLE
-        canIssue = false;
-        v_to_s_fenced = true;
+         if (enable_rob_timer_log) {
+            fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
+                     uop->getSequenceNumber(),
+                     uop->getAddress().address,
+                     uop->getMicroOp()->toShortString().c_str());
+         }
+         canIssue = false;
+         v_to_s_fenced = true;
       }
 
       if (canIssue)
@@ -1178,10 +1180,10 @@ SubsecondTime RobTimer::doIssue()
 
       if (canIssue && uop->getMicroOp()->isVector() &&
           uop->getMicroOp()->UopIdx() == 0) {
-#ifdef DEBUG_PERCYCLE
-        std::cerr << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
-            ", index = " << uop->getSequenceNumber() << '\n';
-#endif // DEBUG_PERCYCLE
+         if (enable_rob_timer_log) {
+               std::cerr << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
+                   ", index = " << uop->getSequenceNumber() << '\n';
+         }
         uop->setVirtuallyIssued();
         for (uint64_t j = i+1; j < m_num_in_rob; ++j) {
           RobEntry *subseq_entry = &rob.at(j);
@@ -1189,10 +1191,10 @@ SubsecondTime RobTimer::doIssue()
 
           if (subseq_uop->getMicroOp()->getInstruction()->getAddress() ==
               uop->getMicroOp()->getInstruction()->getAddress()) {
-#ifdef DEBUG_PERCYCLE
-            std::cerr << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
-                ", index = " << subseq_uop->getSequenceNumber() << '\n';
-#endif // DEBUG_PERCYCLE
+               if (enable_rob_timer_log) {
+                  std::cerr << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
+                      ", index = " << subseq_uop->getSequenceNumber() << '\n';
+               }
             subseq_uop->setVirtuallyIssued();
           } else {
             break;
@@ -1225,9 +1227,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
    {
       RobEntry *entry = &rob.front();
 
-#ifdef DEBUG_PERCYCLE
-      std::cout<<"COMMIT   "<<entry->uop->getMicroOp()->toShortString()<<std::endl;
-#endif
+      if (enable_rob_timer_log) {
+         std::cout<<"COMMIT   "<<entry->uop->getMicroOp()->toShortString()<<std::endl;
+      }
 
       // Send instructions to loop tracer, in-order, once we know their issue time
       InstructionTracer::uop_times_t times = {
@@ -1334,11 +1336,11 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (entry->uop->getMicroOp()->isVector() &&
           (entry->uop->getMicroOp()->isLoad() || entry->uop->getMicroOp()->isStore())) {
-#ifdef DEBUG_PERCYCLE
-         fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n", 
-               SubsecondTime::divideRounded(times.commit, m_core->getDvfsDomain()->getPeriod()),
-               entry->uop->getMicroOp()->toShortString(true).c_str());
-#endif // DEBUG_PERCYCLE
+         if (enable_rob_timer_log) {
+            fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n", 
+                  SubsecondTime::divideRounded(times.commit, m_core->getDvfsDomain()->getPeriod()),
+                  entry->uop->getMicroOp()->toShortString(true).c_str());
+         }
          m_latest_vecmem_commit_time = times.commit;
       }
 
@@ -1367,10 +1369,10 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    instructionsExecuted = 0;
    SubsecondTime *cpiComponent = NULL;
 
-#ifdef DEBUG_PERCYCLE
-   std::cout<<std::endl;
-   std::cout<<"Running cycles "<< std::dec << SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
-#endif
+   if (enable_rob_timer_log) {
+      std::cout<<std::endl;
+      std::cout<<"Running cycles "<< std::dec << SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
+   }
 
    if (m_enable_konata) {
      if (m_last_kanata_time != now) {
@@ -1412,7 +1414,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
      }
    }
 
-   #ifdef DEBUG_PERCYCLE
+   if (enable_rob_timer_log) {
       #ifdef ASSERT_SKIP
          if (! will_skip)
          {
@@ -1423,19 +1425,19 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
       #ifdef ASSERT_SKIP
          }
       #endif
-   #endif
+   }
 
 
-   #ifdef DEBUG_PERCYCLE
+   if (enable_rob_timer_log) {
       std::cout<<"Next event: D("<<SubsecondTime::divideRounded(next_dispatch, now.getPeriod())<<") I("<<SubsecondTime::divideRounded(next_issue, now.getPeriod())<<") C("<<SubsecondTime::divideRounded(next_commit, now.getPeriod())<<")"<<std::endl;
-   #endif
+   }
    SubsecondTime next_event = std::min(next_dispatch, std::min(next_issue, next_commit));
    SubsecondTime skip;
    if (next_event != SubsecondTime::MaxTime() && next_event > now + 1ul)
    {
-      #ifdef DEBUG_PERCYCLE
+      if (enable_rob_timer_log) {
          std::cout<<"++ Skip "<<SubsecondTime::divideRounded(next_event - now, now.getPeriod())<<std::endl;
-      #endif
+      }
       will_skip = true;
       skip = next_event - now;
    }
