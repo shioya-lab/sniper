@@ -95,6 +95,7 @@ private:
    SubsecondTime time_skipped;
 
    bool enable_debug_printf;
+   bool enable_rob_timer_log;
 
    RegisterDependencies* const registerDependencies;
    MemoryDependencies* const memoryDependencies;
