@@ -204,6 +204,9 @@ RobTimer::RobTimer(
 
    m_latest_vecmem_commit_time = SubsecondTime::Zero();
 
+   registerStatsMetric("rob_timer", core->getId(), "vec-ooo-issue",    &vec_ooo_issue_count);
+   registerStatsMetric("rob_timer", core->getId(), "scalar-ooo-issue", &scalar_ooo_issue_count);
+
    m_kanata_fp = fopen("kanata_trace.log", "w");
    fprintf (m_kanata_fp, "Kanata\t0004\n");
    fprintf(m_kanata_fp, "C=\t%d\n", 0);
@@ -902,6 +905,9 @@ SubsecondTime RobTimer::doIssue()
      bank_info[i] = 0;
    }
 
+   bool vector_someone_wait_issue = false;
+   bool scalar_someone_wait_issue = false;
+
    for(uint64_t i = 0; i < m_num_in_rob; ++i)
    {
       RobEntry *entry = &rob.at(i);
@@ -1127,6 +1133,40 @@ SubsecondTime RobTimer::doIssue()
          }
          canIssue = false;
          v_to_s_fenced = true;
+      }
+
+      if (uop->getMicroOp()->isVector()) {
+         if (canIssue) {
+            vec_ooo_issue_count ++;
+            if (vector_someone_wait_issue || scalar_someone_wait_issue) {
+               fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
+                                 uop->getSequenceNumber(),
+                                 uop->getAddress().address,
+                                 uop->getMicroOp()->toShortString().c_str());
+            }
+         } else {
+            fprintf (stderr, "Vector %ld waiting: %s %ld\n",
+                              uop->getSequenceNumber(),
+                              uop->getMicroOp()->toShortString().c_str(),
+                              SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
+            vector_someone_wait_issue = true;
+         }
+      } else {
+         if (canIssue) {
+            scalar_ooo_issue_count++;
+            if (vector_someone_wait_issue || scalar_someone_wait_issue) {
+               fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
+                                 uop->getSequenceNumber(),
+                                 uop->getAddress(),
+                                 uop->getMicroOp()->toShortString().c_str());
+            }
+         } else {
+            fprintf (stderr, "Scalar %ld waiting: %s %ld\n",
+                              uop->getSequenceNumber(),
+                              uop->getMicroOp()->toShortString().c_str(),
+                              SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
+            scalar_someone_wait_issue = true;
+         }
       }
 
       if (canIssue)
