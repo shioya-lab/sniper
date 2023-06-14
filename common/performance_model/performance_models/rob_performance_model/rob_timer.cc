@@ -1136,35 +1136,35 @@ SubsecondTime RobTimer::doIssue()
       }
 
       if (uop->getMicroOp()->isVector()) {
-         if (canIssue) {
-            vec_ooo_issue_count ++;
+         if (canIssue || uop->isVirtuallyIssued()) {
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
-               fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
-                                 uop->getSequenceNumber(),
-                                 uop->getAddress().address,
-                                 uop->getMicroOp()->toShortString().c_str());
+               vec_ooo_issue_count ++;
+               // fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
+               //                   uop->getSequenceNumber(),
+               //                   uop->getAddress().address,
+               //                   uop->getMicroOp()->toShortString().c_str());
             }
          } else {
-            fprintf (stderr, "Vector %ld waiting: %s %ld\n",
-                              uop->getSequenceNumber(),
-                              uop->getMicroOp()->toShortString().c_str(),
-                              SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
+            // fprintf (stderr, "Vector %ld waiting: %s %ld\n",
+            //                   uop->getSequenceNumber(),
+            //                   uop->getMicroOp()->toShortString().c_str(),
+            //                   SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
             vector_someone_wait_issue = true;
          }
       } else {
          if (canIssue) {
-            scalar_ooo_issue_count++;
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
-               fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
-                                 uop->getSequenceNumber(),
-                                 uop->getAddress(),
-                                 uop->getMicroOp()->toShortString().c_str());
+               scalar_ooo_issue_count++;
+               // fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
+               //                   uop->getSequenceNumber(),
+               //                   uop->getAddress().address,
+               //                   uop->getMicroOp()->toShortString().c_str());
             }
          } else {
-            fprintf (stderr, "Scalar %ld waiting: %s %ld\n",
-                              uop->getSequenceNumber(),
-                              uop->getMicroOp()->toShortString().c_str(),
-                              SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
+            // fprintf (stderr, "Scalar %ld waiting: %s %ld\n",
+            //                   uop->getSequenceNumber(),
+            //                   uop->getMicroOp()->toShortString().c_str(),
+            //                   SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
             scalar_someone_wait_issue = true;
          }
       }
