@@ -188,7 +188,8 @@ RobTimer::RobTimer(
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_MAGIC_USER, RobTimer::hookSetVL, (UInt64)this);
    m_roi_started = false;
-   m_enable_konata = false;
+   m_enable_o3 = false;
+   m_enable_kanata = false;
    m_last_kanata_time = SubsecondTime::Zero();
    m_vsetvl_producer = 0;
 
@@ -207,9 +208,11 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "vec-ooo-issue",    &vec_ooo_issue_count);
    registerStatsMetric("rob_timer", core->getId(), "scalar-ooo-issue", &scalar_ooo_issue_count);
 
-   m_kanata_fp = fopen("kanata_trace.log", "w");
-   fprintf (m_kanata_fp, "Kanata\t0004\n");
-   fprintf(m_kanata_fp, "C=\t%d\n", 0);
+   if (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", core->getId())) {
+      m_kanata_fp = fopen("kanata_trace.log", "w");
+      fprintf (m_kanata_fp, "Kanata\t0004\n");
+      fprintf(m_kanata_fp, "C=\t%d\n", 0);
+   }
 }
 
 RobTimer::~RobTimer()
@@ -628,7 +631,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                LOG_ASSERT_ERROR(false, "Not expected to this point");
          }
 
-         if (m_enable_konata) {
+         if (m_enable_kanata) {
            DynamicMicroOp *uop = entry->uop;
            entry->kanata_registered = true;
            fprintf(m_kanata_fp, "I\t%ld\t%d\t%d\n", uop->getSequenceNumber(), 0, 0);
@@ -810,7 +813,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    entry->issued = now;
    entry->done = cycle_done;
 
-   if (m_enable_konata && entry->kanata_registered) {
+   if (m_enable_kanata && entry->kanata_registered) {
      fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", entry->uop->getSequenceNumber(), 0, "X");
    }
 
@@ -1283,11 +1286,6 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (entry->uop->isLast())
          instructionsExecuted++;
 
-      static FILE *o3_fp = NULL;
-      if (o3_fp == NULL) {
-        o3_fp = fopen("o3_trace.out", "w");
-      }
-
       Instruction *inst = entry->uop->getMicroOp()->getInstruction();
       if (cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, zero") != std::string::npos) {
@@ -1297,25 +1295,36 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
           cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos &&
           konata_count < m_konata_count_max) {
-        m_enable_konata = 1;
-        std::cout << "KonataStart " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
-                  << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
-                  << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
+
+         m_enable_o3     = Sim()->getCfg()->getBoolArray("log/enable_o3_log", m_core->getId());
+         if (m_enable_o3) {
+            m_o3_fp = fopen("o3_trace.out", "w");
+         }
+         m_enable_kanata = Sim()->getCfg()->getBoolArray("log/enable_kanata_log", m_core->getId());
+
+         std::cout << "KonataStart " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
+                   << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
+                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
       if (enable_debug_printf &&
           cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, sp") != std::string::npos) {
-        m_enable_konata = 0;
+        m_enable_o3 = false;
+        if (m_o3_fp != NULL) {
+         fclose(m_o3_fp);
+         m_o3_fp = NULL;
+        }
+        m_enable_kanata = false;
         std::cout << "KonataStop " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
                   << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
-      if (m_enable_konata &&
+      if (m_enable_o3 &&
           konata_count >= m_konata_count_max) {
-        m_enable_konata = 0;
+        m_enable_o3 = false;
       }
 
-      if (m_enable_konata) {
+      if (m_enable_o3) {
         konata_count ++;
       }
 
@@ -1325,7 +1334,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         cycle_activated = false;
       }
 
-      if (m_enable_konata) {
+      if (m_enable_o3) {
 
         uint64_t cycle_fetch    = SubsecondTime::divideRounded(entry->fetch,      m_core->getDvfsDomain()->getPeriod());
         uint64_t cycle_dispatch = SubsecondTime::divideRounded(entry->dispatched, m_core->getDvfsDomain()->getPeriod());
@@ -1335,20 +1344,20 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
         cycle_fetch = cycle_fetch == 0 ? 4 : cycle_fetch;
         Instruction *inst = entry->uop->getMicroOp()->getInstruction();
-        fprintf (o3_fp, "O3PipeView:fetch:%ld:0x%08lx:0:%ld:%s\n",
+        fprintf (m_o3_fp, "O3PipeView:fetch:%ld:0x%08lx:0:%ld:%s\n",
                  (cycle_fetch-3)*500,
                  (uint64_t)inst->getAddress(),
                  entry->uop->getSequenceNumber(),
                  inst->getDisassembly().c_str());
-        fprintf (o3_fp, "O3PipeView:decode:%ld\n",                (cycle_dispatch-2)*500);
-        fprintf (o3_fp, "O3PipeView:rename:%ld\n",                (cycle_dispatch-1)*500);
-        fprintf (o3_fp, "O3PipeView:dispatch:%ld\n",              (cycle_dispatch  )*500);
-        fprintf (o3_fp, "O3PipeView:issue:%ld\n",                 (cycle_issue     )*500);
-        fprintf (o3_fp, "O3PipeView:complete:%ld\n",              (cycle_done      )*500);
-        fprintf (o3_fp, "O3PipeView:retire:%ld:store:0\n",        (cycle_commit    )*500);
+        fprintf (m_o3_fp, "O3PipeView:decode:%ld\n",                (cycle_dispatch-2)*500);
+        fprintf (m_o3_fp, "O3PipeView:rename:%ld\n",                (cycle_dispatch-1)*500);
+        fprintf (m_o3_fp, "O3PipeView:dispatch:%ld\n",              (cycle_dispatch  )*500);
+        fprintf (m_o3_fp, "O3PipeView:issue:%ld\n",                 (cycle_issue     )*500);
+        fprintf (m_o3_fp, "O3PipeView:complete:%ld\n",              (cycle_done      )*500);
+        fprintf (m_o3_fp, "O3PipeView:retire:%ld:store:0\n",        (cycle_commit    )*500);
       }
 
-      if (m_enable_konata && entry->kanata_registered) {
+      if (m_enable_kanata && entry->kanata_registered) {
         fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", entry->uop->getSequenceNumber(), 0, "Cm");
         fprintf(m_kanata_fp, "R\t%ld\t%ld\t%d\n", entry->uop->getSequenceNumber(), entry->uop->getSequenceNumber(), 0);
       }
@@ -1414,7 +1423,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
       std::cout<<"Running cycles "<< std::dec << SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
    }
 
-   if (m_enable_konata) {
+   if (m_enable_kanata) {
      if (m_last_kanata_time != now) {
        fprintf(m_kanata_fp, "C\t%ld\n", SubsecondTime::divideRounded(now - m_last_kanata_time, now.getPeriod()));
        m_last_kanata_time = now;
@@ -1444,7 +1453,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    SubsecondTime next_issue    = doIssue();
    SubsecondTime next_commit   = doCommit(instructionsExecuted);
 
-   if (m_enable_konata) {
+   if (m_enable_kanata) {
      for(unsigned int i = 0; i < rob.size(); ++i) {
        RobEntry *e = &rob.at(i);
 

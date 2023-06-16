@@ -74,9 +74,11 @@ private:
    RobContention *m_rob_contention;
 
    bool m_roi_started; // due to record roi_start time
-   bool m_enable_konata;
+   bool m_enable_o3;
+   bool m_enable_kanata;
    SubsecondTime m_last_kanata_time;
 
+   FILE *m_o3_fp;
    FILE *m_kanata_fp;
 
    // When getMemAccessMerge=true, use this value
@@ -220,7 +222,7 @@ public:
     std::cout << "CycleTrace " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << '\n';
     // std::cout << "CycleTrace End\n";
     enable_debug_printf = !enable_debug_printf;
-    m_enable_konata = 0;
+    m_enable_o3 = 0;
   }
 
    static SInt64 hookSetVL(UInt64 object, UInt64 argument) {
