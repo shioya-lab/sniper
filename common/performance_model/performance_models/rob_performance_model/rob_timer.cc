@@ -1144,7 +1144,7 @@ SubsecondTime RobTimer::doIssue()
       }
 
       if (uop->getMicroOp()->isVector()) {
-         if (canIssue || uop->isVirtuallyIssued()) {
+         if (canIssue) {
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                vec_ooo_issue_count ++;
                if (enable_rob_timer_log) {
@@ -1154,7 +1154,7 @@ SubsecondTime RobTimer::doIssue()
                                     uop->getMicroOp()->toShortString().c_str());
                }
             }
-         } else {
+         } else if (!uop->isVirtuallyIssued()) {
             vector_someone_wait_issue = true;
             if (enable_rob_timer_log) {
                fprintf (stderr, "Vector %ld waiting: %s %ld\n",
