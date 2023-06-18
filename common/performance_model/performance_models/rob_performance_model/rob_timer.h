@@ -150,6 +150,11 @@ private:
    uint64_t vec_ooo_issue_count;
    uint64_t scalar_ooo_issue_count;
 
+   uint64_t vector_overtake_vector_issue_count;
+   uint64_t vector_overtake_scalar_issue_count;
+   uint64_t scalar_overtake_vector_issue_count;
+   uint64_t scalar_overtake_scalar_issue_count;
+
    SubsecondTime m_latest_vecmem_commit_time;
 
    uint64_t m_totalProducerInsDistance;

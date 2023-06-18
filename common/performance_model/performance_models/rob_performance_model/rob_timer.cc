@@ -208,6 +208,16 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "vec-ooo-issue",    &vec_ooo_issue_count);
    registerStatsMetric("rob_timer", core->getId(), "scalar-ooo-issue", &scalar_ooo_issue_count);
 
+   registerStatsMetric("rob_timer", core->getId(), "vec-vec-ooo-issue",       &vector_overtake_vector_issue_count);
+   registerStatsMetric("rob_timer", core->getId(), "scalar-vec-ooo-issue",    &scalar_overtake_vector_issue_count);
+   registerStatsMetric("rob_timer", core->getId(), "vec-scalar-ooo-issue",    &vector_overtake_scalar_issue_count);
+   registerStatsMetric("rob_timer", core->getId(), "scalar-scalar-ooo-issue", &scalar_overtake_scalar_issue_count);
+
+   vector_overtake_vector_issue_count = 0;
+   scalar_overtake_vector_issue_count = 0;
+   vector_overtake_scalar_issue_count = 0;
+   scalar_overtake_scalar_issue_count = 0;
+
    if (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", core->getId())) {
       m_kanata_fp = fopen("kanata_trace.log", "w");
       fprintf (m_kanata_fp, "Kanata\t0004\n");
@@ -1144,7 +1154,14 @@ SubsecondTime RobTimer::doIssue()
       }
 
       if (uop->getMicroOp()->isVector()) {
+         // Vector Instructions
          if (canIssue) {
+            if (vector_someone_wait_issue) {
+               vector_overtake_vector_issue_count ++;
+            }
+            if (scalar_someone_wait_issue) {
+               vector_overtake_scalar_issue_count++;
+            }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                vec_ooo_issue_count ++;
                if (enable_rob_timer_log) {
@@ -1164,7 +1181,14 @@ SubsecondTime RobTimer::doIssue()
             }
          }
       } else {
+         // Scalar Instructions
          if (canIssue) {
+            if (vector_someone_wait_issue) {
+               scalar_overtake_vector_issue_count ++;
+            }
+            if (scalar_someone_wait_issue) {
+               scalar_overtake_scalar_issue_count++;
+            }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                scalar_ooo_issue_count++;
                if (enable_rob_timer_log) {
@@ -1277,7 +1301,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 {
    uint64_t num_committed = 0;
    static bool cycle_activated = false;
-   static int konata_count = 0;
+   static uint64_t konata_count = 0;
 
    while(rob.size() && (rob.front().done <= now))
    {
