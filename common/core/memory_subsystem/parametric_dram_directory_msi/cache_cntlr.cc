@@ -225,6 +225,8 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    registerStatsMetric(name, core_id, "store-misses", &stats.store_misses);
    registerStatsMetric(name, core_id, "vec_loads", &stats.vec_loads);
    registerStatsMetric(name, core_id, "vec_stores", &stats.vec_stores);
+   registerStatsMetric(name, core_id, "scalar_loads",  &stats.scalar_loads);
+   registerStatsMetric(name, core_id, "scalar_stores", &stats.scalar_stores);
    registerStatsMetric(name, core_id, "vec_load-misses", &stats.vec_load_misses);
    registerStatsMetric(name, core_id, "vec_store-misses", &stats.vec_store_misses);
    // Does not work for loads, since the interval core model doesn't issue the loads until after the first miss has completed
@@ -2119,6 +2121,8 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
       {
          if (mem_op_type == Core::WRITE_VEC) {
            stats.vec_stores++;
+         } else {
+            stats.scalar_stores++;
          }
          stats.stores++;
          stats.stores_state[state]++;
@@ -2140,6 +2144,8 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
       {
          if (mem_op_type == Core::READ_VEC) {
            stats.vec_loads++;
+         } else {
+            stats.scalar_loads++;
          }
          stats.loads++;
          stats.loads_state[state]++;
