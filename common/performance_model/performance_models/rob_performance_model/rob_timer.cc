@@ -69,6 +69,8 @@ RobTimer::RobTimer(
       , m_cpiCurrentFrontEndStall(NULL)
       , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
+      , m_enable_ooo_check(Sim()->getCfg()->getBoolArray("log/enable_mem_ooo_check", core->getId()))
+      , m_ooo_check_region(Sim()->getCfg()->getIntArray("log/mem_ooo_check_region", core->getId()))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -217,6 +219,9 @@ RobTimer::RobTimer(
    scalar_overtake_vector_issue_count = 0;
    vector_overtake_scalar_issue_count = 0;
    scalar_overtake_scalar_issue_count = 0;
+
+   assert((m_ooo_check_region != 0) && !(m_ooo_check_region & (m_ooo_check_region - 1)));
+   registerStatsMetric("rob_timer", core->getId(), "ooo_reorder_count", &m_ooo_region_count);
 
    if (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", core->getId())) {
       m_kanata_fp = fopen("kanata_trace.log", "w");
@@ -1237,6 +1242,38 @@ SubsecondTime RobTimer::doIssue()
             #endif
          }
 
+         if (uop->getMicroOp()->isStore() && uop->getMicroOp()->isVector()) {
+            for(uint64_t younger_index = i + 1; younger_index < m_num_in_rob; younger_index++) {
+               RobEntry *younger_entry = &rob.at(younger_index);
+               DynamicMicroOp *younger_uop = younger_entry->uop;
+               if (!younger_uop->getMicroOp()->isVector() && younger_uop->getMicroOp()->isLoad()) {
+                  uint64_t uop_issue_time = SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod());
+                  uint64_t younger_uop_issue_time = SubsecondTime::divideRounded(younger_entry->issued, m_core->getDvfsDomain()->getPeriod());
+                  
+                  fprintf(stderr, "OoO region check start : %ld(%s):%08lx:%ld <--> %ld(%s):%08lx:%ld : ", 
+                                 uop->getSequenceNumber(),
+                                 uop->getMicroOp()->toShortString().c_str(),
+                                 uop->getAddress().address,
+                                 uop_issue_time,
+                                 younger_uop->getSequenceNumber(),
+                                 younger_uop->getMicroOp()->toShortString().c_str(),
+                                 younger_uop->getAddress().address,
+                                 younger_uop_issue_time);
+                  
+                  if (younger_entry->issued <= now &&
+                      (younger_uop->getAddress().address & ~(m_ooo_check_region-1)) == (uop->getAddress().address & ~(m_ooo_check_region-1))) {
+                     m_ooo_region_count ++;
+                     if (m_enable_ooo_check) {
+                        fprintf(stderr, "detected\n");
+                     }
+                  } else {
+                     if (m_enable_ooo_check) {
+                        fprintf(stderr, "\n");
+                     }
+                  }
+               }
+            }
+         }
 
          #ifdef ASSERT_SKIP
             LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
