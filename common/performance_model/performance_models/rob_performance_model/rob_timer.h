@@ -233,8 +233,14 @@ public:
    static SInt64 hookSetVL(UInt64 object, UInt64 argument) {
       MagicServer::MagicMarkerType *args = (MagicServer::MagicMarkerType *)argument;
 
-      ((RobTimer *)object)->m_rob_contention->setvl(args->arg0);
-      ((RobTimer *)object)->m_rob_contention->setvtype(args->arg1);
+      size_t vl = args->arg0;
+      size_t vtype = args->arg1;
+      size_t vsize = 8 << ((vtype >> 3) & 0x07);
+      size_t vlmul = (vtype & 0x07) + 1;
+      ((RobTimer *)object)->m_rob_contention->setvl(vl);
+      ((RobTimer *)object)->m_rob_contention->setvtype(vsize, vlmul);
+
+      std::cout << "Set VL = " << vl << ", vsize = " << std::dec << vsize << ", " << "vlmul = " << vlmul << '\n';
       return 0;
    }
 

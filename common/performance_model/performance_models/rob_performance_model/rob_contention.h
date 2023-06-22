@@ -21,7 +21,7 @@ class RobContention {
       virtual void doIssue(DynamicMicroOp &uop) = 0;
 
       virtual void setvl(size_t vl) = 0;
-      virtual void setvtype(size_t vtype) = 0;
+      virtual void setvtype(size_t vsize, size_t vlmul) = 0;
 
 };
 

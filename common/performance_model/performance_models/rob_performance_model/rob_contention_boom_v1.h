@@ -28,7 +28,6 @@ class RobContentionBoomV1 : public RobContention {
       size_t m_vlen;
       size_t m_dlen;
       size_t m_vl;
-      size_t m_vtype;
       size_t m_vsize;
       size_t m_vlmul;
 
@@ -50,13 +49,10 @@ class RobContentionBoomV1 : public RobContention {
 
       void setvl(size_t vl) { 
          m_vl = vl; 
-         std::cout << "Set VL = " << m_vl << '\n';
       }
-      void setvtype(size_t vtype) { 
-         m_vtype = vtype; 
-         m_vsize = 8 << ((vtype >> 3) & 0x07); 
-         m_vlmul = (vtype & 0x07) + 1; 
-         std::cout << "Set vsize = " << std::dec << m_vsize << ", " << "vlmul = " << m_vlmul << '\n';
+      void setvtype(size_t vsize, size_t vlmul) { 
+         m_vsize = vsize; 
+         m_vlmul = vlmul; 
       }
 
 };

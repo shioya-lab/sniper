@@ -45,7 +45,7 @@ class RobContentionCortexA53 : public RobContention {
       void doIssue(DynamicMicroOp &uop);
 
       void setvl(size_t vl) { }
-      void setvtype(size_t vtype) { }
+      void setvtype(size_t vsize, size_t vlmul) { }
 };
 
 #endif // __ROB_CONTENTION_CORTEX_A53_H
