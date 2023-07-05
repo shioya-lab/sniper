@@ -144,6 +144,17 @@ static bool is_conditional_branch_op(uint16_t op)
   }
 }
 
+static bool is_indirect_branch_op(uint16_t op)
+{
+  switch (op) {
+    case rv_op_jalr:
+    case rv_op_jr:
+      return true;
+    default:
+      return false;
+  }
+}
+
 RISCVDecoder::RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax)
 {
   this->m_arch = arch;
@@ -857,7 +868,7 @@ bool RISCVDecoder::is_pause_opcode(decoder_opcode opcd)
 /// Check if the opcode is a branch instruction
 bool RISCVDecoder::is_branch_opcode(decoder_opcode opcd)
 {
-  return is_conditional_branch_op(opcd);
+  return is_conditional_branch_op(opcd) || is_indirect_branch_op(opcd);
 }
 
 /// Check if the opcode is an add/sub instruction that operates in vector and FP registers
@@ -1863,19 +1874,7 @@ bool RISCVDecodedInst::is_mem_pair() const
 
 bool RISCVDecodedInst::is_indirect_branch() const
 {
-  bool res;
-  riscv::decode dec = this->rv8_dec;
-  switch (dec.op) {
-    case rv_op_jalr:
-    case rv_op_jr:
-      res = true;
-      break;
-    default :
-      res = false;
-      break;
-  }
-
-  return res;
+  return is_indirect_branch_op(this->rv8_dec.op);
 }
 
 #include "riscv_meta.h"
