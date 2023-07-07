@@ -60,7 +60,7 @@ uint64_t & DecodedInst::get_address()
 
 // DecoderFactory
   
-Decoder *DecoderFactory::CreateDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax)
+Decoder *DecoderFactory::CreateDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax, int vlen)
 {
   switch(arch)
   {
@@ -68,7 +68,7 @@ Decoder *DecoderFactory::CreateDecoder(dl_arch arch, dl_mode mode, dl_syntax syn
       return new X86Decoder(arch, mode, syntax);
     case DL_ARCH_RISCV:
 #if SNIPER_RISCV
-      return new RISCVDecoder(arch, mode, syntax);
+      return new RISCVDecoder(arch, mode, syntax, vlen);
 #else
       return NULL;
 #endif 

@@ -121,7 +121,7 @@ extern const char* reg_name_sym[];
 class RISCVDecoder : public Decoder
 {
   public:
-    RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax);
+    RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax, int vlen);
     int reg_set_size = 64;
 
     virtual ~RISCVDecoder();  // dtor
@@ -233,6 +233,8 @@ class RISCVDecoder : public Decoder
     // /// Get the target syntax of the decoder
     // dl_syntax get_syntax();
 
+  private:
+    int m_vlen;
 };
 
 class RISCVDecodedInst : public DecodedInst

@@ -1,6 +1,3 @@
-#include "tools.h"
-#include "config.hpp"
-
 #include "riscv_decoder.h"
 #include <iostream>
 #include <cstddef>
@@ -156,12 +153,13 @@ static bool is_indirect_branch_op(uint16_t op)
   }
 }
 
-RISCVDecoder::RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax)
+RISCVDecoder::RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax, int vlen)
 {
   this->m_arch = arch;
   this->m_mode = mode;
   this->m_syntax = syntax;
   this->m_isa = DL_ISA_RISCV;
+  this->m_vlen = vlen;
 }
 
 RISCVDecoder::~RISCVDecoder()
@@ -266,8 +264,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
   // static int vec_lmul = 1;
   // static int vec_vsew = 8;
 
-  int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
-  int vlenb = vlen / 8;
+  int vlenb = m_vlen / 8;
 
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
     || format == rv_fmt_frd_offset_rs1 /* flw, fld, flq, c.fld, c.flw, c.fldsp, c.flwsp */

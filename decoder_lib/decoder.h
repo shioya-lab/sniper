@@ -268,7 +268,7 @@ class DecoderFactory
 {
   public:
     /// Creates a Decoder object with the specified target architecture, mode and syntax
-    Decoder *CreateDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax);
+    Decoder *CreateDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax, int vlen);
 
     /// Creates an instruction that follows the syntax and targets the architecures of the Decoder d
     DecodedInst *CreateInstruction(Decoder * d, const uint8_t * code, size_t size, uint64_t addr);
