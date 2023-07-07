@@ -198,6 +198,9 @@ class FrontendOptions<QemuFrontend> : public OptionsBase<QemuFrontend>
 #if SNIPER_ARM
          { "aarch64", ARM_AARCH64 },
 #endif
+#if SNIPER_RISCV
+         { "riscv64", RISCV },
+#endif
       };
 
       for (auto& target : s_targets)
@@ -313,6 +316,10 @@ void QemuFrontend::init()
    {
       case ARM_AARCH64:
          arch = dl::DL_ARCH_ARMv8;
+         break;
+
+      case RISCV:
+         arch = dl::DL_ARCH_RISCV;
          break;
 
       default:
