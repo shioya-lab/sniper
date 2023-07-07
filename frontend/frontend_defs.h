@@ -51,7 +51,8 @@ enum FrontendISA
   INTEL_IA32, 
   INTEL_X86_64, 
   ARM_AARCH32, 
-  ARM_AARCH64
+  ARM_AARCH64,
+  RISCV,
 };  
 
 #endif // __FRONTEND_DEFS_H
