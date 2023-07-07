@@ -15,7 +15,7 @@ int main(int argc, const char* argv[])
   // Decoder engine creation
   
   dl::DecoderFactory *f = new dl::DecoderFactory;
-  dl::Decoder *d = f->CreateDecoder(dl::DL_ARCH_INTEL, dl::DL_MODE_64, dl::DL_SYNTAX_INTEL);
+  dl::Decoder *d = f->CreateDecoder(dl::DL_ARCH_INTEL, dl::DL_MODE_64, dl::DL_SYNTAX_INTEL, 0);
   
   // Some registers for the test
   
