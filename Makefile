@@ -322,4 +322,4 @@ empty_deps:
 	$(_CMD) find . -name \*.d -exec rm {} \;
 
 package_deps:
-	#@BOOST_INCLUDE=$(BOOST_INCLUDE) ./tools/checkdependencies.py
+	@BOOST_INCLUDE=$(BOOST_INCLUDE) ./tools/checkdependencies.py
