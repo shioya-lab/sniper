@@ -1250,16 +1250,18 @@ SubsecondTime RobTimer::doIssue()
                   uint64_t uop_issue_time = SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod());
                   uint64_t younger_uop_issue_time = SubsecondTime::divideRounded(younger_entry->issued, m_core->getDvfsDomain()->getPeriod());
                   
-                  fprintf(stderr, "OoO region check start : %ld(%s):%08lx:%ld <--> %ld(%s):%08lx:%ld : ", 
-                                 uop->getSequenceNumber(),
-                                 uop->getMicroOp()->toShortString().c_str(),
-                                 uop->getAddress().address,
-                                 uop_issue_time,
-                                 younger_uop->getSequenceNumber(),
-                                 younger_uop->getMicroOp()->toShortString().c_str(),
-                                 younger_uop->getAddress().address,
-                                 younger_uop_issue_time);
-                  
+                  if (m_enable_ooo_check) {
+                     fprintf(stderr, "OoO region check start : %ld(%s):%08lx:%ld <--> %ld(%s):%08lx:%ld : ", 
+                                    uop->getSequenceNumber(),
+                                    uop->getMicroOp()->toShortString().c_str(),
+                                    uop->getAddress().address,
+                                    uop_issue_time,
+                                    younger_uop->getSequenceNumber(),
+                                    younger_uop->getMicroOp()->toShortString().c_str(),
+                                    younger_uop->getAddress().address,
+                                    younger_uop_issue_time);
+                  }
+
                   if (younger_entry->issued <= now &&
                       (younger_uop->getAddress().address & ~(m_ooo_check_region-1)) == (uop->getAddress().address & ~(m_ooo_check_region-1))) {
                      m_ooo_region_count ++;
