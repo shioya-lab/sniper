@@ -46,6 +46,12 @@ void FrontendCallbacks <T>::countInsns(threadid_t threadid, int32_t count)
 template <typename T>
 void FrontendCallbacks <T>::sendInstruction(threadid_t threadid, addr_t addr, uint32_t size, uint32_t num_addresses, bool is_branch, bool taken, bool is_predicate, bool executing, bool isbefore, bool ispause)
 {
+  auto detailed_target = m_options->get_detailed_target();
+  if (detailed_target && m_thread_data[threadid].icount_detailed >= detailed_target)
+  {
+    return;
+  }
+
   // We're still called for instructions in the same basic block as ROI end, ignore these
   if (!m_thread_data[threadid].output)
   {
@@ -99,8 +105,13 @@ void FrontendCallbacks <T>::sendInstruction(threadid_t threadid, addr_t addr, ui
   }
    // std::cerr << "Icount: " << m_thread_data[threadid].icount << std::endl;
 
+  if (detailed_target && m_thread_data[threadid].icount_detailed >= detailed_target)
+  {
+    m_control->closeFile(threadid);
+  }
 
-  // TODO fill in cases with use response files, detailed target, blocksize
+
+  // TODO fill in cases with use response files, blocksize
 }
 
 template <typename T>
