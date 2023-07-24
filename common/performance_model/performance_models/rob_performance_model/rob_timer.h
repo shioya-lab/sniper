@@ -244,7 +244,7 @@ public:
       ((RobTimer *)object)->m_rob_contention->setvl(vl);
       ((RobTimer *)object)->m_rob_contention->setvtype(vsize, vlmul);
 
-      std::cout << "Set VL = " << vl << ", vsize = " << std::dec << vsize << ", " << "vlmul = " << vlmul << '\n';
+      // std::cout << "Set VL = " << vl << ", vsize = " << std::dec << vsize << ", " << "vlmul = " << vlmul << '\n';
       return 0;
    }
 
