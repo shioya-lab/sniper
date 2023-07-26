@@ -151,9 +151,9 @@ void RobContentionBoomV1::doIssue(DynamicMicroOp &uop)
   if (uop.getMicroOp()->isVector() && !(uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
     UInt64 vecalu_latency = m_vlen / m_vsize < m_working_vl ? m_vector_issue_times_max : std::max((int)(m_working_vl * m_vsize / m_dlen), 1);
     vecalu_used_until = m_now + vecalu_latency;
-    std::cout << std::hex << uop_pc << " : m_working_vl = " << std::dec << m_working_vl << ", m_vsize = " << std::dec << m_vsize <<
-        ", m_dlen = " << m_dlen << 
-        ", set vecalu_used_until as " << vecalu_latency << '\n';
+    // std::cout << std::hex << uop_pc << " : m_working_vl = " << std::dec << m_working_vl << ", m_vsize = " << std::dec << m_vsize <<
+    //     ", m_dlen = " << m_dlen << 
+    //     ", set vecalu_used_until as " << vecalu_latency << '\n';
 
     m_working_vl = m_working_vl - m_vlen / m_vsize;
   }
