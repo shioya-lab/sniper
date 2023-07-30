@@ -11,8 +11,15 @@ namespace frontend
 class QemuFrontend : public Frontend<QemuFrontend>
 {
    public:
+   struct MemoryOperand
+   {
+      dl::Decoder::decoder_reg base;
+      dl::Decoder::decoder_reg index;
+   };
+
    struct Inst
    {
+      std::vector<MemoryOperand> memory_operands;
       addr_t addr;
       uint32_t size;
       bool is_branch;
@@ -35,6 +42,15 @@ class QemuFrontend : public Frontend<QemuFrontend>
 
       m_decoder->decode(decoded.get());
 
+      inst.memory_operands.resize(m_decoder->num_memory_operands(decoded.get()));
+      for (unsigned int i = 0; i < inst.memory_operands.size(); i++)
+      {
+         inst.memory_operands[i].base =
+            m_decoder->mem_base_reg(decoded.get(), i);
+         inst.memory_operands[i].index =
+            m_decoder->mem_index_reg(decoded.get(), i);
+      }
+
       inst.addr = addr;
       inst.size = size;
       inst.is_branch = decoded->is_conditional_branch();
@@ -43,44 +59,32 @@ class QemuFrontend : public Frontend<QemuFrontend>
 
    void init();
 
-   void executeMemoryAccess(unsigned int threadid, uint64_t address)
-   {
-      if (!m_executions[threadid].address)
-      {
-         m_executions[threadid].address = address;
-
-         if (m_control->get_any_thread_in_detail())
-         {
-            QemuFrontend::handleMemory(threadid, address);
-         }
-      }
-      else
-      {
-         // QEMU calls back when a memory access happens while
-         // QemuFrontend::handleMemory expects it will be called in the order
-         // of operands in instruction encoding. Since currently there is no
-         // way to close the gap, instructions with several memory operands are
-         // not supported.
-         // However, it is still possible to have several memory accesses for
-         // the sole memory operand; a typical example is an atomic instruction
-         // that performs a load and a store in order. In such a case,
-         // the memory accesses should operate on the same address.
-         assert(m_executions[threadid].address == address);
-      }
-   }
-
    void sendInstruction(unsigned int threadid, const Inst& inst)
    {
-      if (m_executions[threadid].inst)
+      auto& execution = m_executions[threadid];
+
+      if (execution.inst)
       {
          if (m_control->get_any_thread_in_detail())
          {
-            auto addr = m_executions[threadid].inst->addr;
-            auto size = m_executions[threadid].inst->size;
-            auto is_branch = m_executions[threadid].inst->is_branch;
-            auto is_pause = m_executions[threadid].inst->is_pause;
-            auto num_addresses = m_executions[threadid].address.has_value();
+            auto num_addresses = execution.inst->memory_operands.size();
+            auto addr = execution.inst->addr;
+            auto size = execution.inst->size;
+            auto is_branch = execution.inst->is_branch;
+            auto is_pause = execution.inst->is_pause;
             auto taken = addr + size != inst.addr;
+
+            for (const auto& operand : execution.inst->memory_operands)
+            {
+               auto address = read_register(execution, operand.base);
+
+               if (operand.index != dl::Decoder::DL_REG_INVALID)
+               {
+                  address += read_register(execution, operand.index);
+               }
+
+               QemuFrontend::handleMemory(threadid, address);
+            }
 
             FrontendCallbacks<QemuFrontend>::sendInstruction(
                threadid, addr, size, num_addresses, is_branch, taken,
@@ -92,13 +96,36 @@ class QemuFrontend : public Frontend<QemuFrontend>
          }
       }
 
-      m_executions[threadid].inst = &inst;
-      m_executions[threadid].address.reset();
+      execution.inst = &inst;
    }
 
    void threadStart(unsigned int threadid)
    {
       assert(threadid < MAX_NUM_THREADS);
+
+      m_executions[threadid].regs.reset(new int[m_decoder->last_reg()]);
+
+      for (dl::Decoder::decoder_reg i = 0; i < m_decoder->last_reg(); i++)
+      {
+         m_executions[threadid].regs[i] = -1;
+      }
+
+      for (auto feature = m_decoder->get_gdb_features();
+           feature->name;
+           feature++)
+      {
+         auto file = pluginFindRegisterFile(threadid, feature->name);
+         if (file < 0)
+         {
+            continue;
+         }
+
+         for (auto reg = feature->regs; reg->name; reg++)
+         {
+            auto regid = pluginFindRegister(threadid, file, reg->name);
+            m_executions[threadid].regs[reg->id] = regid;
+         }
+      }
    }
 
    void threadFinish(unsigned int threadid)
@@ -112,9 +139,27 @@ class QemuFrontend : public Frontend<QemuFrontend>
    private:
    struct Execution
    {
-      const Inst* inst;
-      std::optional<uint64_t> address;
+      Execution() : buf(g_byte_array_new())
+      {
+      }
+
+      ~Execution()
+      {
+         g_byte_array_unref(buf);
+      }
+
+      const Inst *inst;
+      std::unique_ptr<int[]> regs;
+      GByteArray * const buf;
    };
+
+   static uint64_t read_register(const Execution& execution, size_t index)
+   {
+      g_byte_array_set_size(execution.buf, 0);
+      assert(execution.regs[index] >= 0);
+      pluginReadRegister(execution.buf, execution.regs[index]);
+      return GUINT64_FROM_LE(*reinterpret_cast<uint64_t*>(execution.buf->data));
+   }
 
    dl::DecoderFactory m_decoder_factory;
    std::unique_ptr<dl::Decoder> m_decoder;
@@ -195,9 +240,6 @@ class FrontendOptions<QemuFrontend> : public OptionsBase<QemuFrontend>
       // ISAs with predicates are not supported because we lack code
       // to detect them.
       static const Target s_targets[] = {
-#if SNIPER_ARM
-         { "aarch64", ARM_AARCH64 },
-#endif
 #if SNIPER_RISCV
          { "riscv64", RISCV },
 #endif
@@ -325,10 +367,6 @@ void QemuFrontend::init()
 
    switch (m_options->get_theISA())
    {
-      case ARM_AARCH64:
-         arch = dl::DL_ARCH_ARMv8;
-         break;
-
       case RISCV:
          arch = dl::DL_ARCH_RISCV;
          break;
@@ -394,23 +432,11 @@ extern "C" void* decode(void* tb, size_t index,
 }
 
 extern "C" void handleSyscall(unsigned int threadid,
-                               int64_t num, uint64_t args[6])
+                              int64_t num, uint64_t args[6])
 {
    try
    {
       FrontendSyscallModel<QemuFrontend>::handleSyscall(threadid, num, args);
-   }
-   catch (...)
-   {
-      abort();
-   }
-}
-
-extern "C" void executeMemoryAccess(unsigned int threadid, uint64_t address)
-{
-   try
-   {
-      s_frontend->executeMemoryAccess(threadid, address);
    }
    catch (...)
    {

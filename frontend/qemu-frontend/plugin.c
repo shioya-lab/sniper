@@ -13,14 +13,6 @@ static void pluginVcpuExit(qemu_plugin_id_t id, unsigned int vcpu_index)
    threadFinish(vcpu_index);
 }
 
-static void pluginVcpuMem(unsigned int vcpu_index,
-                          qemu_plugin_meminfo_t info,
-                          uint64_t vaddr,
-                          void* userdata)
-{
-   executeMemoryAccess(vcpu_index, vaddr);
-}
-
 static void pluginVcpuSyscall(qemu_plugin_id_t id, unsigned int vcpu_index,
                               int64_t num, uint64_t a1, uint64_t a2,
                               uint64_t a3, uint64_t a4, uint64_t a5,
@@ -51,12 +43,8 @@ static void pluginVcpuTbTrans(qemu_plugin_id_t id,
       uint64_t insn_vaddr = qemu_plugin_insn_vaddr(insn);
       void* decoded = decode(tb, index, insn_data, insn_size, insn_vaddr);
 
-      qemu_plugin_register_vcpu_mem_cb(insn, pluginVcpuMem,
-                                       QEMU_PLUGIN_CB_NO_REGS,
-                                       QEMU_PLUGIN_MEM_RW, NULL);
-
       qemu_plugin_register_vcpu_insn_exec_cb(insn, sendInstruction,
-                                             QEMU_PLUGIN_CB_NO_REGS, decoded);
+                                             QEMU_PLUGIN_CB_R_REGS, decoded);
     }
 }
 
@@ -76,6 +64,21 @@ void pluginInit(void)
 void pluginFini(void)
 {
    qemu_plugin_register_atexit_cb(static_id, pluginAtexit, NULL);
+}
+
+int pluginFindRegisterFile(unsigned int vcpu_index, const char *name)
+{
+   return qemu_plugin_find_register_file(vcpu_index, name);
+}
+
+int pluginFindRegister(unsigned int vcpu_index, int file, const char *name)
+{
+   return qemu_plugin_find_register(vcpu_index, file, name);
+}
+
+int pluginReadRegister(GByteArray *buf, int reg)
+{
+   return qemu_plugin_read_register(buf, reg);
 }
 
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;

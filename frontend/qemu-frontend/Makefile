@@ -1,8 +1,9 @@
 include ../../common/Makefile.common
 
-CFLAGS+=-fPIC
+QEMU_FRONTEND_CFLAGS=-fPIC -fvisibility=hidden $(shell pkg-config --cflags glib-2.0)
+CFLAGS+=$(QEMU_FRONTEND_CFLAGS)
 CPPFLAGS+=-I..
-CXXFLAGS+=-fPIC
+CXXFLAGS+=$(QEMU_FRONTEND_CFLAGS)
 LD_FLAGS+=-shared
 
 libqemu-frontend.so: bbv_count.o plugin.o qemu_frontend.o

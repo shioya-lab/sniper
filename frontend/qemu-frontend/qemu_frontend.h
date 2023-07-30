@@ -1,3 +1,5 @@
+#include <glib.h>
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -5,13 +7,14 @@ extern "C"
 
 void pluginInit(void);
 void pluginFini(void);
-void pluginOuts(const char* string);
+int pluginFindRegisterFile(unsigned int vcpu_index, const char *name);
+int pluginFindRegister(unsigned int vcpu_index, int file, const char *name);
+int pluginReadRegister(GByteArray *buf, int reg);
 
 void* allocateTb(size_t size);
 void* decode(void* tb, size_t index,
              const void* data, size_t size, uint64_t addr);
 void handleSyscall(unsigned int threadid, int64_t num, uint64_t args[6]);
-void executeMemoryAccess(unsigned int threadid, uint64_t addr);
 void sendInstruction(unsigned int thread, void* decoded);
 
 void threadStart(unsigned int threadid);
