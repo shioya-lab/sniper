@@ -38,7 +38,7 @@ void ExecFrontend <T>::start()
     exit(1);
   }*/
   m_frontend->allocate_thread_data(thread_data_size);  // frontend specific
-  bzero(m_frontend->get_thread_data(), thread_data_size);
+  memset(m_frontend->get_thread_data(), 0, thread_data_size);
 
   // Create Control, Threads and SyscallModel modules
   m_frontend->init_frontend_modules(m_options);

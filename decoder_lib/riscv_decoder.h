@@ -4,14 +4,11 @@
 #include "decoder.h"
 
 #include <cstddef>
-#include <asm/types.h>
-#include <asm/meta.h>
-#include <asm/codec.h>
-#include <asm/switch.h>
-#include <asm/strings.h>
-#include <asm/host-endian.h>
-#include <util/fmt.h>
-#include <util/util.h>
+#include <types.h>
+#include <meta.h>
+#include <codec.h>
+#include <switch.h>
+#include <strings.h>
 
 namespace dl
 {

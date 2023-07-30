@@ -2,7 +2,7 @@ include ../../common/Makefile.common
 
 QEMU_FRONTEND_CFLAGS=-fPIC -fvisibility=hidden $(shell pkg-config --cflags glib-2.0)
 CFLAGS+=$(QEMU_FRONTEND_CFLAGS)
-CPPFLAGS+=-I..
+CPPFLAGS+=-I.. -I$(RV8_HOME)/src/asm
 CXXFLAGS+=$(QEMU_FRONTEND_CFLAGS)
 LD_FLAGS+=-shared
 
