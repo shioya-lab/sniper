@@ -71,6 +71,7 @@ RobTimer::RobTimer(
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_enable_ooo_check(Sim()->getCfg()->getBoolArray("log/enable_mem_ooo_check", core->getId()))
       , m_ooo_check_region(Sim()->getCfg()->getIntArray("log/mem_ooo_check_region", core->getId()))
+      , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -925,12 +926,8 @@ SubsecondTime RobTimer::doIssue()
 
    bool v_to_s_fenced = false;
    UInt64  l1d_block_size = Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size");
-   UInt64  l1d_num_banks  = Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks");
 
-   UInt64  *bank_info = new UInt64[l1d_num_banks];
-   for (UInt64 i = 0; i < l1d_num_banks; i++) {
-     bank_info[i] = 0;
-   }
+   std::fill(m_bank_info.begin(), m_bank_info.end(), 0);
 
    bool vector_someone_wait_issue = false;
    bool scalar_someone_wait_issue = false;
@@ -1090,17 +1087,17 @@ SubsecondTime RobTimer::doIssue()
           }
 
          IntPtr cache_line = uop->getAddress().address & ~(l1d_block_size-1);
-         IntPtr banked_cache_line = cache_line & ~(l1d_block_size * l1d_num_banks - 1);
+         IntPtr banked_cache_line = cache_line & ~(l1d_block_size * m_bank_info.size() - 1);
          IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
 
-         if (bank_info[bank_index] == 0) {           // first bank acces
+         if (m_bank_info[bank_index] == 0) {           // first bank acces
             if (enable_rob_timer_log) {   
                fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
-                        uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+                        uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
             }
-            bank_info[bank_index] = banked_cache_line;
+            m_bank_info[bank_index] = banked_cache_line;
             if (m_gather_scatter_merge && canIssue) {
               if (uop->getMicroOp()->isLoad()) {
                 m_VtoS_RdRequests ++;
@@ -1108,14 +1105,14 @@ SubsecondTime RobTimer::doIssue()
                 m_VtoS_WrRequests ++;
               }
             }
-          } else if (bank_info[bank_index] == banked_cache_line) {
+          } else if (m_bank_info[bank_index] == banked_cache_line) {
             // Same Bank Access and Can be Merge:
             uop->setMemAccessMerge();
             if (enable_rob_timer_log) {
                fprintf (stderr, "%ld %s cacheline bank can be access %08lx with %08lx. bank=%ld, CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
-                        uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+                        uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
             }
           } else {
             canIssue = false;
@@ -1123,11 +1120,11 @@ SubsecondTime RobTimer::doIssue()
                fprintf (stderr, "%ld %s cacheline bank conflict %08lx with %08lx, bank=%ld, CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
-                        uop->getAddress().address, bank_info[bank_index], bank_index, canIssue);
+                        uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
             }
           }
 
-          bank_info[bank_index] = banked_cache_line;
+          m_bank_info[bank_index] = banked_cache_line;
         } else {   // Gather Scatter Merge doesn't happen
           if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
             canIssue = false;
