@@ -80,6 +80,9 @@ RobTimer::RobTimer(
       m_uop_type_count[i] = 0;
       registerStatsMetric("rob_timer", core->getId(), String("uop_") + MicroOp::getSubtypeString(MicroOp::uop_subtype_t(i)), &m_uop_type_count[i]);
    }
+   m_vecuops_count = 0;
+   registerStatsMetric("rob_timer", core->getId(), "vecuops_count", &m_vecuops_count);
+
    m_uops_total = 0;
    m_uops_x87 = 0;
    m_uops_pause = 0;
@@ -466,7 +469,17 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
              m_uop_type_count[(*it)->getMicroOp()->getSubtype()] << '\n';
       }
 
+      static IntPtr prev_uop_pc = 0;
+      IntPtr uop_pc = (*it)->getMicroOp()->getInstructionPointer().address;
+      if ((*it)->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) {
+        if (prev_uop_pc != uop_pc) {
+          // fprintf(stderr, "pc = %08lx, vecops += %ld\n", uop_pc, m_rob_contention->getvl());
+          m_vecuops_count += m_rob_contention->getvl();
+        }
+      }
+      prev_uop_pc = uop_pc;
       m_uop_type_count[(*it)->getMicroOp()->getSubtype()]++;
+
       m_uops_total++;
       if ((*it)->getMicroOp()->isX87()) m_uops_x87++;
       if ((*it)->getMicroOp()->isPause()) m_uops_pause++;
@@ -572,7 +585,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
              m_vec_num_in_rob > m_vec_window_size) {
             // fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
-            break;   
+            break;
          }
 
          // Dispatch up to 4 instructions
@@ -910,7 +923,7 @@ SubsecondTime RobTimer::doIssue()
    bool dyn_vector_inorder = vector_inorder;
    // Vec/Scalar Inorder Protocl
    // inorder : Whole instruction inorder
-   // dyn_vector_inorder 
+   // dyn_vector_inorder
    bool dyn_inorder = inorder;
 
    bool vector_someone_cant_be_issued = false;
@@ -1034,7 +1047,7 @@ SubsecondTime RobTimer::doIssue()
       bool v_to_s_block = (v_to_s_fence && inhead_vector_existed && !uop->getMicroOp()->isVector()) || scalar_lsu_fence;
 
       if (enable_rob_timer_log) {
-         if (!uop->getMicroOp()->isVector() && 
+         if (!uop->getMicroOp()->isVector() &&
                                  (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore())) {
             fprintf(stderr, "Instr %ld, inflight_vecmem_block condition?: %s\n", uop->getSequenceNumber(),
                      uop->getMicroOp()->toShortString().c_str());
@@ -1094,7 +1107,7 @@ SubsecondTime RobTimer::doIssue()
          IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
 
          if (bank_info[bank_index] == 0) {           // first bank acces
-            if (enable_rob_timer_log) {   
+            if (enable_rob_timer_log) {
                fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
@@ -1249,9 +1262,9 @@ SubsecondTime RobTimer::doIssue()
                if (!younger_uop->getMicroOp()->isVector() && younger_uop->getMicroOp()->isLoad()) {
                   uint64_t uop_issue_time = SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod());
                   uint64_t younger_uop_issue_time = SubsecondTime::divideRounded(younger_entry->issued, m_core->getDvfsDomain()->getPeriod());
-                  
+
                   if (m_enable_ooo_check) {
-                     fprintf(stderr, "OoO region check start : %ld(%s):%08lx:%ld <--> %ld(%s):%08lx:%ld : ", 
+                     fprintf(stderr, "OoO region check start : %ld(%s):%08lx:%ld <--> %ld(%s):%08lx:%ld : ",
                                     uop->getSequenceNumber(),
                                     uop->getMicroOp()->toShortString().c_str(),
                                     uop->getAddress().address,
@@ -1462,7 +1475,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (entry->uop->getMicroOp()->isVector() &&
           (entry->uop->getMicroOp()->isLoad() || entry->uop->getMicroOp()->isStore())) {
          if (enable_rob_timer_log) {
-            fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n", 
+            fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n",
                   SubsecondTime::divideRounded(times.commit, m_core->getDvfsDomain()->getPeriod()),
                   entry->uop->getMicroOp()->toShortString(true).c_str());
          }

@@ -20,6 +20,10 @@ class RobContention {
       virtual bool noMore() { return false; } // Optimization: all resources used, nothing more can be issued this cycle
       virtual void doIssue(DynamicMicroOp &uop) = 0;
 
+      virtual size_t getvl () = 0;
+      virtual size_t getvlen () = 0;
+      virtual size_t getdlen () = 0;
+      virtual size_t getvsize () = 0;
       virtual void setvl(size_t vl) = 0;
       virtual void setvtype(size_t vsize, size_t vlmul) = 0;
 

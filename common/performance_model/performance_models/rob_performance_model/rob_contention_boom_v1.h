@@ -47,12 +47,16 @@ class RobContentionBoomV1 : public RobContention {
       bool noMore();
       void doIssue(DynamicMicroOp &uop);
 
-      void setvl(size_t vl) { 
-         m_vl = vl; 
+      size_t getvl () { return m_vl; }
+      size_t getvlen () { return m_vlen; }
+      size_t getdlen () { return m_dlen; }
+      size_t getvsize () { return m_vsize; }
+      void setvl(size_t vl) {
+         m_vl = vl;
       }
-      void setvtype(size_t vsize, size_t vlmul) { 
-         m_vsize = vsize; 
-         m_vlmul = vlmul; 
+      void setvtype(size_t vsize, size_t vlmul) {
+         m_vsize = vsize;
+         m_vlmul = vlmul;
       }
 
 };

@@ -107,6 +107,7 @@ private:
    int addressMask;
 
    UInt64 m_uop_type_count[MicroOp::UOP_SUBTYPE_SIZE];
+   UInt64 m_vecuops_count;
    UInt64 m_uops_total;
    UInt64 m_uops_x87;
    UInt64 m_uops_pause;
@@ -158,7 +159,7 @@ private:
    bool m_enable_ooo_check;
    uint64_t m_ooo_check_region;
    uint64_t m_ooo_region_count;
-   
+
    SubsecondTime m_latest_vecmem_commit_time;
 
    uint64_t m_totalProducerInsDistance;

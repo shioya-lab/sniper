@@ -44,6 +44,10 @@ class RobContentionCortexA53 : public RobContention {
       bool noMore();
       void doIssue(DynamicMicroOp &uop);
 
+      size_t getvl () { return 0; }
+      size_t getvlen () { return 0; }
+      size_t getdlen ()  { return 0; }
+      size_t getvsize () { return 0; }
       void setvl(size_t vl) { }
       void setvtype(size_t vsize, size_t vlmul) { }
 };
