@@ -43,7 +43,7 @@ RobTimer::RobTimer(
       , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
       , m_core(core)
-      , rob(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/rob_size", core->getId()))
+      , rob(window_size + 255)
       , m_num_in_rob(0)
       , m_rs_entries_used(0)
       , m_rob_contention(
