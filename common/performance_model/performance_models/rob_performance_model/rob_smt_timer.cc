@@ -1125,7 +1125,7 @@ bool RobSmtTimer::canExecute()
          // Thread will not dispatch, no need to consider it
          continue;
       }
-      else if (thread->rob.size() < thread->m_num_in_rob + 2*dispatchWidth)
+      else if (thread->rob.size() < std::min(thread->m_num_in_rob + 2*dispatchWidth, currentWindowSize))
       {
          // We don't have enough instructions to dispatch <dispatchWidth> new ones. Ask for more before doing anything this cycle.
          return false;
