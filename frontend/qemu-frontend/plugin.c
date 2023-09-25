@@ -41,10 +41,12 @@ static void pluginVcpuTbTrans(qemu_plugin_id_t id,
       const void* insn_data = qemu_plugin_insn_data(insn);
       size_t insn_size = qemu_plugin_insn_size(insn);
       uint64_t insn_vaddr = qemu_plugin_insn_vaddr(insn);
-      void* decoded = decode(tb, index, insn_data, insn_size, insn_vaddr);
+      struct Inst decoded = decode(tb, index, insn_data, insn_size, insn_vaddr);
 
-      qemu_plugin_register_vcpu_insn_exec_cb(insn, sendInstruction,
-                                             QEMU_PLUGIN_CB_R_REGS, decoded);
+      qemu_plugin_register_vcpu_insn_exec_cb(insn,
+                                             decoded.send,
+                                             QEMU_PLUGIN_CB_R_REGS,
+                                             decoded.data);
     }
 }
 

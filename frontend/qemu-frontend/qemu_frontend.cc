@@ -361,6 +361,36 @@ template <> class FrontendSyscallModel<QemuFrontend>
 FrontendISA FrontendOptions<QemuFrontend>::s_isa;
 static std::unique_ptr<QemuFrontend> s_frontend;
 
+static void sendStopInstruction(unsigned int threadid, void *data)
+{
+   try
+   {
+      s_frontend->get_control()->endROI(threadid);
+
+      s_frontend->sendInstruction(
+         threadid,
+         *static_cast<const frontend::QemuFrontend::Inst*>(data));
+   }
+   catch (...)
+   {
+      abort();
+   }
+}
+
+static void sendInstruction(unsigned int threadid, void *data)
+{
+   try
+   {
+      s_frontend->sendInstruction(
+         threadid,
+         *static_cast<const frontend::QemuFrontend::Inst*>(data));
+   }
+   catch (...)
+   {
+      abort();
+   }
+}
+
 void QemuFrontend::init()
 {
    dl::dl_arch arch;
@@ -416,14 +446,15 @@ extern "C" void* allocateTb(size_t size)
    }
 }
 
-extern "C" void* decode(void* tb, size_t index,
-                        const void* data, size_t size, uint64_t addr)
+extern "C" struct Inst decode(void* tb, size_t index,
+                              const void* data, size_t size, uint64_t addr)
 {
    try
    {
       auto& inst = static_cast<QemuFrontend::Inst*>(tb)[index];
+      auto stop = s_frontend->get_control()->get_stop_address() == addr;
       s_frontend->decode(inst, data, size, addr);
-      return &inst;
+      return { stop ? sendStopInstruction : sendInstruction, &inst };
    }
    catch (...)
    {
@@ -437,20 +468,6 @@ extern "C" void handleSyscall(unsigned int threadid,
    try
    {
       FrontendSyscallModel<QemuFrontend>::handleSyscall(threadid, num, args);
-   }
-   catch (...)
-   {
-      abort();
-   }
-}
-
-extern "C" void sendInstruction(unsigned int threadid, void* decoded)
-{
-   try
-   {
-      s_frontend->sendInstruction(
-         threadid,
-         *static_cast<const frontend::QemuFrontend::Inst*>(decoded));
    }
    catch (...)
    {
