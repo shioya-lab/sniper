@@ -28,7 +28,7 @@ Lock iolock;
 #  define MYLOG(...) LOCKED(LOGID(); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n");)
 #  define DUMPDATA(data_buf, data_length) { for(UInt32 i = 0; i < data_length; ++i) fprintf(stderr, "%02x ", data_buf[i]); }
 #else
-#  define MYLOG(...) {}
+#  define MYLOG(...) { if (m_enable_log) { fprintf(stderr, "%s ", m_configName.c_str()); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); } }
 #endif
 
 namespace ParametricDramDirectoryMSI
@@ -602,7 +602,7 @@ MYLOG("access done");
 
    if (modeled && m_master->m_prefetcher)
    {
-       trainPrefetcher(ca_address, cache_hit, prefetch_hit, false, t_start);
+      trainPrefetcher(ca_address, cache_hit, prefetch_hit, false, t_start);
       if (m_enable_log) {
          fprintf(stderr, "%s processMemOpFromCore::trainPrefetcher() finished\n", m_configName.c_str());
       }
@@ -621,7 +621,7 @@ MYLOG("access done");
       Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_access(cache_block_info->getOwner(), mem_op_type, hit_where);
 
    if (m_enable_log) {
-      fprintf(stderr, "returning %s, latency %lu ns", HitWhereString(hit_where), total_latency.getNS());
+      fprintf(stderr, "returning %s, latency %lu ns\n", HitWhereString(hit_where), total_latency.getNS());
    }
    return hit_where;
 }
@@ -696,6 +696,13 @@ CacheCntlr::trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, b
       prefetcherTrained = true;
    }
    else prefetcherTrained = false;
+
+   if (m_enable_log) {
+      fprintf(stderr, "  %s CacheCntlr::trainPrefetcher() prefetchList size = %ld\n", m_configName.c_str(), prefetchList.size());
+      for (auto l : prefetchList) {
+         fprintf(stderr, "  %08lx\n", l);
+      }
+   }
 
    // Only do prefetches on misses, or on hits to lines previously brought in by the prefetcher (if enabled)
    if (prefetcherTrained && (!cache_hit || (m_prefetch_on_prefetch_hit && prefetch_hit)))
