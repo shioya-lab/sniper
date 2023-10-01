@@ -828,7 +828,7 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
 /// Get the maximum size of the operands of instruction inst in bits
 uint16_t RISCVDecoder::get_operand_size(const DecodedInst *ins)
 {
-  uint16_t max_reg_size = 32;
+  uint16_t max_reg_size = 64;
 
   // TODO: if register- get sizereg (for now)
 
@@ -1712,69 +1712,69 @@ std::string format_str(const char* fmt, ...) //rv8 src/util/util.cc
 void RISCVDecodedInst::set_disassembly()
 {
   riscv::decode dec = this->rv8_dec;
-  std::string *args = new std::string;
+  std::string args;
   const char *fmt = rv_inst_format[dec.op];
   while (*fmt) {
     switch (*fmt) {
-      case 'O': *args += rv_inst_name_sym[dec.op]; break;
-      case '(': *args += "("; break;
-      case ',': *args += ", "; break;
-      case ')': *args += ")"; break;
-      case '0': *args += rv_ireg_name_sym[dec.rd]; break;
-      case '1': *args += rv_ireg_name_sym[dec.rs1]; break;
-      case '2': *args += rv_ireg_name_sym[dec.rs2]; break;
-      case '3': *args += rv_freg_name_sym[dec.rd]; break;
-      case '4': *args += rv_freg_name_sym[dec.rs1]; break;
-      case '5': *args += rv_freg_name_sym[dec.rs2]; break;
-      case '6': *args += rv_freg_name_sym[dec.rs3]; break;
-      case '7': *args += format_str("%d", dec.rs1); break;
-      case '8': *args += rv_vreg_name_sym[dec.rd]; break;
-      case '9': *args += rv_vreg_name_sym[dec.rs3]; break;
-      case 'b': *args += rv_vreg_name_sym[dec.rs1]; break;
-      case 'd': *args += rv_vreg_name_sym[dec.rs2]; break;
-      case 'i': *args += format_str("%d", dec.imm); break;
-      case 'o': *args += format_str("pc %c %td",
+      case 'O': args += rv_inst_name_sym[dec.op]; break;
+      case '(': args += "("; break;
+      case ',': args += ", "; break;
+      case ')': args += ")"; break;
+      case '0': args += rv_ireg_name_sym[dec.rd]; break;
+      case '1': args += rv_ireg_name_sym[dec.rs1]; break;
+      case '2': args += rv_ireg_name_sym[dec.rs2]; break;
+      case '3': args += rv_freg_name_sym[dec.rd]; break;
+      case '4': args += rv_freg_name_sym[dec.rs1]; break;
+      case '5': args += rv_freg_name_sym[dec.rs2]; break;
+      case '6': args += rv_freg_name_sym[dec.rs3]; break;
+      case '7': args += format_str("%d", dec.rs1); break;
+      case '8': args += rv_vreg_name_sym[dec.rd]; break;
+      case '9': args += rv_vreg_name_sym[dec.rs3]; break;
+      case 'b': args += rv_vreg_name_sym[dec.rs1]; break;
+      case 'd': args += rv_vreg_name_sym[dec.rs2]; break;
+      case 'i': args += format_str("%d", dec.imm); break;
+      case 'o': args += format_str("pc %c %td",
         intptr_t(dec.imm) < 0 ? '-' : '+',
         intptr_t(dec.imm) < 0 ? -intptr_t(dec.imm) : intptr_t(dec.imm)); break;
       case 'c': {
         const char * csr_name = rv_csr_name_sym[dec.imm & 0xfff];
-        if (csr_name) *args += format_str("%s", csr_name);
-        else *args += format_str("0x%03x", dec.imm & 0xfff);
+        if (csr_name) args += format_str("%s", csr_name);
+        else args += format_str("0x%03x", dec.imm & 0xfff);
         break;
       }
       case 'r':
         switch(dec.rm) {
-          case rv_rm_rne: *args += "rne"; break;
-          case rv_rm_rtz: *args += "rtz"; break;
-          case rv_rm_rdn: *args += "rdn"; break;
-          case rv_rm_rup: *args += "rup"; break;
-          case rv_rm_rmm: *args += "rmm"; break;
-          case rv_rm_dyn: *args += "dyn"; break;
-          default:           *args += "inv"; break;
+          case rv_rm_rne: args += "rne"; break;
+          case rv_rm_rtz: args += "rtz"; break;
+          case rv_rm_rdn: args += "rdn"; break;
+          case rv_rm_rup: args += "rup"; break;
+          case rv_rm_rmm: args += "rmm"; break;
+          case rv_rm_dyn: args += "dyn"; break;
+          default:           args += "inv"; break;
         }
         break;
       case 'p':
-        if (dec.pred & rv_fence_i) *args += "i";
-        if (dec.pred & rv_fence_o) *args += "o";
-        if (dec.pred & rv_fence_r) *args += "r";
-        if (dec.pred & rv_fence_w) *args += "w";
+        if (dec.pred & rv_fence_i) args += "i";
+        if (dec.pred & rv_fence_o) args += "o";
+        if (dec.pred & rv_fence_r) args += "r";
+        if (dec.pred & rv_fence_w) args += "w";
         break;
       case 's':
-        if (dec.succ & rv_fence_i) *args += "i";
-        if (dec.succ & rv_fence_o) *args += "o";
-        if (dec.succ & rv_fence_r) *args += "r";
-        if (dec.succ & rv_fence_w) *args += "w";
+        if (dec.succ & rv_fence_i) args += "i";
+        if (dec.succ & rv_fence_o) args += "o";
+        if (dec.succ & rv_fence_r) args += "r";
+        if (dec.succ & rv_fence_w) args += "w";
         break;
-      case '\t': while (args->length() < 15) *args += " "; break;
-      case 'A': if (dec.aq) *args += ".aq"; break;
-      case 'R': if (dec.rl) *args += ".rl"; break;
+      case '\t': while (args.length() < 15) args += " "; break;
+      case 'A': if (dec.aq) args += ".aq"; break;
+      case 'R': if (dec.rl) args += ".rl"; break;
       default:
         break;
     }
     fmt++;
 	}
 
-  m_disassembly = args->c_str();
+  m_disassembly = args;
 }
 
 std::string RISCVDecodedInst::disassembly_to_str() const
