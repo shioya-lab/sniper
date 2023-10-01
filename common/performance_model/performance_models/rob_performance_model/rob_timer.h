@@ -190,6 +190,8 @@ private:
    std::vector<std::vector<SubsecondTime> > m_outstandingLoads;
    std::vector<SubsecondTime> m_outstandingLoadsAll;
 
+   std::vector<UInt64> m_bank_info;
+
    RobEntry *findEntryBySequenceNumber(UInt64 sequenceNumber);
    SubsecondTime* findCpiComponent();
    void countOutstandingMemop(SubsecondTime time);
