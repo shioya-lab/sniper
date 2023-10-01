@@ -219,7 +219,7 @@ namespace ParametricDramDirectoryMSI
          bool m_l1_mshr;
          bool m_enable_log;
 
-         
+
          struct {
            UInt64 loads, stores;
            UInt64 load_misses, store_misses;
@@ -355,6 +355,98 @@ namespace ParametricDramDirectoryMSI
          core_id_t getHome(IntPtr address) { return m_tag_directory_home_lookup->getHome(address); }
 
          CacheCntlr* lastLevelCache(void);
+
+     bool m_roi_dumped;
+     // Memory Access Log
+     class access_info_t {
+      public:
+       SubsecondTime cycle;
+       bool hit;
+       char rw;
+       bool vec_access;
+       access_info_t (SubsecondTime _cycle, bool _hit, char _rw, bool _vec_access) :
+           cycle(_cycle), hit(_hit), rw(_rw), vec_access(_vec_access) {}
+     };
+     std::map<uint64_t, std::vector<access_info_t *>> m_cache_access_hist;
+
+     static SInt64 hookRoiBegin(UInt64 object, UInt64 argument) {
+       ((CacheCntlr*)object)->roiBegin(); return 0;
+     }
+
+     static SInt64 hookRoiEnd(UInt64 object, UInt64 argument) {
+       ((CacheCntlr*)object)->roiEnd(); return 0;
+     }
+
+     void roiBegin() {
+       m_cache_access_hist.erase(m_cache_access_hist.begin(), m_cache_access_hist.end());
+     }
+
+     void roiEnd() {
+       m_roi_dumped = true;
+     }
+
+     void dump_hist () {
+       uint64_t total_scalar_hit_count  = 0;
+       uint64_t total_scalar_miss_count = 0;
+       uint64_t total_vector_hit_count  = 0;
+       uint64_t total_vector_miss_count = 0;
+
+       printf ("Cache statistics : %s\n", m_configName.c_str());
+
+       for (auto hist: m_cache_access_hist) {
+         uint64_t scalar_hit_count  = 0;
+         uint64_t scalar_miss_count = 0;
+         uint64_t vector_hit_count  = 0;
+         uint64_t vector_miss_count = 0;
+
+         printf("%08x : %3d times : ", hist.first, hist.second.size());
+         for (auto l: hist.second) {
+           if (l->rw == 'P' || l->rw == 'E')
+             continue;
+           if (!l->vec_access && l->hit) {
+             total_scalar_hit_count += 1;
+             scalar_hit_count += 1;
+           } else if (!l->vec_access && !l->hit) {
+             total_scalar_miss_count += 1;
+             scalar_miss_count += 1;
+           } else if (l->vec_access && l->hit) {
+             total_vector_hit_count += 1;
+             vector_hit_count += 1;
+           } else if (l->vec_access && !l->hit) {
+             total_vector_miss_count += 1;
+             vector_miss_count += 1;
+           }
+         }
+
+         printf (" H=%3ld,M=%3ld ", scalar_hit_count + vector_hit_count,
+                 scalar_miss_count + vector_miss_count);
+
+         for (auto l: hist.second) {
+           if (l->rw == 'P' || l->rw == 'E') {
+             printf("_");
+           } else {
+             printf("%c", l->vec_access ? 'V' : 'S');
+           }
+         }
+         printf(",");
+         for (auto l: hist.second) {
+           if (l->rw == 'P' || l->rw == 'E') {
+             printf("_");
+           } else {
+             printf("%c", l->hit ? 'H' : 'M');
+           }
+         }
+         printf(",");
+         for (auto l: hist.second) {
+           printf("%c", l->rw);
+         }
+         printf("\n");
+       }
+       printf("-------------------------\n");
+       printf("ScalarHit=%ld, ScalarMiss=%ld, VectorHit=%ld, VectorMiss=%ld\n", total_scalar_hit_count, total_scalar_miss_count, total_vector_hit_count, total_vector_miss_count);
+       printf("ScalarHitRate=%f, VectorHitRate=%f\n", total_scalar_hit_count + total_scalar_miss_count != 0 ? (static_cast<float>(total_scalar_hit_count) / (total_scalar_hit_count + total_scalar_miss_count)) : 0.0,
+              total_vector_hit_count + total_vector_miss_count != 0 ? static_cast<float>(total_vector_hit_count) / (total_vector_hit_count + total_vector_miss_count) : 0.0);
+     }
 
       public:
 

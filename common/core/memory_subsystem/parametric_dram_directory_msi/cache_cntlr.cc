@@ -288,10 +288,18 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
       registerStatsMetric(name, core_id, "uncore-totaltime", &m_shmem_perf_totaltime);
       registerStatsMetric(name, core_id, "uncore-requests", &m_shmem_perf_numrequests);
    }
+
+   Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, CacheCntlr::hookRoiBegin, (UInt64)this);
+   Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END,   CacheCntlr::hookRoiEnd, (UInt64)this);
+   m_roi_dumped  = false;
 }
 
 CacheCntlr::~CacheCntlr()
 {
+  if (!m_roi_dumped) {
+    dump_hist();
+  }
+
    if (isMasterCache())
    {
       delete m_master;
@@ -620,6 +628,17 @@ MYLOG("access done");
    if (Sim()->getConfig()->getCacheEfficiencyCallbacks().notify_access_func)
       Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_access(cache_block_info->getOwner(), mem_op_type, hit_where);
 
+   // Update Access History
+   if (true /* m_roi_started*/) {
+     UInt64 block_address  = ca_address & ~(getCacheBlockSize() - 1);
+     m_cache_access_hist[block_address].push_back(new access_info_t (t_now, cache_hit,
+                                                                     mem_op_type == Core::READ_VEC  ? 'R' :
+                                                                     mem_op_type == Core::WRITE_VEC ? 'W' :
+                                                                     mem_op_type == Core::READ      ? 'r' :
+                                                                     mem_op_type == Core::WRITE     ? 'w' : 'N',
+                                                                     static_cast<bool>((mem_op_type == Core::READ_VEC) || (mem_op_type == Core::WRITE_VEC))));
+   }
+
    if (m_enable_log) {
       fprintf(stderr, "returning %s, latency %lu ns\n", HitWhereString(hit_where), total_latency.getNS());
    }
@@ -784,6 +803,11 @@ CacheCntlr::doPrefetch(IntPtr prefetch_address, SubsecondTime t_start)
    getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_start); // Start the prefetch at the same time as the original miss
    HitWhere::where_t hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
 
+   // Update Access History
+   if (true /* m_roi_started*/) {
+     UInt64 block_address  = prefetch_address & ~(getCacheBlockSize() - 1);
+     m_cache_access_hist[block_address].push_back(new access_info_t (t_start, hit_where != HitWhere::MISS, 'P', false));
+   }
    if (hit_where == HitWhere::MISS)
    {
       /* last level miss, a message has been sent. */
@@ -1477,6 +1501,13 @@ MYLOG("evicting @%lx", evict_address);
             ++stats.evict_prefetch;
          if (evict_block_info.hasOption(CacheBlockInfo::WARMUP))
             ++stats.evict_warmup;
+      }
+
+      // Update Access History
+      if (true /* m_roi_started*/) {
+        UInt64 block_address  = evict_address & ~(getCacheBlockSize() - 1);
+        m_cache_access_hist[block_address].push_back(new access_info_t (getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD),
+                                                                        HitWhere::MISS, 'E', false));
       }
 
       /* TODO: this part looks a lot like updateCacheBlock's dirty case, but with the eviction buffer

@@ -28,16 +28,16 @@ StreamPrefetcher::StreamPrefetcher(String configName, core_id_t _core_id, UInt32
 }
 
 
-// Returns whether the 'addr' is in a window specified 
+// Returns whether the 'addr' is in a window specified
 // by the remaining arguments or not. The 'ascending' means
-// a direction of a window. 
+// a direction of a window.
 bool StreamPrefetcher::is_in_window( IntPtr addr, IntPtr start, IntPtr windowSize, bool ascending)
 {
     IntPtr line_addr  = MaskLineOffset(addr);
     IntPtr line_start = MaskLineOffset(start);
-    
+
     if (m_enable_log) {
-        fprintf(stderr, "   %s: is_in_window::Trying to check : line_addr=%08lx, line_start=%08lx, window=%08lx, ascending=%d\n", 
+        fprintf(stderr, "   %s: is_in_window::Trying to check : line_addr=%08lx, line_start=%08lx, window=%08lx, ascending=%d\n",
                         configName.c_str(), line_addr, line_start, windowSize, ascending);
     }
     if (ascending) {
@@ -58,8 +58,9 @@ IntPtr StreamPrefetcher::MaskLineOffset( IntPtr addr)
 std::vector<IntPtr>
 StreamPrefetcher::getNextAddress(IntPtr current_address, core_id_t _core_id)
 {
-    fprintf(stderr, "  %s StreamPrefetcher::getNextAddress(%08lx) start :\n", configName.c_str(), current_address);
-
+    if (m_enable_log) {
+      fprintf(stderr, "  %s StreamPrefetcher::getNextAddress(%08lx) start :\n", configName.c_str(), current_address);
+    }
     std::vector<IntPtr> addresses;
 
     auto monitor_ret = UpdateMonitorStream(current_address);
@@ -69,9 +70,11 @@ StreamPrefetcher::getNextAddress(IntPtr current_address, core_id_t _core_id)
 
         IntPtr prefetch = current_address + (stream->ascending ? m_cache_block_size : -m_cache_block_size);
         for (int i = 0; i < m_degree; i++) {
+          if (m_enable_log) {
             fprintf(stderr, "  %s StreamPrefetcher::getNextAddress() pushing address %08lx\n", configName.c_str(), prefetch);
-            addresses.push_back(prefetch);
-            prefetch = prefetch + (stream->ascending ? m_cache_block_size : -m_cache_block_size);
+          }
+          addresses.push_back(prefetch);
+          prefetch = prefetch + (stream->ascending ? m_cache_block_size : -m_cache_block_size);
         }
     }
 
@@ -87,7 +90,9 @@ StreamPrefetcher::getNextAddress(IntPtr current_address, core_id_t _core_id)
 // Returns whether any entries are updated or not.
 std::pair<bool, size_t> StreamPrefetcher::UpdateMonitorStream(IntPtr current_address)
 {
-    fprintf(stderr, "   %s StreamPrefetcher::UpdateMonitorStream() start :\n", configName.c_str());
+    if (m_enable_log) {
+      fprintf(stderr, "   %s StreamPrefetcher::UpdateMonitorStream() start :\n", configName.c_str());
+    }
 
     IntPtr miss_block_address = MaskLineOffset( current_address);
 
@@ -103,8 +108,8 @@ std::pair<bool, size_t> StreamPrefetcher::UpdateMonitorStream(IntPtr current_add
         }
 
         if (m_enable_log) {
-            fprintf(stderr, "   %s: UpdateMonitorStream::current_address hit = %08lx, entry index = %ld\n", 
-                    configName.c_str(), 
+            fprintf(stderr, "   %s: UpdateMonitorStream::current_address hit = %08lx, entry index = %ld\n",
+                    configName.c_str(),
                     current_address, i);
         }
 
@@ -125,12 +130,12 @@ bool StreamPrefetcher::UpdateTrainingStream (IntPtr current_address)
     IntPtr miss_block_address = MaskLineOffset (current_address);
 
     if (m_enable_log) {
-        fprintf(stderr, "   %s: UpdateTrainingStream(%ld)::current_address = %08lx, miss_block_address = %08lx\n", 
+        fprintf(stderr, "   %s: UpdateTrainingStream(%ld)::current_address = %08lx, miss_block_address = %08lx\n",
                 configName.c_str(), m_stream_table.size(), miss_block_address, current_address);
         fprintf (stderr, "   ");
-        for (size_t i = 0; i < m_stream_table.size(); i++) { 
-            fprintf (stderr, "(%2ld,%s,%08lx)", i, m_stream_table[i]->status == SS_TRAINING ? "T" : 
-                              m_stream_table[i]->status == SS_MONITOR ? "M" : "X", 
+        for (size_t i = 0; i < m_stream_table.size(); i++) {
+            fprintf (stderr, "(%2ld,%s,%08lx)", i, m_stream_table[i]->status == SS_TRAINING ? "T" :
+                              m_stream_table[i]->status == SS_MONITOR ? "M" : "X",
                               m_stream_table[i]->addr);
             if (i % 8 == 8-1) {
                 fprintf(stderr, "\n");
@@ -154,7 +159,7 @@ bool StreamPrefetcher::UpdateTrainingStream (IntPtr current_address)
             inWindow  = true;
             ascending = true;
             if (m_enable_log) {
-                fprintf(stderr, "   %s: UpdateTraining: stream_table[%ld] is hit(ascending)\n", configName.c_str(), i);
+              fprintf(stderr, "   %s: UpdateTraining: stream_table[%ld] is hit(ascending)\n", configName.c_str(), i);
             }
         } else if (is_in_window( miss_block_address, start, window, false)) {
             inWindow  = true;
@@ -166,7 +171,7 @@ bool StreamPrefetcher::UpdateTrainingStream (IntPtr current_address)
             continue;
         }
 
-        // Decide a stream direction of a stream when 
+        // Decide a stream direction of a stream when
         // an access is a first access (stream->count == 0)
         // in a training mode.
         if (stream->count == 0) {
@@ -187,8 +192,8 @@ bool StreamPrefetcher::UpdateTrainingStream (IntPtr current_address)
         if (stream->count >= m_training_threshold) {
             stream->status = SS_MONITOR;
             if (m_enable_log) {
-                fprintf(stderr, "   %s: UpdateTrainingStream::TRAIN->MON : current_address = %08lx, entry index = %ld\n", 
-                        configName.c_str(), 
+                fprintf(stderr, "   %s: UpdateTrainingStream::TRAIN->MON : current_address = %08lx, entry index = %ld\n",
+                        configName.c_str(),
                         current_address, i);
             }
         }
@@ -223,8 +228,7 @@ void StreamPrefetcher::AllocateStream (IntPtr current_address)
     // m_stream_table.touch( target);
 
     if (m_enable_log) {
-        fprintf(stderr, " %s: AllocateStream::current_address = %08lx\n", 
+        fprintf(stderr, " %s: AllocateStream::current_address = %08lx\n",
                 configName.c_str(), current_address);
     }
 }
-
