@@ -382,6 +382,7 @@ namespace ParametricDramDirectoryMSI
      }
 
      void roiEnd() {
+       dump_hist ();
        m_roi_dumped = true;
      }
 
