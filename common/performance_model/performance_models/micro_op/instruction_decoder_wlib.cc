@@ -60,6 +60,8 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
    dl::Decoder *dec = Sim()->getDecoder();
    // Determine register dependencies and number of microops per type
 
+   static uint64_t last_pc = 0;
+
    std::vector<std::set<dl::Decoder::decoder_reg> > regs_loads, regs_stores;
    std::set<dl::Decoder::decoder_reg> regs_mem, regs_src, regs_dst;
    std::vector<uint16_t> memop_load_size, memop_store_size;
@@ -270,7 +272,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
 
       /* Extra information of first micro op */
 
-      if (index == 0)
+      if (index == 0 && (currentMicroOp->getInstruction()->getAddress() != last_pc))
       {
          currentMicroOp->setFirst(true);
 
@@ -279,6 +281,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
             currentMicroOp->setIsX87(true);
       }
 
+      last_pc = currentMicroOp->getInstruction()->getAddress();
 
       /* Extra information on last micro op */
 

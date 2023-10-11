@@ -215,10 +215,17 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "vec-scalar-ooo-issue",    &vector_overtake_scalar_issue_count);
    registerStatsMetric("rob_timer", core->getId(), "scalar-scalar-ooo-issue", &scalar_overtake_scalar_issue_count);
 
+   registerStatsMetric("rob_timer", core->getId(), "vec-vec-overtook-issue",    &vector_overtook_by_vector_issue_count);
+   registerStatsMetric("rob_timer", core->getId(), "vec-scalar-overtook-issue", &vector_overtook_by_scalar_issue_count);
+   registerStatsMetric("rob_timer", core->getId(), "vec-inst-issued",           &vector_inst_issued_count);
+   registerStatsMetric("rob_timer", core->getId(), "scalar-inst-issued",        &scalar_inst_issued_count);
+
    vector_overtake_vector_issue_count = 0;
    scalar_overtake_vector_issue_count = 0;
    vector_overtake_scalar_issue_count = 0;
    scalar_overtake_scalar_issue_count = 0;
+   vector_inst_issued_count = 0;
+   scalar_inst_issued_count = 0;
 
    assert((m_ooo_check_region != 0) && !(m_ooo_check_region & (m_ooo_check_region - 1)));
    registerStatsMetric("rob_timer", core->getId(), "ooo_reorder_count", &m_ooo_region_count);
@@ -572,7 +579,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
              m_vec_num_in_rob > m_vec_window_size) {
             // fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
-            break;   
+            break;
          }
 
          // Dispatch up to 4 instructions
@@ -910,7 +917,7 @@ SubsecondTime RobTimer::doIssue()
    bool dyn_vector_inorder = vector_inorder;
    // Vec/Scalar Inorder Protocl
    // inorder : Whole instruction inorder
-   // dyn_vector_inorder 
+   // dyn_vector_inorder
    bool dyn_inorder = inorder;
 
    bool vector_someone_cant_be_issued = false;
@@ -1004,6 +1011,10 @@ SubsecondTime RobTimer::doIssue()
                                                 ( uop->getMicroOp()->isVector() && !vec_store_queue.hasFreeSlot(now)) ||
                                                 (!uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now))))
       {
+         if (enable_rob_timer_log) {
+            std::cerr << "  store_queue full" <<
+                ", index = " << uop->getSequenceNumber() << '\n';
+         }
          canIssue = false;          // store queue full
       }
       else
@@ -1034,7 +1045,7 @@ SubsecondTime RobTimer::doIssue()
       bool v_to_s_block = (v_to_s_fence && inhead_vector_existed && !uop->getMicroOp()->isVector()) || scalar_lsu_fence;
 
       if (enable_rob_timer_log) {
-         if (!uop->getMicroOp()->isVector() && 
+         if (!uop->getMicroOp()->isVector() &&
                                  (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore())) {
             fprintf(stderr, "Instr %ld, inflight_vecmem_block condition?: %s\n", uop->getSequenceNumber(),
                      uop->getMicroOp()->toShortString().c_str());
@@ -1094,7 +1105,7 @@ SubsecondTime RobTimer::doIssue()
          IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
 
          if (bank_info[bank_index] == 0) {           // first bank acces
-            if (enable_rob_timer_log) {   
+            if (enable_rob_timer_log) {
                fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
@@ -1161,13 +1172,19 @@ SubsecondTime RobTimer::doIssue()
       if (uop->getMicroOp()->isVector()) {
          // Vector Instructions
          if (canIssue) {
-            if (vector_someone_wait_issue) {
+            if (uop->getMicroOp()->UopIdx() == 0 && uop->getMicroOp()->isFirst()) {
+              vector_inst_issued_count++;
+            }
+
+            // Only capture the issue event when uops == 0 (recognized as single instruction)
+            if (uop->getMicroOp()->UopIdx() == 0 && uop->getMicroOp()->isFirst() &&  vector_someone_wait_issue) {
                vector_overtake_vector_issue_count ++;
             }
-            if (scalar_someone_wait_issue) {
+            if (uop->getMicroOp()->UopIdx() == 0 && uop->getMicroOp()->isFirst() &&  scalar_someone_wait_issue) {
                vector_overtake_scalar_issue_count++;
             }
-            if (vector_someone_wait_issue || scalar_someone_wait_issue) {
+            if (uop->getMicroOp()->UopIdx() == 0 && uop->getMicroOp()->isFirst() &&
+                (vector_someone_wait_issue || scalar_someone_wait_issue)) {
                vec_ooo_issue_count ++;
                if (enable_rob_timer_log) {
                   fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
@@ -1175,6 +1192,43 @@ SubsecondTime RobTimer::doIssue()
                                     uop->getAddress().address,
                                     uop->getMicroOp()->toShortString().c_str());
                }
+            }
+
+            if (uop->getMicroOp()->UopIdx() == 0 && uop->getMicroOp()->isFirst()) {
+              // fprintf (stderr, "Vector issuesd : counted up with overtook by vector(%ld) %s %ld\n",
+              //          uop->get_overtook_uop_idx(),
+              //          uop->getMicroOp()->toShortString().c_str(),
+              //          uop->getSequenceNumber());
+              vector_overtook_by_vector_issue_count += uop->count_overtook_by_vector();
+            }
+            if (uop->getMicroOp()->UopIdx() == 0 && uop->getMicroOp()->isFirst()) {
+              // fprintf (stderr, "Vector issuesd : counted up with overtook by scalar %s %ld\n",
+              //          uop->getMicroOp()->toShortString().c_str(),
+              //          uop->getSequenceNumber());
+              vector_overtook_by_scalar_issue_count += uop->count_overtook_by_scalar();
+            }
+
+            // mark previous instructions are all "overtook"
+            if (uop->getMicroOp()->UopIdx() == 0 && uop->getMicroOp()->isFirst() &&  i != 0) {
+              if (enable_rob_timer_log) {
+                fprintf (stderr, "ROB from 0 to %ld are all recognized as overtook by %s(%ld)\n",
+                         i,
+                         uop->getMicroOp()->toShortString().c_str(),
+                         uop->getSequenceNumber());
+              }
+              for (uint64_t j = 0; j < i; ++j) {
+                RobEntry *prev_entry = &rob.at(j);
+                DynamicMicroOp *prev_uop = prev_entry->uop;
+                if (!prev_uop->isVirtuallyIssued()) {
+                  prev_uop->set_overtook_by_vector(uop->getSequenceNumber());
+                  if (enable_rob_timer_log) {
+                    fprintf (stderr, " ROB = %ld, ", j);
+                  }
+                }
+              }
+              if (enable_rob_timer_log) {
+                fprintf (stderr, "\n");
+              }
             }
          } else if (!uop->isVirtuallyIssued()) {
             vector_someone_wait_issue = true;
@@ -1185,9 +1239,11 @@ SubsecondTime RobTimer::doIssue()
                                  SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
             }
          }
+
       } else {
          // Scalar Instructions
          if (canIssue) {
+            scalar_inst_issued_count++;
             if (vector_someone_wait_issue) {
                scalar_overtake_vector_issue_count ++;
             }
@@ -1197,11 +1253,20 @@ SubsecondTime RobTimer::doIssue()
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                scalar_ooo_issue_count++;
                if (enable_rob_timer_log) {
-                  fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
-                                    uop->getSequenceNumber(),
-                                    uop->getAddress().address,
-                                    uop->getMicroOp()->toShortString().c_str());
+                 fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
+                          uop->getSequenceNumber(),
+                          uop->getAddress().address,
+                          uop->getMicroOp()->toShortString().c_str());
                }
+            }
+
+            // mark previous instructions are all "overtook"
+            if (i != 0) {
+              for (uint64_t j = 0; j < i; ++j) {
+                RobEntry *prev_entry = &rob.at(j);
+                DynamicMicroOp *prev_uop = prev_entry->uop;
+                prev_uop->set_overtook_by_scalar();
+              }
             }
          } else {
             scalar_someone_wait_issue = true;
@@ -1249,9 +1314,9 @@ SubsecondTime RobTimer::doIssue()
                if (!younger_uop->getMicroOp()->isVector() && younger_uop->getMicroOp()->isLoad()) {
                   uint64_t uop_issue_time = SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod());
                   uint64_t younger_uop_issue_time = SubsecondTime::divideRounded(younger_entry->issued, m_core->getDvfsDomain()->getPeriod());
-                  
+
                   if (m_enable_ooo_check) {
-                     fprintf(stderr, "OoO region check start : %ld(%s):%08lx:%ld <--> %ld(%s):%08lx:%ld : ", 
+                     fprintf(stderr, "OoO region check start : %ld(%s):%08lx:%ld <--> %ld(%s):%08lx:%ld : ",
                                     uop->getSequenceNumber(),
                                     uop->getMicroOp()->toShortString().c_str(),
                                     uop->getAddress().address,
@@ -1462,7 +1527,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (entry->uop->getMicroOp()->isVector() &&
           (entry->uop->getMicroOp()->isLoad() || entry->uop->getMicroOp()->isStore())) {
          if (enable_rob_timer_log) {
-            fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n", 
+            fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n",
                   SubsecondTime::divideRounded(times.commit, m_core->getDvfsDomain()->getPeriod()),
                   entry->uop->getMicroOp()->toShortString(true).c_str());
          }

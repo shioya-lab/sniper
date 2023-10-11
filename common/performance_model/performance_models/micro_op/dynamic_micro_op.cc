@@ -43,6 +43,9 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
    this->is_virtually_issued = false;
    this->mergedInstCount = 0;
 
+   this->m_overtook_uop_idx = 0;
+   this->m_count_overtook_by_vector = false;
+   this->m_count_overtook_by_scalar = false;
 }
 
 DynamicMicroOp::~DynamicMicroOp()

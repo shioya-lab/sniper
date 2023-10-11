@@ -74,6 +74,10 @@ class DynamicMicroOp
 
       const uint8_t m_vector_issue_times_max;
 
+      uint64_t m_count_overtook_by_vector;
+      uint64_t m_overtook_uop_idx;
+      uint64_t m_count_overtook_by_scalar;
+
    public:
 
       DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, ComponentPeriod period);
@@ -167,7 +171,20 @@ class DynamicMicroOp
 
       void incrMergedInst() { this->mergedInstCount++; }
       uint32_t getNumMergedInst() { return this->mergedInstCount; }
-      
+
+      void set_overtook_by_vector(uint64_t uop_idx) {
+        m_count_overtook_by_vector++;
+        if (m_overtook_uop_idx == 0) {
+          m_overtook_uop_idx = uop_idx;
+        }
+      }
+      void set_overtook_by_scalar() { m_count_overtook_by_scalar++; }
+      bool count_overtook_by_vector() { return m_count_overtook_by_vector; }
+      bool count_overtook_by_scalar() { return m_count_overtook_by_scalar; }
+      uint64_t get_overtook_uop_idx() {
+        return m_overtook_uop_idx;
+      }
+
       // More dynamic, architecture-dependent information to be defined by derived classes
       virtual const char* getType() const = 0; // Make this class pure virtual
 };
