@@ -292,7 +292,7 @@ namespace ParametricDramDirectoryMSI
                IntPtr address, Core::mem_op_t mem_op_type, CacheBlockInfo **cache_block_info = NULL);
 
          void copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, bool modeled, SubsecondTime t_start);
-         void trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue);
+         void trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, IntPtr access_pc);
          void Prefetch(SubsecondTime t_start);
          void doPrefetch(IntPtr prefetch_address, SubsecondTime t_start);
 
@@ -473,13 +473,13 @@ namespace ParametricDramDirectoryMSI
          void createSetLocks(UInt32 cache_block_size, UInt32 num_sets, UInt32 core_offset, UInt32 num_cores) { m_master->createSetLocks(cache_block_size, num_sets, core_offset, num_cores); }
          void setDRAMDirectAccess(DramCntlrInterface* dram_cntlr, UInt64 num_outstanding);
 
-         HitWhere::where_t processMemOpFromCore(
-               Core::lock_signal_t lock_signal,
-               Core::mem_op_t mem_op_type,
-               IntPtr ca_address, UInt32 offset,
-               Byte* data_buf, UInt32 data_length,
-               bool modeled,
-               bool count);
+         HitWhere::where_t processMemOpFromCore(Core::lock_signal_t lock_signal,
+                                                Core::mem_op_t mem_op_type,
+                                                IntPtr ca_address, UInt32 offset,
+                                                Byte* data_buf, UInt32 data_length,
+                                                bool modeled,
+                                                bool count,
+                                                IntPtr access_pc);
          void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
 
          // Notify next level cache of so it can update its sharing set

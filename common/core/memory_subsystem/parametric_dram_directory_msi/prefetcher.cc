@@ -4,6 +4,7 @@
 #include "log.h"
 #include "simple_prefetcher.h"
 #include "stream_prefetcher.h"
+#include "stride_prefetcher.h"
 #include "ghb_prefetcher.h"
 #include "a53prefetcher.h"
 
@@ -15,6 +16,8 @@ Prefetcher* Prefetcher::createPrefetcher(String type, String configName, core_id
       return new SimplePrefetcher(configName, core_id, shared_cores);
    else if (type == "stream")
       return new StreamPrefetcher(configName, core_id, shared_cores);
+   else if (type == "stride")
+      return new StridePrefetcher(configName, core_id, shared_cores);
    else if (type == "ghb")
       return new GhbPrefetcher(configName, core_id);
    else if (type == "a53prefetcher")

@@ -340,13 +340,13 @@ CacheCntlr::setDRAMDirectAccess(DramCntlrInterface* dram_cntlr, UInt64 num_outst
  *****************************************************************************/
 
 HitWhere::where_t
-CacheCntlr::processMemOpFromCore(
-      Core::lock_signal_t lock_signal,
-      Core::mem_op_t mem_op_type,
-      IntPtr ca_address, UInt32 offset,
-      Byte* data_buf, UInt32 data_length,
-      bool modeled,
-      bool count)
+CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
+                                 Core::mem_op_t mem_op_type,
+                                 IntPtr ca_address, UInt32 offset,
+                                 Byte* data_buf, UInt32 data_length,
+                                 bool modeled,
+                                 bool count,
+                                 IntPtr access_pc)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
 
@@ -610,7 +610,7 @@ MYLOG("access done");
 
    if (modeled && m_master->m_prefetcher)
    {
-      trainPrefetcher(ca_address, cache_hit, prefetch_hit, false, t_start);
+      trainPrefetcher(ca_address + offset, cache_hit, prefetch_hit, false, t_start, access_pc);
       if (m_enable_log) {
          fprintf(stderr, "%s processMemOpFromCore::trainPrefetcher() finished\n", m_configName.c_str());
       }
@@ -701,7 +701,7 @@ MYLOG("copyDataFromNextLevel l%d", m_mem_component);
 }
 
 void
-CacheCntlr::trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue)
+CacheCntlr::trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, IntPtr access_pc)
 {
    ScopedLock sl(getLock());
 
@@ -711,7 +711,7 @@ CacheCntlr::trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, b
 
    // Train the prefetcher always or only on misses on lines that are not being brought by the prefetcher (load or store miss)
    if (m_train_prefetcher_on_hit || (!prefetch_own && !cache_hit)) {
-      prefetchList = m_master->m_prefetcher->getNextAddress(address, m_core_id);
+      prefetchList = m_master->m_prefetcher->getNextAddress(address, access_pc, m_core_id);
       prefetcherTrained = true;
    }
    else prefetcherTrained = false;
@@ -767,7 +767,7 @@ CacheCntlr::Prefetch(SubsecondTime t_now)
             if (!operationPermissibleinCache(address, Core::READ))
             {
                //addresses_to_prefetch[count++] = address;
-               address_to_prefetch = address;
+               address_to_prefetch = address - (address % m_cache_block_size);
                // Do at most one prefetch now, save the rest for a future call
                break;
             }
@@ -776,7 +776,7 @@ CacheCntlr::Prefetch(SubsecondTime t_now)
    }
 
    if (m_enable_log) {
-      fprintf(stderr, "%s CacheCntlr::Prefetch() address_to_prefetch = %08lx\n", m_configName.c_str(), address_to_prefetch);
+      fprintf(stderr, "  %s CacheCntlr::Prefetch() address_to_prefetch = %08lx\n", m_configName.c_str(), address_to_prefetch);
    }
 
    if (address_to_prefetch != INVALID_ADDRESS)
@@ -1087,7 +1087,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
 
    if (modeled && m_master->m_prefetcher)
    {
-      trainPrefetcher(address, cache_hit, prefetch_hit, isPrefetch == Prefetch::prefetch_type_t::OWN, t_issue);
+     trainPrefetcher(address, cache_hit, prefetch_hit, isPrefetch == Prefetch::prefetch_type_t::OWN, t_issue, 0);
    }
 
    #ifdef PRIVATE_L2_OPTIMIZATION

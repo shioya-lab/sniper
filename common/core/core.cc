@@ -257,7 +257,9 @@ Core::readInstructionMemory(IntPtr address, UInt32 instruction_size)
 
    // Cases with multiple cache lines or when we are not sure that it will be a hit call into the caches
    return initiateMemoryAccess(MemComponent::L1_ICACHE,
-             Core::NONE, Core::READ, address & blockmask, NULL, getMemoryManager()->getCacheBlockSize(), MEM_MODELED_COUNT_TLBTIME, 0, SubsecondTime::MaxTime());
+                               Core::NONE, Core::READ, address & blockmask, NULL,
+                               getMemoryManager()->getCacheBlockSize(), MEM_MODELED_COUNT_TLBTIME, 0,
+                               SubsecondTime::MaxTime());
 }
 
 void Core::accessMemoryFast(bool icache, mem_op_t mem_op_type, IntPtr address)
@@ -273,13 +275,13 @@ void Core::accessMemoryFast(bool icache, mem_op_t mem_op_type, IntPtr address)
 
 MemoryResult
 Core::initiateMemoryAccess(MemComponent::component_t mem_component,
-      lock_signal_t lock_signal,
-      mem_op_t mem_op_type,
-      IntPtr address,
-      Byte* data_buf, UInt32 data_size,
-      MemModeled modeled,
-      IntPtr eip,
-      SubsecondTime now)
+                           lock_signal_t lock_signal,
+                           mem_op_t mem_op_type,
+                           IntPtr address,
+                           Byte* data_buf, UInt32 data_size,
+                           MemModeled modeled,
+                           IntPtr eip,
+                           SubsecondTime now)
 {
    MYLOG("access %lx+%u %c%c modeled(%s)", address, data_size, mem_op_type == Core::WRITE ? 'W' : 'R', mem_op_type == Core::READ_EX ? 'X' : ' ', ModeledString(modeled));
 
@@ -369,7 +371,7 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
                mem_op_type,
                curr_addr_aligned, curr_offset,
                data_buf ? curr_data_buffer_head : NULL, curr_size,
-               modeled);
+               modeled, eip);
 
       if (hit_where != (HitWhere::where_t)mem_component)
       {
@@ -460,7 +462,7 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
  *   number of misses :: State the number of cache misses
  */
 MemoryResult
-Core::accessMemory(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size, MemModeled modeled, IntPtr eip, SubsecondTime now, bool is_fault_mask)
+    Core::accessMemory(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size, MemModeled modeled, IntPtr eip, SubsecondTime now, bool is_fault_mask)
 {
    // In PINTOOL mode, if the data is requested, copy it to/from real memory
    if (data_buffer && !is_fault_mask)

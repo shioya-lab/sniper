@@ -7,7 +7,7 @@ class SimplePrefetcher : public Prefetcher
 {
    public:
       SimplePrefetcher(String configName, core_id_t core_id, UInt32 shared_cores);
-      virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, core_id_t core_id);
+      virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, IntPtr pc, core_id_t core_id);
 
    private:
       const String configName;

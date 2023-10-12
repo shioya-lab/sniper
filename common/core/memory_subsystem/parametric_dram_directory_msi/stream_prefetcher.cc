@@ -56,7 +56,7 @@ IntPtr StreamPrefetcher::MaskLineOffset( IntPtr addr)
 }
 
 std::vector<IntPtr>
-StreamPrefetcher::getNextAddress(IntPtr current_address, core_id_t _core_id)
+StreamPrefetcher::getNextAddress(IntPtr current_address, IntPtr pc, core_id_t _core_id)
 {
     if (m_enable_log) {
       fprintf(stderr, "  %s StreamPrefetcher::getNextAddress(%08lx) start :\n", configName.c_str(), current_address);

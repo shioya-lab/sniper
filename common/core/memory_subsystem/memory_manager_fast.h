@@ -24,7 +24,8 @@ class MemoryManagerFast : public MemoryManagerBase
             Core::mem_op_t mem_op_type,
             IntPtr address, UInt32 offset,
             Byte* data_buf, UInt32 data_length,
-            Core::MemModeled modeled)
+            Core::MemModeled modeled,
+            IntPtr eip)
       {
          // Emulate slow interface by calling into fast interface
          assert(data_buf == NULL);

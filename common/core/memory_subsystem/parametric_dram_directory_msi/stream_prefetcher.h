@@ -7,15 +7,15 @@ class StreamPrefetcher : public Prefetcher
 {
     public:
         StreamPrefetcher(String configName, core_id_t core_id, UInt32 shared_cores);
-        virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, core_id_t core_id);
-    
+        virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, IntPtr pc, core_id_t core_id);
+
     private:
         // Initializing phase
         enum InitPhase
         {
             // After constructing and before object connection.
             // ParamExchange::LoadParam() must be called in this phase or later.
-            INIT_PRE_CONNECTION,    
+            INIT_PRE_CONNECTION,
             // After connection
             INIT_POST_CONNECTION
         };
@@ -31,10 +31,10 @@ class StreamPrefetcher : public Prefetcher
         {
             StreamStatus status;    // Stream status
 
-            IntPtr orig;      // An first accessed address of a stream 
-            IntPtr addr;      // A current 'start' address of a stream 
+            IntPtr orig;      // An first accessed address of a stream
+            IntPtr addr;      // A current 'start' address of a stream
 
-            int  count;     // Access count 
+            int  count;     // Access count
             bool ascending; // Stream direction
 
             Stream() {
@@ -70,7 +70,7 @@ class StreamPrefetcher : public Prefetcher
 
         const bool m_enable_log;
 
-        uint64_t m_effectiveDistance;        // An effective distance is calculated 
+        uint64_t m_effectiveDistance;        // An effective distance is calculated
                                              // by a 'distance' parameter and a line size.
         uint64_t m_effectiveTrainingWindow;  //
 
