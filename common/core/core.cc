@@ -281,7 +281,8 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
                            Byte* data_buf, UInt32 data_size,
                            MemModeled modeled,
                            IntPtr eip,
-                           SubsecondTime now)
+                           SubsecondTime now,
+                           bool use_prefetch)
 {
    MYLOG("access %lx+%u %c%c modeled(%s)", address, data_size, mem_op_type == Core::WRITE ? 'W' : 'R', mem_op_type == Core::READ_EX ? 'X' : ' ', ModeledString(modeled));
 
@@ -371,7 +372,7 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
                mem_op_type,
                curr_addr_aligned, curr_offset,
                data_buf ? curr_data_buffer_head : NULL, curr_size,
-               modeled, eip);
+               modeled, eip, use_prefetch);
 
       if (hit_where != (HitWhere::where_t)mem_component)
       {
@@ -462,7 +463,7 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
  *   number of misses :: State the number of cache misses
  */
 MemoryResult
-    Core::accessMemory(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size, MemModeled modeled, IntPtr eip, SubsecondTime now, bool is_fault_mask)
+    Core::accessMemory(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size, MemModeled modeled, IntPtr eip, SubsecondTime now, bool use_prefetch, bool is_fault_mask)
 {
    // In PINTOOL mode, if the data is requested, copy it to/from real memory
    if (data_buffer && !is_fault_mask)
@@ -481,7 +482,8 @@ MemoryResult
    if (modeled == MEM_MODELED_NONE)
       return makeMemoryResult(HitWhere::UNKNOWN, SubsecondTime::Zero());
    else
-      return initiateMemoryAccess(MemComponent::L1_DCACHE, lock_signal, mem_op_type, d_addr, (Byte*) data_buffer, data_size, modeled, eip, now);
+     return initiateMemoryAccess(MemComponent::L1_DCACHE, lock_signal, mem_op_type, d_addr, (Byte*) data_buffer, data_size, modeled,
+                                 eip, now, use_prefetch);
 }
 
 

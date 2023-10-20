@@ -368,6 +368,10 @@ namespace ParametricDramDirectoryMSI
            cycle(_cycle), hit(_hit), rw(_rw), vec_access(_vec_access) {}
      };
      std::map<uint64_t, std::vector<access_info_t *>> m_cache_access_hist;
+     FILE *m_cache_rd_fp;
+     FILE *m_cache_wr_fp;
+     FILE *m_cache_pr_fp;
+     FILE *m_cache_ev_fp;
 
      static SInt64 hookRoiBegin(UInt64 object, UInt64 argument) {
        ((CacheCntlr*)object)->roiBegin(); return 0;
@@ -379,6 +383,30 @@ namespace ParametricDramDirectoryMSI
 
      void roiBegin() {
        m_cache_access_hist.erase(m_cache_access_hist.begin(), m_cache_access_hist.end());
+       if (m_cache_rd_fp != NULL) {
+         fclose (m_cache_rd_fp);
+         if ((m_cache_rd_fp = fopen((m_configName + "_cache_rd_log.csv").c_str(), "w")) == NULL) {
+           perror("fopen");
+         }
+       }
+       if (m_cache_wr_fp != NULL) {
+         fclose (m_cache_wr_fp);
+         if ((m_cache_wr_fp = fopen((m_configName + "_cache_wr_log.csv").c_str(), "w")) == NULL) {
+           perror("fopen");
+         }
+       }
+       if (m_cache_pr_fp != NULL) {
+         fclose (m_cache_pr_fp);
+         if ((m_cache_pr_fp = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) {
+           perror("fopen");
+         }
+       }
+       if (m_cache_ev_fp != NULL) {
+         fclose (m_cache_ev_fp);
+         if ((m_cache_ev_fp = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) {
+           perror("fopen");
+         }
+       }
      }
 
      void roiEnd() {
@@ -400,7 +428,7 @@ namespace ParametricDramDirectoryMSI
          uint64_t vector_hit_count  = 0;
          uint64_t vector_miss_count = 0;
 
-         printf("%08x : %3d times : ", hist.first, hist.second.size());
+         printf("%08lx : %3ld times : ", hist.first, hist.second.size());
          for (auto l: hist.second) {
            if (l->rw == 'P' || l->rw == 'E')
              continue;
@@ -479,7 +507,8 @@ namespace ParametricDramDirectoryMSI
                                                 Byte* data_buf, UInt32 data_length,
                                                 bool modeled,
                                                 bool count,
-                                                IntPtr access_pc);
+                                                IntPtr access_pc,
+                                                bool use_prefetch = true);
          void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
 
          // Notify next level cache of so it can update its sharing set

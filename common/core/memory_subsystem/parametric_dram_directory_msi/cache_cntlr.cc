@@ -142,6 +142,7 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_coherent(cache_params.coherent),
    m_prefetch_on_prefetch_hit(false),
    m_l1_mshr(cache_params.outstanding_misses > 0),
+   m_enable_log (Sim()->getCfg()->getBoolArray("log/enable_cache_cntlr_log", core_id)),
    m_core_id(core_id),
    m_cache_block_size(cache_block_size),
    m_cache_writethrough(cache_params.writethrough),
@@ -153,8 +154,7 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_last_remote_hit_where(HitWhere::UNKNOWN),
    m_shmem_perf(new ShmemPerf()),
    m_shmem_perf_global(NULL),
-   m_shmem_perf_model(shmem_perf_model),
-   m_enable_log (Sim()->getCfg()->getBoolArray("log/enable_cache_cntlr_log", core_id))
+   m_shmem_perf_model(shmem_perf_model)
 {
    m_core_id_master = m_core_id - m_core_id % m_shared_cores;
    Sim()->getStatsManager()->logTopology(name, core_id, m_core_id_master);
@@ -292,6 +292,12 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, CacheCntlr::hookRoiBegin, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END,   CacheCntlr::hookRoiEnd, (UInt64)this);
    m_roi_dumped  = false;
+
+
+   if ((m_cache_rd_fp = fopen((m_configName + "_cache_rd_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+   if ((m_cache_wr_fp = fopen((m_configName + "_cache_wr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+   if ((m_cache_pr_fp = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+   if ((m_cache_ev_fp = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
 }
 
 CacheCntlr::~CacheCntlr()
@@ -346,7 +352,8 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
                                  Byte* data_buf, UInt32 data_length,
                                  bool modeled,
                                  bool count,
-                                 IntPtr access_pc)
+                                 IntPtr access_pc,
+                                 bool use_prefetch)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
 
@@ -608,16 +615,18 @@ MYLOG("access done");
          stats.loads_where[hit_where]++;
    }
 
-   if (modeled && m_master->m_prefetcher)
+   if (modeled && m_master->m_prefetcher && use_prefetch)
    {
-      trainPrefetcher(ca_address + offset, cache_hit, prefetch_hit, false, t_start, access_pc);
+      IntPtr train_address = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC ? ca_address : ca_address + offset;
+      trainPrefetcher(train_address, cache_hit, prefetch_hit, false, t_start, access_pc);
+
       if (m_enable_log) {
          fprintf(stderr, "%s processMemOpFromCore::trainPrefetcher() finished\n", m_configName.c_str());
       }
    }
 
    // Call Prefetch on next-level caches (but not for atomic instructions as that causes a locking mess)
-   if (lock_signal != Core::LOCK && modeled)
+   if (lock_signal != Core::LOCK && modeled && use_prefetch)
    {
       if (m_enable_log) {
          fprintf(stderr, "%s processMemOpFromCore::Prefetch(t_start) call\n", m_configName.c_str());
@@ -637,6 +646,13 @@ MYLOG("access done");
                                                                      mem_op_type == Core::READ      ? 'r' :
                                                                      mem_op_type == Core::WRITE     ? 'w' : 'N',
                                                                      static_cast<bool>((mem_op_type == Core::READ_VEC) || (mem_op_type == Core::WRITE_VEC))));
+     switch (mem_op_type) {
+       case Core::READ_VEC  : fprintf (m_cache_rd_fp, "%ld, %ld, R\n", t_now.getNS(), ca_address + offset); break;
+       case Core::READ      : fprintf (m_cache_rd_fp, "%ld, %ld, r\n", t_now.getNS(), ca_address + offset); break;
+       case Core::WRITE_VEC : fprintf (m_cache_wr_fp, "%ld, %ld, W\n", t_now.getNS(), ca_address + offset); break;
+       case Core::WRITE     : fprintf (m_cache_wr_fp, "%ld, %ld, w\n", t_now.getNS(), ca_address + offset); break;
+       default : break;
+     }
    }
 
    if (m_enable_log) {
@@ -807,6 +823,7 @@ CacheCntlr::doPrefetch(IntPtr prefetch_address, SubsecondTime t_start)
    if (true /* m_roi_started*/) {
      UInt64 block_address  = prefetch_address & ~(getCacheBlockSize() - 1);
      m_cache_access_hist[block_address].push_back(new access_info_t (t_start, hit_where != HitWhere::MISS, 'P', false));
+     fprintf (m_cache_pr_fp, "%ld, %ld, P\n", t_start.getNS(), prefetch_address);
    }
    if (hit_where == HitWhere::MISS)
    {
@@ -1508,6 +1525,8 @@ MYLOG("evicting @%lx", evict_address);
         UInt64 block_address  = evict_address & ~(getCacheBlockSize() - 1);
         m_cache_access_hist[block_address].push_back(new access_info_t (getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD),
                                                                         HitWhere::MISS, 'E', false));
+        SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD);
+        fprintf (m_cache_ev_fp, "%ld, %ld, E\n", t_now.getNS(), evict_address);
       }
 
       /* TODO: this part looks a lot like updateCacheBlock's dirty case, but with the eviction buffer

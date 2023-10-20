@@ -42,6 +42,7 @@ RobTimer::RobTimer(
       , lsu_inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/lsu_inorder", core->getId()))
       , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
+      , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
       , m_core(core)
       , rob(window_size + 255)
       , m_num_in_rob(0)
@@ -67,7 +68,6 @@ RobTimer::RobTimer(
       , memoryDependencies(new MemoryDependencies())
       , perf(_perf)
       , m_cpiCurrentFrontEndStall(NULL)
-      , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_enable_ooo_check(Sim()->getCfg()->getBoolArray("log/enable_mem_ooo_check", core->getId()))
       , m_ooo_check_region(Sim()->getCfg()->getIntArray("log/mem_ooo_check_region", core->getId()))
@@ -756,7 +756,9 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
             uop.getMicroOp()->getMemoryAccessSize() * access_size_scale,
             Core::MEM_MODELED_RETURN,
             uop.getMicroOp()->getInstruction() ? uop.getMicroOp()->getInstruction()->getAddress() : static_cast<uint64_t>(NULL),
-            now.getElapsedTime()
+            now.getElapsedTime(),
+            // uop.getMicroOp()->isVector() & uop.getMicroOp()->canVecSquash() ? uop.getMicroOp()->isFirst() : true
+            true
          );
          uint64_t latency = SubsecondTime::divideRounded(res.latency, now.getPeriod());
          m_previous_latency = latency;
@@ -1542,9 +1544,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
          if (! will_skip)
          {
       #endif
-           if (enable_debug_printf) {
-             printRob();
-           }
+           printRob();
       #ifdef ASSERT_SKIP
          }
       #endif
@@ -1662,6 +1662,13 @@ void RobTimer::printRob()
          std::cout<<"STORE     ";
       else
          std::cout<<"EXEC ("<<std::right<<std::setw(2)<<e->uop->getExecLatency()<<") ";
+      if (e->uop->getMicroOp()->isFirst()) {
+         std::cout<<"F";
+      } else if (e->uop->getMicroOp()->isLast()) {
+         std::cout<<"L";
+      } else {
+         std::cout<<" ";
+      }
       if (e->uop->getMicroOp()->getInstruction())
       {
          std::cout<<std::hex<<e->uop->getMicroOp()->getInstruction()->getAddress()<<std::dec<<": "

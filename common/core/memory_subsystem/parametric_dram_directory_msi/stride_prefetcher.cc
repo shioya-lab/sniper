@@ -51,14 +51,16 @@ StridePrefetcher::getNextAddress(IntPtr current_address, IntPtr pc, core_id_t _c
       if (stride->confidence > CONFIDENCE_MAX) {
         stride->confidence = CONFIDENCE_MAX;
       }
-    } else {
+    } else if (current_address != stride->addr) {
       stride->confidence--;
       if (stride->confidence < CONFIDENCE_MIN) {
         stride->confidence = CONFIDENCE_MIN;
       }
     }
 
-    stride->stride = current_address - stride->addr;
+    if (current_address - stride->addr != 0) {
+      stride->stride = current_address - stride->addr;
+    }
     stride->addr   = current_address;
 
     if (m_enable_log) {
