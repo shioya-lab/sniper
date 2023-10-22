@@ -294,10 +294,8 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_roi_dumped  = false;
 
 
-   if ((m_cache_rd_fp = fopen((m_configName + "_cache_rd_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-   if ((m_cache_wr_fp = fopen((m_configName + "_cache_wr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-   if ((m_cache_pr_fp = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-   if ((m_cache_ev_fp = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+   if ((m_sazanami_fp = fopen((m_configName + "_sazanami.log").c_str(), "w")) == NULL) { perror("fopen"); }
+   fprintf(m_sazanami_fp, "#sazanami\n");
 }
 
 CacheCntlr::~CacheCntlr()
@@ -646,13 +644,9 @@ MYLOG("access done");
                                                                      mem_op_type == Core::READ      ? 'r' :
                                                                      mem_op_type == Core::WRITE     ? 'w' : 'N',
                                                                      static_cast<bool>((mem_op_type == Core::READ_VEC) || (mem_op_type == Core::WRITE_VEC))));
-     switch (mem_op_type) {
-       case Core::READ_VEC  : fprintf (m_cache_rd_fp, "%ld, %ld, R\n", t_now.getNS(), ca_address + offset); break;
-       case Core::READ      : fprintf (m_cache_rd_fp, "%ld, %ld, r\n", t_now.getNS(), ca_address + offset); break;
-       case Core::WRITE_VEC : fprintf (m_cache_wr_fp, "%ld, %ld, W\n", t_now.getNS(), ca_address + offset); break;
-       case Core::WRITE     : fprintf (m_cache_wr_fp, "%ld, %ld, w\n", t_now.getNS(), ca_address + offset); break;
-       default : break;
-     }
+     fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08lx\t%d\t%d\t0\t0\n", t_now.getNS(), ca_address + offset, access_pc, cache_hit,
+              mem_op_type == Core::READ_VEC  || mem_op_type == Core::READ  ? 0 :
+              mem_op_type == Core::WRITE_VEC || mem_op_type == Core::WRITE ? 3 : -1);
    }
 
    if (m_enable_log) {
@@ -823,7 +817,7 @@ CacheCntlr::doPrefetch(IntPtr prefetch_address, SubsecondTime t_start)
    if (true /* m_roi_started*/) {
      UInt64 block_address  = prefetch_address & ~(getCacheBlockSize() - 1);
      m_cache_access_hist[block_address].push_back(new access_info_t (t_start, hit_where != HitWhere::MISS, 'P', false));
-     fprintf (m_cache_pr_fp, "%ld, %ld, P\n", t_start.getNS(), prefetch_address);
+     fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08x\t%d\t2\t0\t0\n", t_start.getNS(), prefetch_address, 0 /* Skip access_pc */, hit_where != HitWhere::MISS);
    }
    if (hit_where == HitWhere::MISS)
    {
@@ -1526,7 +1520,7 @@ MYLOG("evicting @%lx", evict_address);
         m_cache_access_hist[block_address].push_back(new access_info_t (getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD),
                                                                         HitWhere::MISS, 'E', false));
         SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD);
-        fprintf (m_cache_ev_fp, "%ld, %ld, E\n", t_now.getNS(), evict_address);
+        fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08x\t0\t1\t0\t0\n", t_now.getNS(), evict_address, 0 /* Skip access_pc */);  // Use RFO for Evictio
       }
 
       /* TODO: this part looks a lot like updateCacheBlock's dirty case, but with the eviction buffer

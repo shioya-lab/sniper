@@ -368,10 +368,7 @@ namespace ParametricDramDirectoryMSI
            cycle(_cycle), hit(_hit), rw(_rw), vec_access(_vec_access) {}
      };
      std::map<uint64_t, std::vector<access_info_t *>> m_cache_access_hist;
-     FILE *m_cache_rd_fp;
-     FILE *m_cache_wr_fp;
-     FILE *m_cache_pr_fp;
-     FILE *m_cache_ev_fp;
+     FILE *m_sazanami_fp;
 
      static SInt64 hookRoiBegin(UInt64 object, UInt64 argument) {
        ((CacheCntlr*)object)->roiBegin(); return 0;
@@ -383,29 +380,12 @@ namespace ParametricDramDirectoryMSI
 
      void roiBegin() {
        m_cache_access_hist.erase(m_cache_access_hist.begin(), m_cache_access_hist.end());
-       if (m_cache_rd_fp != NULL) {
-         fclose (m_cache_rd_fp);
-         if ((m_cache_rd_fp = fopen((m_configName + "_cache_rd_log.csv").c_str(), "w")) == NULL) {
+       if (m_sazanami_fp != NULL) {
+         fclose (m_sazanami_fp);
+         if ((m_sazanami_fp = fopen((m_configName + "_sazanami.log").c_str(), "w")) == NULL) {
            perror("fopen");
          }
-       }
-       if (m_cache_wr_fp != NULL) {
-         fclose (m_cache_wr_fp);
-         if ((m_cache_wr_fp = fopen((m_configName + "_cache_wr_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
-       if (m_cache_pr_fp != NULL) {
-         fclose (m_cache_pr_fp);
-         if ((m_cache_pr_fp = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
-       if (m_cache_ev_fp != NULL) {
-         fclose (m_cache_ev_fp);
-         if ((m_cache_ev_fp = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
+         fprintf(m_sazanami_fp, "#sazanami\n");
        }
      }
 
