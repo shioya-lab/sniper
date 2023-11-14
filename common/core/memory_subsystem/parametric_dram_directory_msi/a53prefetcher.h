@@ -1,6 +1,7 @@
 #ifndef A53PREFETCHER_H
 #define A53PREFETCHER_H
 
+#include "core.h"
 #include "prefetcher.h"
 
 class A53Prefetcher : public Prefetcher
@@ -15,7 +16,7 @@ class A53Prefetcher : public Prefetcher
 
 public:
    A53Prefetcher(String configName, core_id_t core_id);
-   std::vector<IntPtr> getNextAddress(IntPtr currentAddress, IntPtr pc, core_id_t core_id) override;
+   std::vector<IntPtr> getNextAddress(IntPtr currentAddress, Core::mem_op_t mem_op_type, IntPtr pc, core_id_t core_id) override;
 };
 
 #endif // A53PREFETCHER_H

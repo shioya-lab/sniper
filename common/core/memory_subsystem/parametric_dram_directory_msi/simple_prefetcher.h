@@ -1,13 +1,14 @@
 #ifndef __SIMPLE_PREFETCHER_H
 #define __SIMPLE_PREFETCHER_H
 
+#include "core.h"
 #include "prefetcher.h"
 
 class SimplePrefetcher : public Prefetcher
 {
    public:
       SimplePrefetcher(String configName, core_id_t core_id, UInt32 shared_cores);
-      virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, IntPtr pc, core_id_t core_id);
+      virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, core_id_t core_id);
 
    private:
       const String configName;

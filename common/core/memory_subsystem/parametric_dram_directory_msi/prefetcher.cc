@@ -6,6 +6,7 @@
 #include "stream_prefetcher.h"
 #include "stride_prefetcher.h"
 #include "ghb_prefetcher.h"
+#include "vec_prefetcher.h"
 #include "a53prefetcher.h"
 
 Prefetcher* Prefetcher::createPrefetcher(String type, String configName, core_id_t core_id, UInt32 shared_cores)
@@ -22,6 +23,8 @@ Prefetcher* Prefetcher::createPrefetcher(String type, String configName, core_id
       return new GhbPrefetcher(configName, core_id);
    else if (type == "a53prefetcher")
        return new A53Prefetcher(configName, core_id);
+   else if (type == "vec_pref")
+     return new VecPrefetcher(configName, core_id, shared_cores);
 
    LOG_PRINT_ERROR("Invalid prefetcher type %s", type.c_str());
 }

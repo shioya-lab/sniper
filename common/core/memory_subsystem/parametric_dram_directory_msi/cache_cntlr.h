@@ -42,6 +42,7 @@ class ShmemPerf;
 #define PREFETCH_MAX_QUEUE_LENGTH 32
 // Time between prefetches
 #define PREFETCH_INTERVAL SubsecondTime::NS(1)
+// #define PREFETCH_INTERVAL SubsecondTime::PS(100)
 
 namespace ParametricDramDirectoryMSI
 {
@@ -292,8 +293,9 @@ namespace ParametricDramDirectoryMSI
                IntPtr address, Core::mem_op_t mem_op_type, CacheBlockInfo **cache_block_info = NULL);
 
          void copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, bool modeled, SubsecondTime t_start);
-         void trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, IntPtr access_pc);
+         void trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, IntPtr access_pc);
          void Prefetch(SubsecondTime t_start);
+         void VecPrefetch(SubsecondTime t_start);
          void doPrefetch(IntPtr prefetch_address, SubsecondTime t_start);
 
          // Cache meta-data operations
