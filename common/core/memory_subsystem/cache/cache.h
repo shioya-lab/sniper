@@ -58,6 +58,7 @@ class Cache : public CacheBase
       void insertSingleLine(IntPtr addr, Byte* fill_buff,
             bool* eviction, IntPtr* evict_addr,
             CacheBlockInfo* evict_block_info, Byte* evict_buff, SubsecondTime now, CacheCntlr *cntlr = NULL);
+      void invalidateAllLines();
       CacheBlockInfo* peekSingleLine(IntPtr addr);
 
       CacheBlockInfo* peekBlock(UInt32 set_index, UInt32 way) const { return m_sets[set_index]->peekBlock(way); }

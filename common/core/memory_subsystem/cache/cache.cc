@@ -68,6 +68,15 @@ Cache::getSetLock(IntPtr addr)
    return m_sets[set_index]->getLock();
 }
 
+
+void Cache::invalidateAllLines()
+{
+   printf("Invalidate: num_sets = %d\n", m_num_sets);
+   for (SInt32 i = 0; i < (SInt32) m_num_sets; i++) {
+      m_sets[i]->invalidateAllWays();
+   }
+}
+
 bool
 Cache::invalidateSingleLine(IntPtr addr)
 {

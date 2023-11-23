@@ -389,6 +389,7 @@ namespace ParametricDramDirectoryMSI
          }
          fprintf(m_sazanami_fp, "#sazanami\n");
        }
+       // m_master->m_cache->invalidateAllLines();
      }
 
      void roiEnd() {

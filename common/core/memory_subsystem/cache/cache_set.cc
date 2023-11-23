@@ -95,6 +95,17 @@ CacheSet::invalidate(IntPtr& tag)
    return false;
 }
 
+
+void
+CacheSet::invalidateAllWays()
+{
+   printf("Invalidate: m_associativity = %d\n", m_associativity);
+   for (SInt32 index = m_associativity-1; index >= 0; index--) {
+      m_cache_block_info_array[index]->invalidate();
+   }
+   return;
+}
+
 void
 CacheSet::insert(CacheBlockInfo* cache_block_info, Byte* fill_buff, bool* eviction, CacheBlockInfo* evict_block_info, Byte* evict_buff, CacheCntlr *cntlr)
 {
