@@ -748,16 +748,22 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
    }
 
    bool do_vec_prefetch = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC;
+   bool l1d_pref_keep = false;
+   if (m_mem_component == MemComponent::L1_DCACHE) {
+     l1d_pref_keep = !Sim()->getCfg()->getBoolArray("perf_model/" + m_configName + "/pref_load", 0);
+   }
 
    // Only do prefetches on misses, or on hits to lines previously brought in by the prefetcher (if enabled)
-   if (prefetcherTrained && (do_vec_prefetch || !cache_hit || (m_prefetch_on_prefetch_hit && prefetch_hit)))
+   if (prefetcherTrained && (do_vec_prefetch ||
+                             (!cache_hit && !l1d_pref_keep) ||
+                             (m_prefetch_on_prefetch_hit && prefetch_hit)))
    {
       m_master->m_prefetch_list.clear();
 
       // Just talked to the next-level cache, wait a bit before we start to prefetch if enabled
-      MYLOG("  trainPrefetcher::m_master->m_prefetch_next = %ld ps\n", m_master->m_prefetch_next.getPS());
+      MYLOG("  trainPrefetcher::m_master->m_prefetch_next = %ld ns", m_master->m_prefetch_next.getNS());
       m_master->m_prefetch_next = m_prefetch_delay ? t_issue + PREFETCH_INTERVAL:t_issue;
-      MYLOG("  trainPrefetcher::m_master->m_prefetch_next = %ld ps\n", m_master->m_prefetch_next.getPS());
+      MYLOG("  trainPrefetcher::m_master->m_prefetch_next = %ld ns", m_master->m_prefetch_next.getNS());
 
       for(std::vector<IntPtr>::iterator it = prefetchList.begin(); it != prefetchList.end(); ++it)
       {
@@ -1082,11 +1088,23 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
          if (hit_where != HitWhere::MISS)
          {
             cache_hit = true;
-            /* get the data for ourselves */
-            SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
-            copyDataFromNextLevel(mem_op_type, address, modeled, t_now);
-            if (isPrefetch != Prefetch::NONE)
-               getCacheBlockInfo(address)->setOption(CacheBlockInfo::PREFETCH);
+            bool l1d_pref_load = true;
+            // fprintf(stderr, "Loading prefetch mode... %s, isPrefetch=%d, m_mem_component=%d\n",
+            //         m_configName.c_str(), isPrefetch, m_mem_component);
+            if (isPrefetch != Prefetch::NONE && m_mem_component == MemComponent::L1_DCACHE) {
+              l1d_pref_load = Sim()->getCfg()->getBoolArray("perf_model/" + m_configName + "/pref_load", 0);
+              // fprintf(stderr, "set l1d_pref_load as %d\n", l1d_pref_load);
+            }
+
+            if (l1d_pref_load) {
+              /* get the data for ourselves */
+              SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
+              copyDataFromNextLevel(mem_op_type, address, modeled, t_now);
+              if (isPrefetch != Prefetch::NONE)
+                 getCacheBlockInfo(address)->setOption(CacheBlockInfo::PREFETCH);
+            } else {
+              cache_hit = false;
+            }
          }
       }
       else // last-level cache
