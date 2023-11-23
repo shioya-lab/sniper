@@ -29,7 +29,8 @@ Lock iolock;
                             fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n");)
 #  define DUMPDATA(data_buf, data_length) { for(UInt32 i = 0; i < data_length; ++i) fprintf(stderr, "%02x ", data_buf[i]); }
 #else
-#  define MYLOG(...) { if (m_enable_log) { fprintf(stderr, "%ld : ", getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD).getNS()); \
+#  define MYLOG(...) { if (m_enable_log) { fprintf(stderr, "%c%ld : ", Sim()->getCoreManager()->amiUserThread() ? 'U' : 'S', \
+                                                   getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD).getNS()); \
       fprintf(stderr, "%s ", m_configName.c_str()); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); } }
 #endif
 
