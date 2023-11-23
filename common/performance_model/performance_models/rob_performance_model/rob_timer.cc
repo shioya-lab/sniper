@@ -1534,7 +1534,15 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
        RobEntry *e = &rob.at(i);
 
        if (e->done == now) {
-         fprintf(m_kanata_fp, "E\t%ld\t%d\t%s\n", e->uop->getSequenceNumber(), 0, "X");
+         if (!e->kanata_registered) {
+           DynamicMicroOp *uop = e->uop;
+           fprintf(m_kanata_fp, "I\t%ld\t%d\t%d\n", uop->getSequenceNumber(), 0, 0);
+           fprintf(m_kanata_fp, "L\t%ld\t%d\t%08lx:%s\n", uop->getSequenceNumber(), 0,
+                   uop->getMicroOp()->getInstruction()->getAddress(),
+                   uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+         } else {
+           fprintf(m_kanata_fp, "E\t%ld\t%d\t%s\n", e->uop->getSequenceNumber(), 0, "X");
+         }
        }
      }
    }
