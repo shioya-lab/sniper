@@ -138,7 +138,7 @@ Cache::insertSingleLine(IntPtr addr, Byte* fill_buff,
    UInt32 set_index;
    splitAddress(addr, tag, set_index);
 
-   fprintf(stderr, "Cache::insertSingleLine %08lx, set_index = %d\n", addr, set_index);
+   // fprintf(stderr, "Cache::insertSingleLine %08lx, set_index = %d\n", addr, set_index);
 
    CacheBlockInfo* cache_block_info = CacheBlockInfo::create(m_cache_type);
    cache_block_info->setTag(tag);
