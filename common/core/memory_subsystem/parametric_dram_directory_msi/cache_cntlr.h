@@ -382,13 +382,13 @@ namespace ParametricDramDirectoryMSI
 
      void roiBegin() {
        m_cache_access_hist.erase(m_cache_access_hist.begin(), m_cache_access_hist.end());
-       if (m_sazanami_fp != NULL) {
-         fclose (m_sazanami_fp);
-         if ((m_sazanami_fp = fopen((m_configName + "_sazanami.log").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-         fprintf(m_sazanami_fp, "#sazanami\n");
-       }
+       // if (m_sazanami_fp != NULL) {
+       //   fclose (m_sazanami_fp);
+       //   if ((m_sazanami_fp = fopen((m_configName + "_sazanami.log").c_str(), "w")) == NULL) {
+       //     perror("fopen");
+       //   }
+       //   fprintf(m_sazanami_fp, "#sazanami\n");
+       // }
        // m_master->m_cache->invalidateAllLines();
      }
 

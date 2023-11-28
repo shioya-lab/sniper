@@ -297,8 +297,8 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_roi_dumped  = false;
 
 
-   if ((m_sazanami_fp = fopen((m_configName + "_sazanami.log").c_str(), "w")) == NULL) { perror("fopen"); }
-   fprintf(m_sazanami_fp, "#sazanami\n");
+   // if ((m_sazanami_fp = fopen((m_configName + "_sazanami.log").c_str(), "w")) == NULL) { perror("fopen"); }
+   // fprintf(m_sazanami_fp, "#sazanami\n");
 }
 
 CacheCntlr::~CacheCntlr()
@@ -654,18 +654,18 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
       Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_access(cache_block_info->getOwner(), mem_op_type, hit_where);
 
    // Update Access History
-   if (true /* m_roi_started*/) {
-     UInt64 block_address  = ca_address & ~(getCacheBlockSize() - 1);
-     m_cache_access_hist[block_address].push_back(new access_info_t (t_now, cache_hit,
-                                                                     mem_op_type == Core::READ_VEC  ? 'R' :
-                                                                     mem_op_type == Core::WRITE_VEC ? 'W' :
-                                                                     mem_op_type == Core::READ      ? 'r' :
-                                                                     mem_op_type == Core::WRITE     ? 'w' : 'N',
-                                                                     static_cast<bool>((mem_op_type == Core::READ_VEC) || (mem_op_type == Core::WRITE_VEC))));
-     fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08lx\t%d\t%d\t0\t0\n", t_now.getNS(), ca_address + offset, access_pc, cache_hit,
-              mem_op_type == Core::READ_VEC  || mem_op_type == Core::READ  ? 0 :
-              mem_op_type == Core::WRITE_VEC || mem_op_type == Core::WRITE ? 3 : -1);
-   }
+   // if (true /* m_roi_started*/) {
+   //   UInt64 block_address  = ca_address & ~(getCacheBlockSize() - 1);
+   //   m_cache_access_hist[block_address].push_back(new access_info_t (t_now, cache_hit,
+   //                                                                   mem_op_type == Core::READ_VEC  ? 'R' :
+   //                                                                   mem_op_type == Core::WRITE_VEC ? 'W' :
+   //                                                                   mem_op_type == Core::READ      ? 'r' :
+   //                                                                   mem_op_type == Core::WRITE     ? 'w' : 'N',
+   //                                                                   static_cast<bool>((mem_op_type == Core::READ_VEC) || (mem_op_type == Core::WRITE_VEC))));
+   //   fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08lx\t%d\t%d\t0\t0\n", t_now.getNS(), ca_address + offset, access_pc, cache_hit,
+   //            mem_op_type == Core::READ_VEC  || mem_op_type == Core::READ  ? 0 :
+   //            mem_op_type == Core::WRITE_VEC || mem_op_type == Core::WRITE ? 3 : -1);
+   // }
 
    if (m_enable_log) {
       fprintf(stderr, "returning %s, latency %lu ns\n", HitWhereString(hit_where), total_latency.getNS());
@@ -883,11 +883,11 @@ CacheCntlr::doPrefetch(IntPtr prefetch_address, SubsecondTime t_start)
    HitWhere::where_t hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
 
    // Update Access History
-   if (true /* m_roi_started*/) {
-     UInt64 block_address  = prefetch_address & ~(getCacheBlockSize() - 1);
-     m_cache_access_hist[block_address].push_back(new access_info_t (t_start, hit_where != HitWhere::MISS, 'P', false));
-     fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08x\t%d\t2\t0\t0\n", t_start.getNS(), prefetch_address, 0 /* Skip access_pc */, hit_where != HitWhere::MISS);
-   }
+   // if (true /* m_roi_started*/) {
+   //   UInt64 block_address  = prefetch_address & ~(getCacheBlockSize() - 1);
+   //   m_cache_access_hist[block_address].push_back(new access_info_t (t_start, hit_where != HitWhere::MISS, 'P', false));
+   //   fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08x\t%d\t2\t0\t0\n", t_start.getNS(), prefetch_address, 0 /* Skip access_pc */, hit_where != HitWhere::MISS);
+   // }
    if (hit_where == HitWhere::MISS)
    {
       /* last level miss, a message has been sent. */
@@ -1600,13 +1600,13 @@ MYLOG("evicting @%lx", evict_address);
       }
 
       // Update Access History
-      if (true /* m_roi_started*/) {
-        UInt64 block_address  = evict_address & ~(getCacheBlockSize() - 1);
-        m_cache_access_hist[block_address].push_back(new access_info_t (getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD),
-                                                                        HitWhere::MISS, 'E', false));
-        SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD);
-        fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08x\t0\t1\t0\t0\n", t_now.getNS(), evict_address, 0 /* Skip access_pc */);  // Use RFO for Evictio
-      }
+      // if (true /* m_roi_started*/) {
+      //   UInt64 block_address  = evict_address & ~(getCacheBlockSize() - 1);
+      //   m_cache_access_hist[block_address].push_back(new access_info_t (getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD),
+      //                                                                   HitWhere::MISS, 'E', false));
+      //   SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD);
+      //   fprintf (m_sazanami_fp, "%08lx\t%08lx\t%08x\t0\t1\t0\t0\n", t_now.getNS(), evict_address, 0 /* Skip access_pc */);  // Use RFO for Evictio
+      // }
 
       /* TODO: this part looks a lot like updateCacheBlock's dirty case, but with the eviction buffer
          instead of an address, and with a message to the directory at the end. Merge? */
