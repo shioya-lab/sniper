@@ -1574,7 +1574,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
      for(unsigned int i = 0; i < rob.size(); ++i) {
        RobEntry *e = &rob.at(i);
 
-       if (e->done == now) {
+       if (e->done == now && e->kanata_registered) {
          fprintf(m_kanata_fp, "E\t%ld\t%d\t%s\n", e->uop->getSequenceNumber(), 0, "X");
        }
      }
