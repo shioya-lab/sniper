@@ -260,6 +260,7 @@ void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
    vectorDependants = NULL;
 
    kanata_registered = false;
+   kanata_stage = nullptr;
 }
 
 void RobTimer::RobEntry::free()
@@ -465,6 +466,25 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       if (m_uops_total > 10000 && m_uops_x87 > m_uops_total / 20)
          LOG_PRINT_WARNING_ONCE("Significant fraction of x87 instructions encountered, accuracy will be low. Compile without -mno-sse2 -mno-sse3 to avoid.");
+
+      if (m_enable_kanata && !entry->kanata_registered) {
+         DynamicMicroOp *uop = entry->uop;
+         entry->kanata_registered = true;
+         fprintf(m_kanata_fp, "I\t%ld\t%d\t%d\n", uop->getSequenceNumber(), 0, 0);
+         fprintf(m_kanata_fp, "L\t%ld\t%d\t%08lx:%s\n", uop->getSequenceNumber(), 0,
+                 uop->getMicroOp()->getInstruction()->getAddress(),
+                 uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+
+         for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
+            dl::Decoder *dec = Sim()->getDecoder();
+            RobEntry *producerEntry = this->findEntryBySequenceNumber(uop->getDependency(i));
+            if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode()) ||
+                !producerEntry->kanata_registered) {
+               continue;
+            }
+            fprintf(m_kanata_fp, "W\t%ld\t%ld\t%d\n", entry->uop->getSequenceNumber(), uop->getDependency(i), 0);
+         }
+      }
    }
 
    if (enable_rob_timer_log) {
@@ -535,36 +555,11 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
    if (frontend_stalled_until <= now)
    {
-      while(m_num_in_rob < windowSize)
+      while(true)
       {
          LOG_ASSERT_ERROR(m_num_in_rob < rob.size(), "Expected sufficient uops for dispatching in pre-ROB buffer, but didn't find them");
          RobEntry *entry = &rob.at(m_num_in_rob);
          DynamicMicroOp &uop = *entry->uop;
-
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
-            m_fpu_num_in_rob > m_fpu_window_size) {
-            // fprintf(stderr, "FPU Instruction Window Overflow\n");
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
-              m_alu_num_in_rob > m_alu_window_size) {
-            // fprintf(stderr, "ALU Instruction Window Overflow\n");
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_MEMACC) &&
-             m_lsu_num_in_rob > m_lsu_window_size) {
-            // fprintf(stderr, "LSU Instruction Window Overflow\n");
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
-             m_vec_num_in_rob > m_vec_window_size) {
-            // fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
-            break;
-         }
 
          // Dispatch up to 4 instructions
          if (uops_dispatched == dispatchWidth)
@@ -593,6 +588,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                if (enable_rob_timer_log) {
                   std::cout<<"-- icache miss (" << std::hex << uop.getMicroOp()->getInstruction()->getAddress() << ") ("<<uop.getICacheLatency()<<")"<<std::endl;
                }
+               startKanataStage(*entry, "F");
                frontend_stalled_until = now + uop.getICacheLatency();
                in_icache_miss = true;
                entry->fetch = now;
@@ -605,8 +601,44 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
            missed_icache = now;
          }
 
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
+            m_fpu_num_in_rob > m_fpu_window_size) {
+            // fprintf(stderr, "FPU Instruction Window Overflow\n");
+            startKanataStage(*entry, "Ds");
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
+              m_alu_num_in_rob > m_alu_window_size) {
+            // fprintf(stderr, "ALU Instruction Window Overflow\n");
+            startKanataStage(*entry, "Ds");
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_MEMACC) &&
+             m_lsu_num_in_rob > m_lsu_window_size) {
+            // fprintf(stderr, "LSU Instruction Window Overflow\n");
+            startKanataStage(*entry, "Ds");
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
+             m_vec_num_in_rob > m_vec_window_size) {
+            // fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
+            startKanataStage(*entry, "Ds");
+            break;
+         }
+
+         if (m_num_in_rob >= windowSize)
+         {
+            startKanataStage(*entry, "Ds");
+            break;
+         }
+
          if (m_rs_entries_used == rsEntries)
          {
+            startKanataStage(*entry, "A");
             cpiFrontEnd = &m_cpiRSFull;
             break;
          }
@@ -637,25 +669,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                LOG_ASSERT_ERROR(false, "Not expected to this point");
          }
 
-         if (m_enable_kanata) {
-           DynamicMicroOp *uop = entry->uop;
-           entry->kanata_registered = true;
-           fprintf(m_kanata_fp, "I\t%ld\t%d\t%d\n", uop->getSequenceNumber(), 0, 0);
-           fprintf(m_kanata_fp, "L\t%ld\t%d\t%08lx:%s\n", uop->getSequenceNumber(), 0,
-                   uop->getMicroOp()->getInstruction()->getAddress(),
-                   uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-
-           for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
-             dl::Decoder *dec = Sim()->getDecoder();
-             RobEntry *producerEntry = this->findEntryBySequenceNumber(uop->getDependency(i));
-             if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
-               continue;
-             }
-             fprintf(m_kanata_fp, "W\t%ld\t%ld\t%d\n", entry->uop->getSequenceNumber(), uop->getDependency(i), 0);
-           }
-           fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", uop->getSequenceNumber(), 0, "Ds");
-           // fprintf(m_kanata_fp, "E\t%ld\t%d\t%s\n", uop->getSequenceNumber(), 0, "F");
-         }
+         startKanataStage(*entry, "I");
 
          uops_dispatched++;
          if (uop.isLast())
@@ -681,6 +695,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                std::cout<<"-- branch mispredict"<<std::endl;
             }
             cpiFrontEnd = &m_cpiBranchPredictor;
+
+            if (uops_dispatched != dispatchWidth)
+               startKanataStage(rob.at(m_num_in_rob), "Bm");
             break;
          }
       }
@@ -691,6 +708,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
    {
       // Front-end is still stalled: re-use last CPI component
       cpiFrontEnd = m_cpiCurrentFrontEndStall;
+
+      if (cpiFrontEnd == &m_cpiBranchPredictor)
+         startKanataStage(rob.at(m_num_in_rob), "Bm");
    }
 
 
@@ -815,9 +835,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    entry->issued = now;
    entry->done = cycle_done;
 
-   if (m_enable_kanata && entry->kanata_registered) {
-     fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", entry->uop->getSequenceNumber(), 0, "X");
-   }
+   startKanataStage(*entry, "X");
 
    next_event = std::min(next_event, entry->done);
 
@@ -1380,12 +1398,19 @@ SubsecondTime RobTimer::doIssue()
 SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 {
    uint64_t num_committed = 0;
+   auto next_event = SubsecondTime::MaxTime();
    static bool cycle_activated = false;
    static uint64_t konata_count = 0;
 
-   while(rob.size() && (rob.front().done <= now))
+   while(rob.size())
    {
       RobEntry *entry = &rob.front();
+
+      if (num_committed >= commitWidth || entry->done > now)
+      {
+         next_event = entry->done;
+         break;
+      }
 
       if (enable_rob_timer_log) {
          std::cout<<"COMMIT   "<<entry->uop->getMicroOp()->toShortString()<<std::endl;
@@ -1475,7 +1500,6 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       }
 
       if (m_enable_kanata && entry->kanata_registered) {
-        fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", entry->uop->getSequenceNumber(), 0, "Cm");
         fprintf(m_kanata_fp, "R\t%ld\t%ld\t%d\n", entry->uop->getSequenceNumber(), entry->uop->getSequenceNumber(), 0);
       }
 
@@ -1519,14 +1543,21 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       #endif
 
       ++num_committed;
-      if (num_committed == commitWidth)
-         break;
    }
 
-   if (rob.size())
-      return rob.front().done;
-   else
-      return SubsecondTime::MaxTime();
+   for (uint64_t i = 0; i < m_num_in_rob; ++i)
+   {
+      auto& entry = rob.at(i);
+      auto executed = entry.uop->getMicroOp()->isStore() ?
+                      entry.done : entry.done - now.getPeriod();
+
+      if (executed <= now)
+         startKanataStage(entry, "Cm");
+      else if (executed < next_event)
+         next_event = executed;
+   }
+
+   return next_event;
 }
 
 void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
@@ -1555,7 +1586,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    // If frontend not stalled
    if (frontend_stalled_until <= now)
    {
-      if (rob.size() < std::min(m_num_in_rob + 2*dispatchWidth, windowSize))
+      if (rob.size() < std::min(m_num_in_rob + 2*dispatchWidth, windowSize + 1))
       {
          // We don't have enough instructions to dispatch <dispatchWidth> new ones. Ask for more before doing anything this cycle.
          return;
@@ -1569,16 +1600,6 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    SubsecondTime next_dispatch = doDispatch(&cpiComponent);
    SubsecondTime next_issue    = doIssue();
    SubsecondTime next_commit   = doCommit(instructionsExecuted);
-
-   if (m_enable_kanata) {
-     for(unsigned int i = 0; i < rob.size(); ++i) {
-       RobEntry *e = &rob.at(i);
-
-       if (e->done == now && e->kanata_registered) {
-         fprintf(m_kanata_fp, "E\t%ld\t%d\t%s\n", e->uop->getSequenceNumber(), 0, "X");
-       }
-     }
-   }
 
    if (enable_rob_timer_log) {
       #ifdef ASSERT_SKIP
@@ -1731,4 +1752,16 @@ void RobTimer::setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValid
       microOp.addDependency(m_vsetvl_producer);
     }
   }
+}
+
+void RobTimer::startKanataStage(RobEntry& entry, const char* stage)
+{
+   DynamicMicroOp& uop = *entry.uop;
+
+   if (!m_enable_kanata || !entry.kanata_registered ||
+       (entry.kanata_stage && !strcmp(entry.kanata_stage, stage)))
+      return;
+
+   entry.kanata_stage = stage;
+   fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", uop.getSequenceNumber(), 0, stage);
 }

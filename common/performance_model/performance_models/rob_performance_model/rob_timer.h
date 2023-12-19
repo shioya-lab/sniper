@@ -48,6 +48,7 @@ private:
          SubsecondTime done;
 
          bool kanata_registered;  // Indicate Kanata Format Instruction Registered
+         const char* kanata_stage;
    };
 
    const uint64_t dispatchWidth;
@@ -210,6 +211,8 @@ private:
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
+
+   void startKanataStage(RobEntry& entry, const char* stage);
 
 public:
 
