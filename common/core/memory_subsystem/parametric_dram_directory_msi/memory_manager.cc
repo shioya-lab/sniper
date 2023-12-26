@@ -423,6 +423,7 @@ MemoryManager::coreInitiateMemoryAccess(
       Byte* data_buf, UInt32 data_length,
       Core::MemModeled modeled,
       IntPtr eip,
+      uint64_t uop_idx,
       bool use_prefetch)
 {
    LOG_ASSERT_ERROR(mem_component <= m_last_level_cache,
@@ -439,7 +440,7 @@ MemoryManager::coreInitiateMemoryAccess(
          address, offset,
          data_buf, data_length,
          modeled == Core::MEM_MODELED_NONE || modeled == Core::MEM_MODELED_COUNT ? false : true,
-         modeled == Core::MEM_MODELED_NONE ? false : true, eip, use_prefetch);
+         modeled == Core::MEM_MODELED_NONE ? false : true, eip, uop_idx, use_prefetch);
 }
 
 void

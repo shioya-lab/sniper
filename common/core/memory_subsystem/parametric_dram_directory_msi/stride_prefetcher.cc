@@ -21,7 +21,7 @@ StridePrefetcher::StridePrefetcher(String configName, core_id_t _core_id, UInt32
 
 
 std::vector<IntPtr>
-StridePrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, core_id_t _core)
+StridePrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, uint64_t uop_idx, core_id_t _core)
 {
   if (m_enable_log) {
     fprintf(stderr, "  %s StridePrefetcher::getNextAddress(pc=%08lx, addr=%08lx) start :\n", configName.c_str(), pc, current_address);

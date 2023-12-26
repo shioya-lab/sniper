@@ -17,13 +17,11 @@ VecPrefetcher::VecPrefetcher(String configName, core_id_t _core_id, UInt32 _shar
    , m_degree                   (Sim()->getCfg()->getIntArray("perf_model/" + configName + "/prefetcher/vec_pref/degree", core_id))
    , m_cache_block_size         (Sim()->getCfg()->getIntArray("perf_model/" + configName + "/cache_block_size", core_id))
    , m_enable_log               (Sim()->getCfg()->getBoolArray("log/enable_vec_prefetcher_log", core_id))
-{
-  m_last_pc = 0;
-}
+{}
 
 
 std::vector<IntPtr>
-VecPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, core_id_t _core)
+VecPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, uint64_t uop_idx, core_id_t _core)
 {
   if (pc == 0) { return std::vector<IntPtr>(0); }
 
@@ -34,7 +32,7 @@ VecPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type
   bool vec_access = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC;
 
   if (vec_access) {
-    return getVectorNextAddress (pc, current_address);
+    return getVectorNextAddress (pc, uop_idx, current_address);
   } else {
     return getScalarNextAddress (pc, current_address);
   }
@@ -42,7 +40,7 @@ VecPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type
 }
 
 
-std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, IntPtr current_address)
+std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, uint64_t uop_idx, IntPtr current_address)
 {
   std::vector<IntPtr> addresses;
 
@@ -55,21 +53,22 @@ std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, IntPtr curren
       continue;
     }
 
-    if (m_last_pc == pc) {
+    if (entry->last_uop_idx + 1 == uop_idx) {
       if (entry->last_addr == current_block) {
         if (m_enable_log) {
-          fprintf(stderr, "   %s: VecPrefetcher::Vector same address access. entry index = %ld, last_addr = %08lx (degree = %d, vec_size = %d)\n",
-                  configName.c_str(), i, entry->last_addr, entry->vec_degree(), entry->vec_size);
+          fprintf(stderr, "   %s: VecPrefetcher::Vector. pc=%08lx same address access. entry[%ld].{last_addr = %08lx, base_addr=%08lx} (degree = %d, vec_size = %d)\n",
+                  configName.c_str(), pc, i, entry->last_addr, entry->base_addr, entry->vec_degree(), entry->vec_size);
         }
       } else {
         // access sequentially in same PC, increase size
         entry->vec_size += m_cache_block_size;
         entry->last_addr = current_block;
         if (m_enable_log) {
-          fprintf(stderr, "   %s: VecPrefetcher::Vector same pc sequential update. entry index = %ld, last addr = %08lx (degree = %d, vec_size = %d)\n",
-                  configName.c_str(), i, entry->last_addr, entry->vec_degree(), entry->vec_size);
+          fprintf(stderr, "   %s: VecPrefetcher::Vector. pc=%08lx same pc sequential update. entry[%ld].{last addr = %08lx, base_addr=%08lx} (degree = %d, vec_size = %d)\n",
+                  configName.c_str(), pc, i, entry->last_addr, entry->base_addr, entry->vec_degree(), entry->vec_size);
         }
       }
+      entry->last_uop_idx = uop_idx;
       return addresses;
     }
 
@@ -117,18 +116,15 @@ std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, IntPtr curren
     }
     entry->base_addr = current_address;
 
-    if (m_last_pc != pc) {
+    if (entry->last_uop_idx + 1 != uop_idx) {
       entry->vec_size = m_cache_block_size;
     }
-
-    m_last_pc = pc;
+    entry->last_uop_idx = uop_idx;
 
     entry->count++;
 
     return addresses;
   }
-
-  m_last_pc = pc;
 
   AllocateVecStride (pc, current_address);
 

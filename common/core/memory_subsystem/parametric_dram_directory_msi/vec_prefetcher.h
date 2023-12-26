@@ -8,7 +8,7 @@ class VecPrefetcher : public Prefetcher
 {
  public:
   VecPrefetcher(String configName, core_id_t core_id, UInt32 shared_cores);
-  virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc,
+  virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, uint64_t uop_idx,
                                              core_id_t core_id);
 
  private:
@@ -29,12 +29,12 @@ class VecPrefetcher : public Prefetcher
   static const int CONFIDENCE_DEC  = 4;
   static const int CONFIDENCE_PREDICTION_THREASHOLD = 7;
 
-  IntPtr m_last_pc;
-
   struct VecStride
   {
     const unsigned m_degree;
     const unsigned m_cache_block_size;
+
+    uint64_t last_uop_idx;
 
     IntPtr base_addr; // A current 'start' address of a stream
     IntPtr last_addr;
@@ -57,6 +57,7 @@ class VecPrefetcher : public Prefetcher
 
     void Reset(const IntPtr pc, const IntPtr current_address)
     {
+      last_uop_idx = 0;
       m_pc = pc;
       base_addr = current_address;
       last_addr = base_addr;
@@ -73,7 +74,7 @@ class VecPrefetcher : public Prefetcher
     }
 
     unsigned int vec_degree () {
-      return vec_size / m_cache_block_size;
+      return vec_size / m_cache_block_size * m_degree;
     }
   };
   typedef std::vector< VecStride *> VecStrideTable;
@@ -122,7 +123,7 @@ class VecPrefetcher : public Prefetcher
   ScalarStrideTable m_scalar_stride_table;
   void AllocateScalarStride(const IntPtr pc, const IntPtr address);
 
-  std::vector<IntPtr> getVectorNextAddress(IntPtr pc, IntPtr current_address);
+  std::vector<IntPtr> getVectorNextAddress(IntPtr pc, uint64_t uop_idx, IntPtr current_address);
   std::vector<IntPtr> getScalarNextAddress(IntPtr pc, IntPtr current_address);                                             
 
   const bool m_enable_log;

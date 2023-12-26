@@ -219,7 +219,7 @@ namespace ParametricDramDirectoryMSI
          bool m_prefetch_delay;
          bool m_l1_mshr;
          bool m_enable_log;
-
+         bool m_enable_cache_csv_log;
 
          struct {
            UInt64 loads, stores;
@@ -293,7 +293,8 @@ namespace ParametricDramDirectoryMSI
                IntPtr address, Core::mem_op_t mem_op_type, CacheBlockInfo **cache_block_info = NULL);
 
          void copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, bool modeled, SubsecondTime t_start);
-         void trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, IntPtr access_pc);
+         void trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, 
+                              IntPtr access_pc, uint64_t uop_idx);
          void Prefetch(SubsecondTime t_start);
          void VecPrefetch(SubsecondTime t_start);
          void doPrefetch(IntPtr prefetch_address, SubsecondTime t_start);
@@ -370,8 +371,10 @@ namespace ParametricDramDirectoryMSI
            cycle(_cycle), hit(_hit), rw(_rw), vec_access(_vec_access) {}
      };
      std::map<uint64_t, std::vector<access_info_t *>> m_cache_access_hist;
-     FILE *m_cache_rd_fp;
-     FILE *m_cache_wr_fp;
+     FILE *m_cache_rd_hit_fp;
+     FILE *m_cache_wr_hit_fp;
+     FILE *m_cache_rd_miss_fp;
+     FILE *m_cache_wr_miss_fp;
      FILE *m_cache_pr_fp;
      FILE *m_cache_ev_fp;
 
@@ -386,15 +389,27 @@ namespace ParametricDramDirectoryMSI
      void roiBegin() {
        m_cache_access_hist.erase(m_cache_access_hist.begin(), m_cache_access_hist.end());
 
-       if (m_cache_rd_fp != NULL) {
-         fclose (m_cache_rd_fp);
-         if ((m_cache_rd_fp = fopen((m_configName + "_cache_rd_log.csv").c_str(), "w")) == NULL) {
+       if (m_cache_rd_hit_fp != NULL) {
+         fclose (m_cache_rd_hit_fp);
+         if ((m_cache_rd_hit_fp = fopen((m_configName + "_cache_rd_hit_log.csv").c_str(), "w")) == NULL) {
            perror("fopen");
          }
        }
-       if (m_cache_wr_fp != NULL) {
-         fclose (m_cache_wr_fp);
-         if ((m_cache_wr_fp = fopen((m_configName + "_cache_wr_log.csv").c_str(), "w")) == NULL) {
+       if (m_cache_wr_hit_fp != NULL) {
+         fclose (m_cache_wr_hit_fp);
+         if ((m_cache_wr_hit_fp = fopen((m_configName + "_cache_wr_hit_log.csv").c_str(), "w")) == NULL) {
+           perror("fopen");
+         }
+       }
+       if (m_cache_rd_miss_fp != NULL) {
+         fclose (m_cache_rd_miss_fp);
+         if ((m_cache_rd_miss_fp = fopen((m_configName + "_cache_rd_miss_log.csv").c_str(), "w")) == NULL) {
+           perror("fopen");
+         }
+       }
+       if (m_cache_wr_miss_fp != NULL) {
+         fclose (m_cache_wr_miss_fp);
+         if ((m_cache_wr_miss_fp = fopen((m_configName + "_cache_wr_miss_log.csv").c_str(), "w")) == NULL) {
            perror("fopen");
          }
        }
@@ -511,6 +526,7 @@ namespace ParametricDramDirectoryMSI
                                                 bool modeled,
                                                 bool count,
                                                 IntPtr access_pc,
+                                                uint64_t uop_idx,
                                                 bool use_prefetch = true);
          void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
 

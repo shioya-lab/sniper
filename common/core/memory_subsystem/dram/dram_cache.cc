@@ -203,7 +203,7 @@ void
 DramCache::callPrefetcher(IntPtr train_address, bool cache_hit, bool prefetch_hit, SubsecondTime t_issue)
 {
    // Always train the prefetcher
-  std::vector<IntPtr> prefetchList = m_prefetcher->getNextAddress(train_address, Core::INVALID_MEM_OP, 0x0, INVALID_CORE_ID); // addr / mem_op_type is not used
+  std::vector<IntPtr> prefetchList = m_prefetcher->getNextAddress(train_address, Core::INVALID_MEM_OP, 0x0, 0x0, INVALID_CORE_ID); // addr / mem_op_type / uop_idx is not used
 
    // Only do prefetches on misses, or on hits to lines previously brought in by the prefetcher (if enabled)
    if (!cache_hit || (m_prefetch_on_prefetch_hit && prefetch_hit))

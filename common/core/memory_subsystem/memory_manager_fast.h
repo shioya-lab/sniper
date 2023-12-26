@@ -26,6 +26,7 @@ class MemoryManagerFast : public MemoryManagerBase
             Byte* data_buf, UInt32 data_length,
             Core::MemModeled modeled,
             IntPtr eip,
+            uint64_t uop_idx,
             bool use_prefetch = true)
       {
          // Emulate slow interface by calling into fast interface

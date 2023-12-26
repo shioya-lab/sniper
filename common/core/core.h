@@ -91,7 +91,8 @@ class Core
       MemoryResult readInstructionMemory(IntPtr address,
             UInt32 instruction_size);
 
-      MemoryResult accessMemory(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size, MemModeled modeled = MEM_MODELED_NONE, IntPtr eip = 0,
+      MemoryResult accessMemory(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size, MemModeled modeled = MEM_MODELED_NONE, 
+                                IntPtr eip = 0, uint64_t uop_idx = 0,
                                 SubsecondTime now = SubsecondTime::MaxTime(),
                                 bool use_prefetch = true,
                                 bool is_fault_mask = false);
@@ -164,6 +165,7 @@ class Core
           Byte* data_buf, UInt32 data_size,
           MemModeled modeled,
           IntPtr eip,
+          uint64_t uop_idx,
           SubsecondTime now,
           bool use_prefetch = true);
 

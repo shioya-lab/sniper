@@ -8,7 +8,7 @@ class StreamPrefetcher : public Prefetcher
 {
     public:
         StreamPrefetcher(String configName, core_id_t core_id, UInt32 shared_cores);
-        virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, core_id_t core_id);
+        virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, uint64_t uop_idx, core_id_t core_id);
 
     private:
         // Initializing phase

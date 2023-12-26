@@ -297,10 +297,22 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_roi_dumped  = false;
 
 
-   if ((m_cache_rd_fp = fopen((m_configName + "_cache_rd_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-   if ((m_cache_wr_fp = fopen((m_configName + "_cache_wr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-   if ((m_cache_pr_fp = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-   if ((m_cache_ev_fp = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+   m_enable_cache_csv_log = Sim()->getCfg()->getBoolArray("log/enable_cache_csv_log", core_id);
+   if (m_enable_cache_csv_log) {
+     if ((m_cache_rd_hit_fp  = fopen((m_configName + "_cache_rd_hit_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+     if ((m_cache_wr_hit_fp  = fopen((m_configName + "_cache_wr_hit_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+     if ((m_cache_rd_miss_fp = fopen((m_configName + "_cache_rd_miss_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+     if ((m_cache_wr_miss_fp = fopen((m_configName + "_cache_wr_miss_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+     if ((m_cache_pr_fp      = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+     if ((m_cache_ev_fp      = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
+   } else {
+     m_cache_rd_hit_fp  = NULL;
+     m_cache_wr_hit_fp  = NULL;
+     m_cache_rd_miss_fp = NULL;
+     m_cache_wr_miss_fp = NULL;
+     m_cache_pr_fp      = NULL;
+     m_cache_ev_fp      = NULL;
+   }
 }
 
 CacheCntlr::~CacheCntlr()
@@ -356,6 +368,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
                                  bool modeled,
                                  bool count,
                                  IntPtr access_pc,
+                                 uint64_t uop_idx,
                                  bool use_prefetch)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
@@ -632,7 +645,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
    {
       // IntPtr train_address = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC ? ca_address : ca_address + offset;
       IntPtr train_address = ca_address + offset;
-      trainPrefetcher(train_address, mem_op_type, cache_hit, prefetch_hit, false, t_start, access_pc);
+      trainPrefetcher(train_address, mem_op_type, cache_hit, prefetch_hit, false, t_start, access_pc, uop_idx);
 
       if (m_enable_log) {
          fprintf(stderr, "%s processMemOpFromCore::trainPrefetcher() finished\n", m_configName.c_str());
@@ -664,12 +677,28 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
                                                                      mem_op_type == Core::READ      ? 'r' :
                                                                      mem_op_type == Core::WRITE     ? 'w' : 'N',
                                                                      static_cast<bool>((mem_op_type == Core::READ_VEC) || (mem_op_type == Core::WRITE_VEC))));
-     switch (mem_op_type) {
-       case Core::READ_VEC  : fprintf (m_cache_rd_fp, "%ld, %ld, R\n", t_now.getNS(), ca_address + offset); break;
-       case Core::READ      : fprintf (m_cache_rd_fp, "%ld, %ld, r\n", t_now.getNS(), ca_address + offset); break;
-       case Core::WRITE_VEC : fprintf (m_cache_wr_fp, "%ld, %ld, W\n", t_now.getNS(), ca_address + offset); break;
-       case Core::WRITE     : fprintf (m_cache_wr_fp, "%ld, %ld, w\n", t_now.getNS(), ca_address + offset); break;
-       default : break;
+     if (m_enable_cache_csv_log) {
+       switch (mem_op_type) {
+         case Core::READ_VEC :
+         case Core::READ     : {
+           if (cache_hit) {
+             fprintf (m_cache_rd_hit_fp,  "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::READ_VEC ? 'R' : 'r');
+           } else {
+             fprintf (m_cache_rd_miss_fp, "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::READ_VEC ? 'R' : 'r');
+           }
+           break;
+         }
+         case Core::WRITE_VEC :
+         case Core::WRITE     : {
+           if (cache_hit) {
+             fprintf (m_cache_wr_hit_fp,  "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::WRITE_VEC ? 'W' : 'w');
+           } else {
+             fprintf (m_cache_wr_miss_fp, "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::WRITE_VEC ? 'W' : 'w');
+           }
+           break;
+         }
+         default : break;
+       }
      }
    }
 
@@ -735,7 +764,8 @@ MYLOG("copyDataFromNextLevel l%d", m_mem_component);
 }
 
 void
-CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, IntPtr access_pc)
+CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, 
+                            IntPtr access_pc, uint64_t uop_idx)
 {
    ScopedLock sl(getLock());
 
@@ -745,7 +775,7 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
 
    // Train the prefetcher always or only on misses on lines that are not being brought by the prefetcher (load or store miss)
    if (m_train_prefetcher_on_hit || (!prefetch_own && !cache_hit)) {
-      prefetchList = m_master->m_prefetcher->getNextAddress(address, mem_op_type, access_pc, m_core_id);
+      prefetchList = m_master->m_prefetcher->getNextAddress(address, mem_op_type, access_pc, uop_idx, m_core_id);
       prefetcherTrained = true;
    }
    else prefetcherTrained = false;
@@ -788,9 +818,9 @@ void
 CacheCntlr::VecPrefetch(SubsecondTime t_now)
 {
   if (m_enable_log) {
-    MYLOG("  CacheCntlr::VecPrefetch() called\n");
-    MYLOG("  CacheCntlr::VecPrefetch::m_prefetch_list.size = %ld\n", m_master->m_prefetch_list.size());
-    MYLOG("  CacheCntlr::VecPrefetch::m_prefetch_next = %ld\n", m_master->m_prefetch_next.getNS());
+    MYLOG("  CacheCntlr::VecPrefetch() called");
+    MYLOG("  CacheCntlr::VecPrefetch::m_prefetch_list.size = %ld", m_master->m_prefetch_list.size());
+    MYLOG("  CacheCntlr::VecPrefetch::m_prefetch_next = %ld", m_master->m_prefetch_next.getNS());
   }
 
   {
@@ -808,14 +838,14 @@ CacheCntlr::VecPrefetch(SubsecondTime t_now)
            IntPtr address_to_prefetch = address - (address % m_cache_block_size);
 
            if (m_enable_log) {
-             MYLOG("  CacheCntlr::Prefetch() address_to_prefetch = %08lx\n", address_to_prefetch);
+             MYLOG("  CacheCntlr::Prefetch() address_to_prefetch = %08lx", address_to_prefetch);
            }
            doPrefetch(address_to_prefetch, m_master->m_prefetch_next);
          }
          // atomic_add_subsecondtime(m_master->m_prefetch_next, SubsecondTime::PS(1));
-         MYLOG("  VecPrefetch::m_master->m_prefetch_next = %ld ps\n", m_master->m_prefetch_next.getPS());
+         MYLOG("  VecPrefetch::m_master->m_prefetch_next = %ld ps", m_master->m_prefetch_next.getPS());
          m_master->m_prefetch_next += SubsecondTime::PS(100); // PREFETCH_INTERVAL;
-         MYLOG("  VecPrefetch::m_master->m_prefetch_next = %ld ps\n", m_master->m_prefetch_next.getPS());
+         MYLOG("  VecPrefetch::m_master->m_prefetch_next = %ld ps", m_master->m_prefetch_next.getPS());
        // } else {
        //   break;
        // }
@@ -892,7 +922,9 @@ CacheCntlr::doPrefetch(IntPtr prefetch_address, SubsecondTime t_start)
    if (true /* m_roi_started*/) {
      UInt64 block_address  = prefetch_address & ~(getCacheBlockSize() - 1);
      m_cache_access_hist[block_address].push_back(new access_info_t (t_start, hit_where != HitWhere::MISS, 'P', false));
-     fprintf (m_cache_pr_fp, "%ld, %ld, P\n", t_start.getNS(), prefetch_address);
+     if (m_enable_cache_csv_log) {
+       fprintf (m_cache_pr_fp, "%ld, %ld, P\n", t_start.getNS(), prefetch_address);
+     }
    }
    if (hit_where == HitWhere::MISS)
    {
@@ -1189,7 +1221,8 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
 
    if (modeled && m_master->m_prefetcher)
    {
-     trainPrefetcher(address, mem_op_type, cache_hit, prefetch_hit, isPrefetch == Prefetch::prefetch_type_t::OWN, t_issue, 0);
+     trainPrefetcher(address, mem_op_type, cache_hit, prefetch_hit, isPrefetch == Prefetch::prefetch_type_t::OWN, t_issue, 
+                     0 /* pc*/, 0 /* uop_idx*/);
    }
 
    #ifdef PRIVATE_L2_OPTIMIZATION
@@ -1611,7 +1644,9 @@ MYLOG("evicting @%lx", evict_address);
         m_cache_access_hist[block_address].push_back(new access_info_t (getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD),
                                                                         HitWhere::MISS, 'E', false));
         SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD);
-        fprintf (m_cache_ev_fp, "%ld, %ld, E\n", t_now.getNS(), evict_address);
+        if (m_enable_cache_csv_log) {
+          fprintf (m_cache_ev_fp, "%ld, %ld, E\n", t_now.getNS(), evict_address);
+        }
       }
 
       /* TODO: this part looks a lot like updateCacheBlock's dirty case, but with the eviction buffer
@@ -1745,6 +1780,11 @@ CacheCntlr::updateCacheBlock(IntPtr address, CacheState::cstate_t new_cstate, Tr
             address, new_cstate, reason == Transition::EVICT ? Transition::BACK_INVAL : reason, NULL, thread_num);
          // writeback_time is for the complete stack, so only model it at the last level, ignore latencies returned by previous ones
          //latency = getMax<SubsecondTime>(latency, res.first);
+         if (m_enable_cache_csv_log) {
+           if (reason == Transition::EVICT) {
+             fprintf (m_cache_ev_fp, "%ld, %ld, E\n", res.first.getNS(), address);
+           }
+         }
          sibling_hit |= res.second;
       }
    }

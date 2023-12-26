@@ -741,6 +741,10 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    RobEntry *entry = &rob[idx];
    DynamicMicroOp &uop = *entry->uop;
 
+   if (enable_rob_timer_log) {
+      std::cout<<"ISSUE    "<<entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
+   }
+
    if ((uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())
       && uop.getDCacheHitWhere() == HitWhere::UNKNOWN)
    {
@@ -756,6 +760,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
             uop.getMicroOp()->getMemoryAccessSize() * access_size_scale,
             Core::MEM_MODELED_RETURN,
             uop.getMicroOp()->getInstruction() ? uop.getMicroOp()->getInstruction()->getAddress() : static_cast<uint64_t>(NULL),
+            uop.getSequenceNumber(),
             now.getElapsedTime(),
             // uop.getMicroOp()->isVector() & uop.getMicroOp()->canVecSquash() ? uop.getMicroOp()->isFirst() : true
             true
@@ -839,10 +844,6 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    next_event = std::min(next_event, entry->done);
 
    --m_rs_entries_used;
-
-   if (enable_rob_timer_log) {
-      std::cout<<"ISSUE    "<<entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
-   }
 
    for(size_t idx = 0; idx < entry->getNumDependants(); ++idx)
    {
@@ -1009,11 +1010,11 @@ SubsecondTime RobTimer::doIssue()
       else
          canIssue = true;           // issue!
 
-      if (enable_rob_timer_log) {
-        std::cerr << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
-            ", index = " << uop->getSequenceNumber() <<
-            (canIssue ? " True" : " False") << std::endl;
-      }
+      // if (enable_rob_timer_log) {
+      //   std::cerr << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
+      //       ", index = " << uop->getSequenceNumber() <<
+      //       (canIssue ? " True" : " False") << std::endl;
+      // }
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
@@ -1148,12 +1149,12 @@ SubsecondTime RobTimer::doIssue()
       inhead_vector_existed |= uop->getMicroOp()->isVector();
 
       if (v_to_s_block) {
-         if (enable_rob_timer_log) {
-            fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
-                     uop->getSequenceNumber(),
-                     uop->getAddress().address,
-                     uop->getMicroOp()->toShortString().c_str());
-         }
+         // if (enable_rob_timer_log) {
+         //    fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
+         //             uop->getSequenceNumber(),
+         //             uop->getAddress().address,
+         //             uop->getMicroOp()->toShortString().c_str());
+         // }
          canIssue = false;
          v_to_s_fenced = true;
       }
@@ -1169,21 +1170,21 @@ SubsecondTime RobTimer::doIssue()
             }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                vec_ooo_issue_count ++;
-               if (enable_rob_timer_log) {
-                  fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
-                                    uop->getSequenceNumber(),
-                                    uop->getAddress().address,
-                                    uop->getMicroOp()->toShortString().c_str());
-               }
+               // if (enable_rob_timer_log) {
+               //    fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
+               //                      uop->getSequenceNumber(),
+               //                      uop->getAddress().address,
+               //                      uop->getMicroOp()->toShortString().c_str());
+               // }
             }
          } else if (!uop->isVirtuallyIssued()) {
             vector_someone_wait_issue = true;
-            if (enable_rob_timer_log) {
-               fprintf (stderr, "Vector %ld waiting: %s %ld\n",
-                                 uop->getSequenceNumber(),
-                                 uop->getMicroOp()->toShortString().c_str(),
-                                 SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
-            }
+            // if (enable_rob_timer_log) {
+            //    fprintf (stderr, "Vector %ld waiting: %s %ld\n",
+            //                      uop->getSequenceNumber(),
+            //                      uop->getMicroOp()->toShortString().c_str(),
+            //                      SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
+            // }
          }
       } else {
          // Scalar Instructions
@@ -1196,21 +1197,21 @@ SubsecondTime RobTimer::doIssue()
             }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                scalar_ooo_issue_count++;
-               if (enable_rob_timer_log) {
-                  fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
-                                    uop->getSequenceNumber(),
-                                    uop->getAddress().address,
-                                    uop->getMicroOp()->toShortString().c_str());
-               }
+               // if (enable_rob_timer_log) {
+               //    fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
+               //                      uop->getSequenceNumber(),
+               //                      uop->getAddress().address,
+               //                      uop->getMicroOp()->toShortString().c_str());
+               // }
             }
          } else {
             scalar_someone_wait_issue = true;
-            if (enable_rob_timer_log) {
-               fprintf (stderr, "Scalar %ld waiting: %s %ld\n",
-                                 uop->getSequenceNumber(),
-                                 uop->getMicroOp()->toShortString().c_str(),
-                                 SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
-            }
+            // if (enable_rob_timer_log) {
+            //    fprintf (stderr, "Scalar %ld waiting: %s %ld\n",
+            //                      uop->getSequenceNumber(),
+            //                      uop->getMicroOp()->toShortString().c_str(),
+            //                      SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
+            // }
          }
       }
 
@@ -1299,10 +1300,10 @@ SubsecondTime RobTimer::doIssue()
 
       if (canIssue && uop->getMicroOp()->isVector() &&
           uop->getMicroOp()->UopIdx() == 0) {
-         if (enable_rob_timer_log) {
-               std::cerr << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
-                   ", index = " << uop->getSequenceNumber() << '\n';
-         }
+          // if (enable_rob_timer_log) {
+          //      std::cerr << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
+          //          ", index = " << uop->getSequenceNumber() << '\n';
+          // }
         uop->setVirtuallyIssued();
         for (uint64_t j = i+1; j < m_num_in_rob; ++j) {
           RobEntry *subseq_entry = &rob.at(j);
@@ -1310,10 +1311,10 @@ SubsecondTime RobTimer::doIssue()
 
           if (subseq_uop->getMicroOp()->getInstruction()->getAddress() ==
               uop->getMicroOp()->getInstruction()->getAddress()) {
-               if (enable_rob_timer_log) {
-                  std::cerr << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
-                      ", index = " << subseq_uop->getSequenceNumber() << '\n';
-               }
+               // if (enable_rob_timer_log) {
+               //    std::cerr << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
+               //        ", index = " << subseq_uop->getSequenceNumber() << '\n';
+               // }
             subseq_uop->setVirtuallyIssued();
           } else {
             break;

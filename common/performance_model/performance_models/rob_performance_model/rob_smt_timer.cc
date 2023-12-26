@@ -762,6 +762,7 @@ void RobSmtTimer::issueInstruction(smtthread_id_t thread_num, uint64_t idx, Subs
          uop.getMicroOp()->getMemoryAccessSize(),
          Core::MEM_MODELED_RETURN,
          uop.getMicroOp()->getInstruction() ? uop.getMicroOp()->getInstruction()->getAddress() : static_cast<uint64_t>(NULL),
+         uop.getSequenceNumber(),
          now.getElapsedTime()
       );
       uint64_t latency = SubsecondTime::divideRounded(res.latency, now.getPeriod());
