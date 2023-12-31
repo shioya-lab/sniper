@@ -138,15 +138,15 @@ private:
    uint64_t m_VtoS_RdRequests;
    uint64_t m_VtoS_WrRequests;
 
-   uint64_t m_alu_num_in_rob;
-   uint64_t m_lsu_num_in_rob;
-   uint64_t m_fpu_num_in_rob;
-   uint64_t m_vec_num_in_rob;
+   uint64_t m_alu_rs_entries_used;
+   uint64_t m_lsu_rs_entries_used;
+   uint64_t m_fpu_rs_entries_used;
+   uint64_t m_vec_rs_entries_used;
 
-   uint64_t m_alu_window_size;
-   uint64_t m_lsu_window_size;
-   uint64_t m_fpu_window_size;
-   uint64_t m_vec_window_size;
+   uint64_t m_alu_rs_entries;
+   uint64_t m_lsu_rs_entries;
+   uint64_t m_fpu_rs_entries;
+   uint64_t m_vec_rs_entries;
 
    uint64_t vec_ooo_issue_count;
    uint64_t scalar_ooo_issue_count;

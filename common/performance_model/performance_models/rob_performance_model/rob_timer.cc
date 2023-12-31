@@ -194,15 +194,15 @@ RobTimer::RobTimer(
    m_last_kanata_time = SubsecondTime::Zero();
    m_vsetvl_producer = 0;
 
-   m_alu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/alu_window_size", core->getId());
-   m_lsu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/lsu_window_size", core->getId());
-   m_fpu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/fpu_window_size", core->getId());
-   m_vec_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/vec_window_size", core->getId());
+   m_alu_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/alu_rs_entries", core->getId());
+   m_lsu_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/lsu_rs_entries", core->getId());
+   m_fpu_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/fpu_rs_entries", core->getId());
+   m_vec_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/vec_rs_entries", core->getId());
 
-   m_alu_num_in_rob = 0;
-   m_lsu_num_in_rob = 0;
-   m_fpu_num_in_rob = 0;
-   m_vec_num_in_rob = 0;
+   m_alu_rs_entries_used = 0;
+   m_lsu_rs_entries_used = 0;
+   m_fpu_rs_entries_used = 0;
+   m_vec_rs_entries_used = 0;
 
    m_latest_vecmem_commit_time = SubsecondTime::Zero();
 
@@ -603,35 +603,39 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          startKanataStage(*entry, "Ds");
 
+         if (m_num_in_rob >= windowSize)
+            break;
+
+         startKanataStage(*entry, "A");
+
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
-            m_fpu_num_in_rob > m_fpu_window_size) {
+            m_fpu_rs_entries_used > m_fpu_rs_entries) {
             // fprintf(stderr, "FPU Instruction Window Overflow\n");
+            cpiFrontEnd = &m_cpiRSFull;
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
-              m_alu_num_in_rob > m_alu_window_size) {
+              m_alu_rs_entries_used > m_alu_rs_entries) {
             // fprintf(stderr, "ALU Instruction Window Overflow\n");
+            cpiFrontEnd = &m_cpiRSFull;
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_MEMACC) &&
-             m_lsu_num_in_rob > m_lsu_window_size) {
+             m_lsu_rs_entries_used > m_lsu_rs_entries) {
             // fprintf(stderr, "LSU Instruction Window Overflow\n");
+            cpiFrontEnd = &m_cpiRSFull;
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
-             m_vec_num_in_rob > m_vec_window_size) {
+             m_vec_rs_entries_used > m_vec_rs_entries) {
             // fprintf(stderr, "VEC_ARITH Instruction Window Overflow\n");
+            cpiFrontEnd = &m_cpiRSFull;
             break;
          }
-
-         if (m_num_in_rob >= windowSize)
-            break;
-
-         startKanataStage(*entry, "A");
 
          if (m_rs_entries_used == rsEntries)
          {
@@ -647,19 +651,19 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          switch (uop.getMicroOp()->getSubtype()) {
             case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
             case MicroOp::UOP_SUBTYPE_FP_MULDIV :
-               m_fpu_num_in_rob++;
+               m_fpu_rs_entries_used++;
                break;
             case MicroOp::UOP_SUBTYPE_LOAD :
             case MicroOp::UOP_SUBTYPE_STORE :
             case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
-               m_lsu_num_in_rob ++;
+               m_lsu_rs_entries_used ++;
                break;
             case MicroOp::UOP_SUBTYPE_GENERIC :
             case MicroOp::UOP_SUBTYPE_BRANCH :
-               m_alu_num_in_rob++;
+               m_alu_rs_entries_used++;
                break;
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
-               m_vec_num_in_rob++;
+               m_vec_rs_entries_used++;
                break;
             default :
                LOG_ASSERT_ERROR(false, "Not expected to this point");
@@ -716,7 +720,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
    if (cpiRobHead &&
        ((!uops_dispatched &&
          frontend_stalled_until == SubsecondTime::MaxTime()) ||
-        m_rs_entries_used - uops_dispatched + dispatchWidth > rsEntries ||
+        cpiFrontEnd == &m_cpiRSFull ||
         m_num_in_rob - uops_dispatched + dispatchWidth > windowSize))
    {
       // Have memory components take precendence over front-end stalls
@@ -836,6 +840,27 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    next_event = std::min(next_event, entry->done);
 
    --m_rs_entries_used;
+
+   switch (entry->uop->getMicroOp()->getSubtype()) {
+      case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
+      case MicroOp::UOP_SUBTYPE_FP_MULDIV :
+         m_fpu_rs_entries_used--;
+         break;
+      case MicroOp::UOP_SUBTYPE_LOAD :
+      case MicroOp::UOP_SUBTYPE_STORE :
+      case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
+         m_lsu_rs_entries_used--;
+         break;
+      case MicroOp::UOP_SUBTYPE_GENERIC :
+      case MicroOp::UOP_SUBTYPE_BRANCH :
+         m_alu_rs_entries_used--;
+         break;
+      case MicroOp::UOP_SUBTYPE_VEC_ARITH :
+        m_vec_rs_entries_used--;
+         break;
+      default :
+        LOG_ASSERT_ERROR(false, "Not expected to this point");
+   }
 
    if (enable_rob_timer_log) {
       std::cout<<"ISSUE    "<<entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
@@ -1498,27 +1523,6 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (m_enable_kanata && entry->kanata_registered) {
         fprintf(m_kanata_fp, "R\t%ld\t%ld\t%d\n", entry->uop->getSequenceNumber(), entry->uop->getSequenceNumber(), 0);
-      }
-
-      switch (entry->uop->getMicroOp()->getSubtype()) {
-         case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
-         case MicroOp::UOP_SUBTYPE_FP_MULDIV :
-            m_fpu_num_in_rob--;
-            break;
-         case MicroOp::UOP_SUBTYPE_LOAD :
-         case MicroOp::UOP_SUBTYPE_STORE :
-         case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
-            m_lsu_num_in_rob--;
-            break;
-         case MicroOp::UOP_SUBTYPE_GENERIC :
-         case MicroOp::UOP_SUBTYPE_BRANCH :
-            m_alu_num_in_rob--;
-            break;
-         case MicroOp::UOP_SUBTYPE_VEC_ARITH :
-           m_vec_num_in_rob--;
-            break;
-         default :
-           LOG_ASSERT_ERROR(false, "Not expected to this point");
       }
 
       if (entry->uop->getMicroOp()->isVector() &&
