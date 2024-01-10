@@ -195,18 +195,16 @@ RobTimer::RobTimer(
    m_vsetvl_producer = 0;
 
    m_alu_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/alu_rs_entries", core->getId());
-   m_lsu_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/lsu_rs_entries", core->getId()) +
-                      Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()) +
-                      Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()) +
-                      Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_loads", core->getId()) +
-                      Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_stores", core->getId());
-   m_fpu_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/fpu_rs_entries", core->getId());
-   m_vec_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/vec_rs_entries", core->getId());
+   m_lu_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/lu_rs_entries", core->getId()) +
+                     Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()) +
+                     Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_loads", core->getId());
+   m_su_rs_entries = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/su_rs_entries", core->getId()) +
+                     Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()) +
+                     Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_stores", core->getId());
 
    m_alu_rs_entries_used = 0;
-   m_lsu_rs_entries_used = 0;
-   m_fpu_rs_entries_used = 0;
-   m_vec_rs_entries_used = 0;
+   m_lu_rs_entries_used = 0;
+   m_su_rs_entries_used = 0;
 
    m_latest_vecmem_commit_time = SubsecondTime::Zero();
 
@@ -593,37 +591,35 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
-            m_fpu_rs_entries_used > m_fpu_rs_entries) {
-            // fprintf(stderr, "FPU RS Overflow\n");
-            startKanataStage(*entry, "A");
-            cpiFrontEnd = &m_cpiRSFull;
-            break;
+         if (uop.getMicroOp()->isLoad())
+         {
+            if (m_lu_rs_entries_used > m_lu_rs_entries)
+            {
+               // fprintf(stderr, "LU RS Overflow\n");
+               startKanataStage(*entry, "A");
+               cpiFrontEnd = &m_cpiRSFull;
+               break;
+            }
          }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
-              m_alu_rs_entries_used > m_alu_rs_entries) {
-            // fprintf(stderr, "ALU RS Overflow\n");
-            startKanataStage(*entry, "A");
-            cpiFrontEnd = &m_cpiRSFull;
-            break;
+         else if (uop.getMicroOp()->isStore())
+         {
+            if (m_su_rs_entries_used > m_su_rs_entries)
+            {
+               // fprintf(stderr, "SU RS Overflow\n");
+               startKanataStage(*entry, "A");
+               cpiFrontEnd = &m_cpiRSFull;
+               break;
+            }
          }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_MEMACC) &&
-             m_lsu_rs_entries_used > m_lsu_rs_entries) {
-            // fprintf(stderr, "LSU RS Overflow\n");
-            startKanataStage(*entry, "A");
-            cpiFrontEnd = &m_cpiRSFull;
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
-             m_vec_rs_entries_used > m_vec_rs_entries) {
-            // fprintf(stderr, "VEC_ARITH RS Overflow\n");
-            startKanataStage(*entry, "A");
-            cpiFrontEnd = &m_cpiRSFull;
-            break;
+         else
+         {
+            if (m_alu_rs_entries_used > m_alu_rs_entries)
+            {
+               // fprintf(stderr, "ALU RS Overflow\n");
+               startKanataStage(*entry, "A");
+               cpiFrontEnd = &m_cpiRSFull;
+               break;
+            }
          }
 
          if (m_rs_entries_used == rsEntries)
@@ -638,25 +634,17 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          ++m_num_in_rob;
          ++m_rs_entries_used;
 
-         switch (uop.getMicroOp()->getSubtype()) {
-            case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
-            case MicroOp::UOP_SUBTYPE_FP_MULDIV :
-               m_fpu_rs_entries_used++;
-               break;
-            case MicroOp::UOP_SUBTYPE_LOAD :
-            case MicroOp::UOP_SUBTYPE_STORE :
-            case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
-               m_lsu_rs_entries_used ++;
-               break;
-            case MicroOp::UOP_SUBTYPE_GENERIC :
-            case MicroOp::UOP_SUBTYPE_BRANCH :
-               m_alu_rs_entries_used++;
-               break;
-            case MicroOp::UOP_SUBTYPE_VEC_ARITH :
-               m_vec_rs_entries_used++;
-               break;
-            default :
-               LOG_ASSERT_ERROR(false, "Not expected to this point");
+         if (uop.getMicroOp()->isLoad())
+         {
+            m_lu_rs_entries_used++;
+         }
+         else if (uop.getMicroOp()->isStore())
+         {
+            m_su_rs_entries_used++;
+         }
+         else
+         {
+            m_alu_rs_entries_used++;
          }
 
          startKanataStage(*entry, "I");
@@ -832,25 +820,17 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
    --m_rs_entries_used;
 
-   switch (entry->uop->getMicroOp()->getSubtype()) {
-      case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
-      case MicroOp::UOP_SUBTYPE_FP_MULDIV :
-         m_fpu_rs_entries_used--;
-         break;
-      case MicroOp::UOP_SUBTYPE_LOAD :
-      case MicroOp::UOP_SUBTYPE_STORE :
-      case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
-         m_lsu_rs_entries_used--;
-         break;
-      case MicroOp::UOP_SUBTYPE_GENERIC :
-      case MicroOp::UOP_SUBTYPE_BRANCH :
-         m_alu_rs_entries_used--;
-         break;
-      case MicroOp::UOP_SUBTYPE_VEC_ARITH :
-        m_vec_rs_entries_used--;
-         break;
-      default :
-        LOG_ASSERT_ERROR(false, "Not expected to this point");
+   if (uop.getMicroOp()->isLoad())
+   {
+      m_lu_rs_entries_used--;
+   }
+   else if (uop.getMicroOp()->isStore())
+   {
+      m_su_rs_entries_used--;
+   }
+   else
+   {
+      m_alu_rs_entries_used--;
    }
 
    if (enable_rob_timer_log) {

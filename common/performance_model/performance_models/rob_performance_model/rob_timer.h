@@ -141,14 +141,12 @@ private:
    uint64_t m_VtoS_WrRequests;
 
    uint64_t m_alu_rs_entries_used;
-   uint64_t m_lsu_rs_entries_used;
-   uint64_t m_fpu_rs_entries_used;
-   uint64_t m_vec_rs_entries_used;
+   uint64_t m_lu_rs_entries_used;
+   uint64_t m_su_rs_entries_used;
 
    uint64_t m_alu_rs_entries;
-   uint64_t m_lsu_rs_entries;
-   uint64_t m_fpu_rs_entries;
-   uint64_t m_vec_rs_entries;
+   uint64_t m_lu_rs_entries;
+   uint64_t m_su_rs_entries;
 
    uint64_t vec_ooo_issue_count;
    uint64_t scalar_ooo_issue_count;
