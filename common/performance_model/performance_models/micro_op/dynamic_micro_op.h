@@ -74,6 +74,8 @@ class DynamicMicroOp
 
       const uint8_t m_vector_issue_times_max;
 
+      bool preload_done;
+
    public:
 
       DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, ComponentPeriod period);
@@ -167,9 +169,13 @@ class DynamicMicroOp
 
       void incrMergedInst() { this->mergedInstCount++; }
       uint32_t getNumMergedInst() { return this->mergedInstCount; }
-      
+
       // More dynamic, architecture-dependent information to be defined by derived classes
       virtual const char* getType() const = 0; // Make this class pure virtual
+
+      void setPreloadDone() { preload_done = true; }
+      bool isPreloadDone() { return preload_done; }
+
 };
 
 #endif // __DYNAMIC_MICRO_OP_INFO_H

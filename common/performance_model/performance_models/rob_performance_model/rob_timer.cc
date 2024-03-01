@@ -42,6 +42,7 @@ RobTimer::RobTimer(
       , lsu_inorder(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/lsu_inorder", core->getId()))
       , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
+      , m_vec_preload(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/vec_preload", core->getId()))
       , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
       , m_core(core)
       , rob(window_size + 255)
@@ -1010,20 +1011,10 @@ SubsecondTime RobTimer::doIssue()
       else
          canIssue = true;           // issue!
 
-      // if (enable_rob_timer_log) {
-      //   std::cerr << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
-      //       ", index = " << uop->getSequenceNumber() <<
-      //       (canIssue ? " True" : " False") << std::endl;
-      // }
-
-      // canIssue already marks issue ports as in use, so do this one last
-      if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-         if (enable_rob_timer_log) {
-            std::cerr << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
-                ", index = " << uop->getSequenceNumber() << '\n';
-         }
-         // fprintf(stderr, "tryIssue failed\n");
-         canIssue = false;          // blocked by structural hazard
+      if (enable_rob_timer_log) {
+        std::cerr << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
+            ", index = " << uop->getSequenceNumber() <<
+            (canIssue ? " True" : " False") << std::endl;
       }
 
       if (!canIssue && !uop->getMicroOp()->isVector()) {
@@ -1213,6 +1204,39 @@ SubsecondTime RobTimer::doIssue()
             //                      SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
             // }
          }
+      }
+
+      // If Vector and can't be issued, try to preload
+      if (m_vec_preload && dyn_vector_inorder && !canIssue && uop->getMicroOp()->isVecMem() && !uop->isPreloadDone()) {
+        if (m_rob_contention->tryIssue(*uop)) {
+          // Pipeline available
+          preloadInstruction (i);
+          if (enable_rob_timer_log) {
+            std::cerr << "Early preload : tryIssue succeeded " << uop->getMicroOp()->toShortString() <<
+                ", index = " << uop->getSequenceNumber() <<
+                "\n";
+          }
+        } else {
+          if (enable_rob_timer_log) {
+            std::cerr << "Early preload : tryIssue failed " << uop->getMicroOp()->toShortString() <<
+                ", index = " << uop->getSequenceNumber() <<
+                ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
+                ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
+                "\n";
+          }
+        }
+      }
+
+      // canIssue already marks issue ports as in use, so do this one last
+      if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
+         if (enable_rob_timer_log) {
+            std::cerr << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
+                ", index = " << uop->getSequenceNumber() <<
+                ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
+                ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
+                "\n";
+         }
+         canIssue = false;          // blocked by structural hazard
       }
 
       if (canIssue)
@@ -1704,4 +1728,41 @@ void RobTimer::setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValid
       microOp.addDependency(m_vsetvl_producer);
     }
   }
+}
+
+
+void RobTimer::preloadInstruction(uint64_t idx)
+{
+   RobEntry *entry = &rob[idx];
+   DynamicMicroOp &uop = *entry->uop;
+
+   if (enable_rob_timer_log) {
+     std::cout<<"PRELOAD TRY " << uop.getSequenceNumber() << ", " << entry->uop->getMicroOp()->toShortString() << std::endl;
+   }
+
+   if ((uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())
+       && uop.getDCacheHitWhere() == HitWhere::UNKNOWN) {
+      // Vector instruction, previous access merge, it can be skipped
+
+     if (!uop.getMemAccessMerge()) {
+        uint64_t access_size_scale = uop.getMicroOp()->isVector() ? uop.getNumMergedInst() + 1 : 1;
+        MemoryResult res = m_core->accessMemory(
+            Core::NONE,
+            Core::PRELOAD,
+            uop.getAddress().address,
+            NULL,
+            uop.getMicroOp()->getMemoryAccessSize() * access_size_scale,
+            Core::MEM_MODELED_RETURN,
+            uop.getMicroOp()->getInstruction() ? uop.getMicroOp()->getInstruction()->getAddress() : static_cast<uint64_t>(NULL),
+            uop.getSequenceNumber(),
+            now.getElapsedTime(),
+            true
+         );
+
+        if (enable_rob_timer_log) {
+          std::cout<<"PRELOAD " << uop.getSequenceNumber() << ", " << entry->uop->getMicroOp()->toShortString() << std::endl;
+        }
+        uop.setPreloadDone();
+      }
+   }
 }

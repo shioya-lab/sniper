@@ -46,6 +46,7 @@ class RobContentionCortexA53 : public RobContention {
 
       void setvl(size_t vl) { }
       void setvtype(size_t vsize, size_t vlmul) { }
+      SubsecondTime get_vecmem_used_until () { return SubsecondTime::Zero(); }
 };
 
 #endif // __ROB_CONTENTION_CORTEX_A53_H

@@ -228,6 +228,7 @@ namespace ParametricDramDirectoryMSI
            UInt64 scalar_loads, scalar_stores;
            UInt64 vec_loads, vec_stores;
            UInt64 vec_load_misses, vec_store_misses;
+           UInt64 preloads;
            UInt64 loads_state[CacheState::NUM_CSTATE_STATES], stores_state[CacheState::NUM_CSTATE_STATES];
            UInt64 loads_where[HitWhere::NUM_HITWHERES], stores_where[HitWhere::NUM_HITWHERES];
            UInt64 load_misses_state[CacheState::NUM_CSTATE_STATES], store_misses_state[CacheState::NUM_CSTATE_STATES];
@@ -293,7 +294,7 @@ namespace ParametricDramDirectoryMSI
                IntPtr address, Core::mem_op_t mem_op_type, CacheBlockInfo **cache_block_info = NULL);
 
          void copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, bool modeled, SubsecondTime t_start);
-         void trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, 
+         void trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue,
                               IntPtr access_pc, uint64_t uop_idx);
          void Prefetch(SubsecondTime t_start);
          void VecPrefetch(SubsecondTime t_start);
@@ -428,7 +429,7 @@ namespace ParametricDramDirectoryMSI
      }
 
      void roiEnd() {
-       dump_hist ();
+       // dump_hist ();
        m_roi_dumped = true;
      }
 

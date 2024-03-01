@@ -22,7 +22,7 @@ class RobContention {
 
       virtual void setvl(size_t vl) = 0;
       virtual void setvtype(size_t vsize, size_t vlmul) = 0;
-
+      virtual SubsecondTime get_vecmem_used_until() = 0;
 };
 
 #endif // __ROB_CONTENTION_H

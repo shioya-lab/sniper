@@ -62,6 +62,7 @@ private:
    const bool lsu_inorder;
    const bool v_to_s_fence;
    const bool m_gather_scatter_merge;
+   const bool m_vec_preload;
    uint64_t m_vsetvl_producer;
    uint64_t m_konata_count_max;
 
@@ -205,6 +206,7 @@ private:
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
+   void preloadInstruction (uint64_t idx);
 
 public:
 

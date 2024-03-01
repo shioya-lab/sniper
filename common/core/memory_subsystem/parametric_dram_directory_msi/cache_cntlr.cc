@@ -248,6 +248,7 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    registerStatsMetric(name, core_id, "qbs-query-latency", &stats.qbs_query_latency);
    registerStatsMetric(name, core_id, "mshr-latency", &stats.mshr_latency);
    registerStatsMetric(name, core_id, "prefetches", &stats.prefetches);
+   registerStatsMetric(name, core_id, "preloads", &stats.preloads);
    for(CacheState::cstate_t state = CacheState::CSTATE_FIRST; state < CacheState::NUM_CSTATE_STATES; state = CacheState::cstate_t(int(state)+1)) {
       registerStatsMetric(name, core_id, String("loads-")+CStateString(state), &stats.loads_state[state]);
       registerStatsMetric(name, core_id, String("stores-")+CStateString(state), &stats.stores_state[state]);
@@ -292,8 +293,8 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
       registerStatsMetric(name, core_id, "uncore-requests", &m_shmem_perf_numrequests);
    }
 
-   Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, CacheCntlr::hookRoiBegin, (UInt64)this);
-   Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END,   CacheCntlr::hookRoiEnd, (UInt64)this);
+   // Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, CacheCntlr::hookRoiBegin, (UInt64)this);
+   // Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END,   CacheCntlr::hookRoiEnd, (UInt64)this);
    m_roi_dumped  = false;
 
 
@@ -317,9 +318,9 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
 
 CacheCntlr::~CacheCntlr()
 {
-  if (!m_roi_dumped) {
-    dump_hist();
-  }
+  // if (!m_roi_dumped) {
+  //   dump_hist();
+  // }
 
    if (isMasterCache())
    {
@@ -764,7 +765,7 @@ MYLOG("copyDataFromNextLevel l%d", m_mem_component);
 }
 
 void
-CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue, 
+CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue,
                             IntPtr access_pc, uint64_t uop_idx)
 {
    ScopedLock sl(getLock());
@@ -1221,7 +1222,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
 
    if (modeled && m_master->m_prefetcher)
    {
-     trainPrefetcher(address, mem_op_type, cache_hit, prefetch_hit, isPrefetch == Prefetch::prefetch_type_t::OWN, t_issue, 
+     trainPrefetcher(address, mem_op_type, cache_hit, prefetch_hit, isPrefetch == Prefetch::prefetch_type_t::OWN, t_issue,
                      0 /* pc*/, 0 /* uop_idx*/);
    }
 
@@ -1312,6 +1313,7 @@ CacheCntlr::accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefet
    {
       case Core::READ:
       case Core::READ_VEC:
+      case Core::PRELOAD:
          boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->getDataFromDram(address, m_core_id_master, data_buf, t_issue, m_shmem_perf);
          break;
 
@@ -1337,6 +1339,7 @@ CacheCntlr::initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr address, 
    {
       case Core::READ:
       case Core::READ_VEC:
+      case Core::PRELOAD:
          exclusive = false;
          break;
 
@@ -1464,6 +1467,7 @@ CacheCntlr::operationPermissibleinCache(
    {
       case Core::READ:
       case Core::READ_VEC:
+      case Core::PRELOAD:
          cache_hit = CacheState(cstate).readable();
          break;
 
@@ -1494,6 +1498,7 @@ CacheCntlr::accessCache(
       case Core::READ:
       case Core::READ_EX:
       case Core::READ_VEC:
+      case Core::PRELOAD:
          m_master->m_cache->accessSingleLine(ca_address + offset, Cache::LOAD, data_buf, data_length,
                                              getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD), update_replacement);
          break;
@@ -2326,6 +2331,8 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
       {
          if (mem_op_type == Core::READ_VEC) {
            stats.vec_loads++;
+         } else if (mem_op_type == Core::PRELOAD) {
+           stats.preloads++;
          } else {
             stats.scalar_loads++;
          }
