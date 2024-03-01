@@ -48,6 +48,7 @@ private:
          SubsecondTime done;
 
          bool kanata_registered;  // Indicate Kanata Format Instruction Registered
+         size_t phy_reg_index;    // Physical Register allocated index
    };
 
    const uint64_t dispatchWidth;
@@ -204,6 +205,15 @@ private:
    SubsecondTime doCommit(uint64_t& instructionsExecuted);
 
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
+
+   // Physical Register: Freelist
+   bool m_late_phyreg_allocation;
+   typedef struct {
+      SubsecondTime time;
+      uint64_t      uop_idx;
+   } phy_t;
+   std::vector<phy_t> m_phy_list;
+   uint64_t m_phyreg_max_usage;
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
    void preloadInstruction (uint64_t idx);

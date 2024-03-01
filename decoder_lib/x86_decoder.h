@@ -23,6 +23,7 @@ class X86Decoder : public Decoder
     virtual const char* reg_name(unsigned int reg_id) override;
     virtual decoder_reg largest_enclosing_register(decoder_reg r) override;
     virtual bool invalid_register(decoder_reg r) override;
+    virtual bool is_reg_vector(decoder_reg r) override;
     virtual bool reg_is_program_counter(decoder_reg r) override;
     virtual bool inst_in_group (const DecodedInst * inst, unsigned int group_id) override;
     virtual unsigned int num_operands (const DecodedInst * inst) override;

@@ -229,6 +229,16 @@ bool RISCVDecoder::invalid_register(decoder_reg r)
   return res;
 }
 
+bool RISCVDecoder::is_reg_vector (decoder_reg r)
+{
+  if (r >= 64 && r < 96) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
 /// Check if this register holds the program counter
 bool RISCVDecoder::reg_is_program_counter(decoder_reg r)
 {

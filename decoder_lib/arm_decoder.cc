@@ -149,6 +149,12 @@ bool ARMDecoder::invalid_register(decoder_reg r)
     return (r == ARM64_REG_INVALID);
 }
 
+bool ARMDecoder::is_reg_vector(decoder_reg r)
+{
+  return false;
+}
+
+
 bool ARMDecoder::reg_is_program_counter(decoder_reg r)
 {
   // Note: in AArch64 the program counter is not a general purpose register
