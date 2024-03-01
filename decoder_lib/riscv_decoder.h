@@ -142,6 +142,8 @@ class RISCVDecoder : public Decoder
     /// Check if this register is invalid
     virtual bool invalid_register(decoder_reg r) override;
 
+    virtual bool is_reg_vector(decoder_reg r) override;
+
     /// Check if this register holds the program counter
     virtual bool reg_is_program_counter(decoder_reg r) override;
 

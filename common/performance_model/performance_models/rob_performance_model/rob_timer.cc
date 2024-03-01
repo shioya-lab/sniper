@@ -69,6 +69,7 @@ RobTimer::RobTimer(
       , m_cpiCurrentFrontEndStall(NULL)
       , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
+      , m_late_phyreg_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/late_phyreg_allocation", core->getId()))
       , m_enable_ooo_check(Sim()->getCfg()->getBoolArray("log/enable_mem_ooo_check", core->getId()))
       , m_ooo_check_region(Sim()->getCfg()->getIntArray("log/mem_ooo_check_region", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
@@ -236,12 +237,17 @@ RobTimer::RobTimer(
       fprintf (m_kanata_fp, "Kanata\t0004\n");
       fprintf(m_kanata_fp, "C=\t%d\n", 0);
    }
+
+   m_phy_list = std::vector<phy_t>(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/physical_registers", core->getId())-32);
+   m_phyreg_max_usage = 0;
+   // LOG_ASSERT_ERROR(m_freelist >= 0, "Number of physical register should be larger than 32");
 }
 
 RobTimer::~RobTimer()
 {
    for(Rob::iterator it = this->rob.begin(); it != this->rob.end(); ++it)
       it->free();
+   std::cout << "Maximum usage of physical registers = " << (m_phyreg_max_usage + 32)<< '\n';
 }
 
 void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
@@ -628,6 +634,58 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
+         // dl::Decoder *dec = Sim()->getDecoder();
+         // bool inst_has_v_dest = uop.getMicroOp()->getDestinationRegistersLength() != 0 &&
+         //     dec->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0));
+         // if (inst_has_v_dest) {
+         //    std::vector<SubsecondTime>::iterator it;
+         //    for (it = m_phy_list.begin(); it < m_phy_list.end(); it++) {
+         //      if (*it != SubsecondTime::MaxTime()) {
+         //        break;
+         //      }
+         //    }
+         //    if (it == m_phy_list.end()) {
+         //      if (enable_rob_timer_log) {
+         //        std::cout << "Issue stage: freelist become empty. break.\n";
+         //      }
+         //      break;
+         //    }
+         // }
+
+
+         if (!m_late_phyreg_allocation) {
+           dl::Decoder *dec = Sim()->getDecoder();
+           bool inst_has_v_dest = uop.getMicroOp()->getDestinationRegistersLength() != 0 &&
+               dec->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0));
+           if (inst_has_v_dest) {
+             auto it = m_phy_list.begin();
+             for (size_t i = 0; it < m_phy_list.end(); i++, it++) {
+               if (it->time < now) {
+                 it->time = SubsecondTime::MaxTime();
+                 entry->phy_reg_index = i;
+                 if (enable_rob_timer_log) {
+                   printf("-- Normal: Destination Register poped. freelist[%ld]\n", i);
+                 }
+                 break;
+               }
+             }
+             if (it == m_phy_list.end()) {
+               if (enable_rob_timer_log) {
+                 printf("-- Normal: freelist become empty.\n");
+               }
+               break;
+             }
+           }
+           // Count inflight registers
+           size_t inflight_phyregs_count = 0;
+           for (auto it: m_phy_list) {
+             if (it.time == SubsecondTime::MaxTime()) {
+               inflight_phyregs_count++;
+             }
+           }
+           m_phyreg_max_usage = std::max(m_phyreg_max_usage, inflight_phyregs_count);
+         }
+
          entry->fetch = missed_icache;
          entry->dispatched = now;
          ++m_num_in_rob;
@@ -835,6 +893,50 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
    entry->issued = now;
    entry->done = cycle_done;
+
+   if (m_late_phyreg_allocation) {
+      dl::Decoder *dec = Sim()->getDecoder();
+      bool inst_has_v_dest = uop.getMicroOp()->getDestinationRegistersLength() != 0 &&
+          dec->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0));
+      if (inst_has_v_dest) {
+         size_t min_i = -1;
+         auto it = m_phy_list.begin();
+         // Every entry is in flight
+         it = m_phy_list.begin();
+         for (size_t i = 0; it < m_phy_list.end(); i++, it++) {
+            if (it->time != SubsecondTime::MaxTime()) {
+               min_i = i;
+               break;
+            }
+         }
+         if (it == m_phy_list.end()) {
+            // Not found empty entry
+            // Find oldest instruction
+            xxx
+            if (enable_rob_timer_log) {
+              printf("freelist become empty. waiting minimal freelist[%ld]=%ld\n", min_i, SubsecondTime::divideRounded(min_time, m_core->getDvfsDomain()->getPeriod()));
+            }
+            for (size_t i = 0; it < m_phy_list.end(); i++, it++) {
+               SubsecondTime additional_time = cycle_done - now + m_core->getDvfsDomain()->getPeriod() * 7; // 7 is frontend flush latency
+               rob[it->uop_idx].issued = rob[it->uop_idx].issued + additional_time;
+               rob[it->uop_idx].done   = rob[it->uop_idx].done   + additional_time;
+            }
+         } else {
+            // Found the empty entry
+            entry->phy_reg_index = min_i;
+            m_phy_list[min_i].time = SubsecondTime::MaxTime();
+            m_phy_list[min_i].uop_idx = idx;
+         }
+      }
+      // Count inflight registers
+      size_t inflight_phyregs_count = 0;
+      for (auto it: m_phy_list) {
+        if (it.time == SubsecondTime::MaxTime()) {
+          inflight_phyregs_count++;
+        }
+      }
+      m_phyreg_max_usage = std::max(m_phyreg_max_usage, inflight_phyregs_count);
+   }
 
    if (m_enable_kanata && entry->kanata_registered) {
      fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", entry->uop->getSequenceNumber(), 0, "X");
@@ -1052,6 +1154,28 @@ SubsecondTime RobTimer::doIssue()
                     inhead_vecmem_existed, scalar_lsu_fence);
          }
       }
+
+
+      // if (m_late_phyreg_allocation) {
+      //   dl::Decoder *dec = Sim()->getDecoder();
+      //   bool inst_has_v_dest = uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+      //       dec->is_reg_vector(uop->getMicroOp()->getDestinationRegister(0));
+      //   if (inst_has_v_dest) {
+      //     std::vector<SubsecondTime>::iterator it;
+      //     for (it = m_phy_list.begin(); it < m_phy_list.end(); it++) {
+      //       if (*it != SubsecondTime::MaxTime()) {
+      //         break;
+      //       }
+      //     }
+      //     if (it == m_phy_list.end()) {
+      //       if (enable_rob_timer_log) {
+      //         std::cout << "Issue stage: freelist become empty. break.\n";
+      //       }
+      //       canIssue = false;
+      //     }
+      //   }
+      // }
+
 
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
@@ -1529,6 +1653,17 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                   entry->uop->getMicroOp()->toShortString(true).c_str());
          }
          m_latest_vecmem_commit_time = times.commit;
+      }
+
+      dl::Decoder *dec = Sim()->getDecoder();
+      bool inst_has_v_dest = entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+          dec->is_reg_vector(entry->uop->getMicroOp()->getDestinationRegister(0));
+      if (inst_has_v_dest) {
+        // Push Freelist
+        m_phy_list[entry->phy_reg_index].time = now;
+        if (enable_rob_timer_log) {
+          printf("-- Destination Register pushed. freelist[%ld]=%ld\n", entry->phy_reg_index, SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
+        }
       }
 
       entry->free();

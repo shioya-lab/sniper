@@ -91,6 +91,11 @@ bool X86Decoder::invalid_register(decoder_reg r)
   return r == XED_REG_INVALID;
 }
 
+bool X86Decoder::is_reg_vector(decoder_reg r)
+{
+  return false;
+}
+
 bool X86Decoder::reg_is_program_counter(decoder_reg r)
 {
   return (r == XED_REG_EIP || r == XED_REG_RIP);
