@@ -470,25 +470,6 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       if (m_uops_total > 10000 && m_uops_x87 > m_uops_total / 20)
          LOG_PRINT_WARNING_ONCE("Significant fraction of x87 instructions encountered, accuracy will be low. Compile without -mno-sse2 -mno-sse3 to avoid.");
-
-      if (m_enable_kanata && !entry->kanata_registered) {
-         DynamicMicroOp *uop = entry->uop;
-         entry->kanata_registered = true;
-         fprintf(m_kanata_fp, "I\t%ld\t%d\t%d\n", uop->getSequenceNumber(), 0, 0);
-         fprintf(m_kanata_fp, "L\t%ld\t%d\t%08lx:%s\n", uop->getSequenceNumber(), 0,
-                 uop->getMicroOp()->getInstruction()->getAddress(),
-                 uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-
-         for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
-            dl::Decoder *dec = Sim()->getDecoder();
-            RobEntry *producerEntry = this->findEntryBySequenceNumber(uop->getDependency(i));
-            if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode()) ||
-                !producerEntry->kanata_registered) {
-               continue;
-            }
-            fprintf(m_kanata_fp, "W\t%ld\t%ld\t%d\n", entry->uop->getSequenceNumber(), uop->getDependency(i), 0);
-         }
-      }
    }
 
    if (enable_rob_timer_log) {
@@ -1766,9 +1747,28 @@ void RobTimer::startKanataStage(RobEntry& entry, const char* stage)
 {
    DynamicMicroOp& uop = *entry.uop;
 
-   if (!m_enable_kanata || !entry.kanata_registered ||
-       (entry.kanata_stage && !strcmp(entry.kanata_stage, stage)))
+   if (!m_enable_kanata)
       return;
+
+   if (!entry.kanata_registered) {
+      entry.kanata_registered = true;
+      fprintf(m_kanata_fp, "I\t%ld\t%d\t%d\n", uop.getSequenceNumber(), 0, 0);
+      fprintf(m_kanata_fp, "L\t%ld\t%d\t%08lx:%s\n", uop.getSequenceNumber(), 0,
+              uop.getMicroOp()->getInstruction()->getAddress(),
+              uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
+
+      for(unsigned int i = 0; i < uop.getDependenciesLength(); ++i) {
+         dl::Decoder *dec = Sim()->getDecoder();
+         RobEntry *producerEntry = this->findEntryBySequenceNumber(uop.getDependency(i));
+         if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode()) ||
+             !producerEntry->kanata_registered) {
+            continue;
+         }
+         fprintf(m_kanata_fp, "W\t%ld\t%ld\t%d\n", uop.getSequenceNumber(), uop.getDependency(i), 0);
+      }
+   } else if (entry.kanata_stage && !strcmp(entry.kanata_stage, stage)) {
+      return;
+   }
 
    entry.kanata_stage = stage;
    fprintf(m_kanata_fp, "S\t%ld\t%d\t%s\n", uop.getSequenceNumber(), 0, stage);
