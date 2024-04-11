@@ -17,6 +17,7 @@ class RobContention {
 
       virtual void initCycle(SubsecondTime now) = 0;
       virtual bool tryIssue(const DynamicMicroOp &uop) = 0;
+      virtual bool tryPreload () = 0;
       virtual bool noMore() { return false; } // Optimization: all resources used, nothing more can be issued this cycle
       virtual void doIssue(DynamicMicroOp &uop) = 0;
 

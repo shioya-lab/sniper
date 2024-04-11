@@ -12,6 +12,7 @@ VecPrefetcher::VecPrefetcher(String configName, core_id_t _core_id, UInt32 _shar
    : core_id(_core_id)
    , shared_cores(_shared_cores)
    , configName(configName)
+   , m_vlen                     (Sim()->getCfg()->getIntArray("general/vlen", core_id))
    , m_vec_stride_table_size    (Sim()->getCfg()->getIntArray("perf_model/" + configName + "/prefetcher/vec_pref/vec_table_size", core_id))
    , m_scalar_stride_table_size (Sim()->getCfg()->getIntArray("perf_model/" + configName + "/prefetcher/vec_pref/scalar_table_size", core_id))
    , m_degree                   (Sim()->getCfg()->getIntArray("perf_model/" + configName + "/prefetcher/vec_pref/degree", core_id))
@@ -61,7 +62,8 @@ std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, uint64_t uop_
         }
       } else {
         // access sequentially in same PC, increase size
-        entry->vec_size += m_cache_block_size;
+        // entry->vec_size += m_cache_block_size;
+        entry->vec_size += m_vlen / 8;
         entry->last_addr = current_block;
         if (m_enable_log) {
           fprintf(stderr, "   %s: VecPrefetcher::Vector. pc=%08lx same pc sequential update. entry[%ld].{last addr = %08lx, base_addr=%08lx} (degree = %d, vec_size = %d)\n",

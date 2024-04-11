@@ -229,6 +229,17 @@ bool RISCVDecoder::invalid_register(decoder_reg r)
   return res;
 }
 
+bool RISCVDecoder::is_reg_int (decoder_reg r)
+{
+  return r < 32;
+}
+
+bool RISCVDecoder::is_reg_float (decoder_reg r)
+{
+	return r >=32 && r < 64;
+}
+
+
 bool RISCVDecoder::is_reg_vector (decoder_reg r)
 {
   if (r >= 64 && r < 96) {

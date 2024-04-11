@@ -101,6 +101,12 @@ Core::Core(SInt32 id)
          Sim()->getCfg()->getString("caching_protocol/type"),
          this, m_network, m_shmem_perf_model);
 
+   if (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", getId())) {
+      m_kanata_fp = fopen("kanata_trace.log", "w");
+      fprintf (m_kanata_fp, "Kanata\t0004\n");
+      fprintf (m_kanata_fp, "C=\t%d\n", 0);
+   }
+
    m_performance_model = PerformanceModel::create(this);
 }
 

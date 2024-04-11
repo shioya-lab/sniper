@@ -219,6 +219,7 @@ namespace ParametricDramDirectoryMSI
          bool m_prefetch_delay;
          bool m_l1_mshr;
          bool m_enable_log;
+         bool m_enable_kanata_log;
          bool m_enable_cache_csv_log;
 
          struct {

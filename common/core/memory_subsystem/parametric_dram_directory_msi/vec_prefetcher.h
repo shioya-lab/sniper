@@ -16,6 +16,7 @@ class VecPrefetcher : public Prefetcher
   const UInt32    shared_cores;
   const String    configName;
 
+  const size_t m_vlen;
   const size_t m_vec_stride_table_size;
   const size_t m_scalar_stride_table_size;
   const unsigned m_degree;

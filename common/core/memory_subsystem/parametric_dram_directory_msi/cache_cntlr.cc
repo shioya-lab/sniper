@@ -146,6 +146,7 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_prefetch_on_prefetch_hit(false),
    m_l1_mshr(cache_params.outstanding_misses > 0),
    m_enable_log (Sim()->getCfg()->getBoolArray("log/enable_cache_cntlr_log", core_id)),
+   m_enable_kanata_log (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", core_id)),
    m_core_id(core_id),
    m_cache_block_size(cache_block_size),
    m_cache_writethrough(cache_params.writethrough),
@@ -608,7 +609,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
    SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
    SubsecondTime total_latency = t_now - t_start;
 
-   MYLOG("t_start = %ld, t_now = %ld", t_start.getNS(), t_now.getNS());
+   MYLOG("t_start = %ld, t_finish(t_now) = %ld latency = %ld", t_start.getNS(), t_now.getNS(), total_latency.getNS());
 
    // From here on downwards: not long anymore, only stats update so blanket cntrl lock
    {
@@ -918,6 +919,14 @@ CacheCntlr::doPrefetch(IntPtr prefetch_address, SubsecondTime t_start)
    SubsecondTime t_before = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
    getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_start); // Start the prefetch at the same time as the original miss
    HitWhere::where_t hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
+
+   if (m_enable_kanata_log) {
+      uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
+   }
 
    // Update Access History
    if (true /* m_roi_started*/) {

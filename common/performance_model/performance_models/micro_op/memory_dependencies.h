@@ -12,6 +12,7 @@ class MemoryDependencies
    private:
   bool m_gather_scatter_merge;
   UInt64 m_l1d_block_size;
+  UInt64 m_vlen;
 
   struct Producer
       {

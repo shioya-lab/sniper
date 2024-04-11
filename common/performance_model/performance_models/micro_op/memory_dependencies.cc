@@ -3,6 +3,7 @@
 MemoryDependencies::MemoryDependencies()
     : m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", 0)),
       m_l1d_block_size(Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size")),
+      m_vlen(Sim()->getCfg()->getInt("general/vlen")),
       producers(1024) // Maximum size should be one ROB worth of instructions
 {
    clear();
@@ -22,8 +23,9 @@ void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowes
       uint64_t physicalAddress = microOp.getLoadAccess().phys;
       uint64_t memorySize = microOp.getMicroOp()->getMemoryAccessSize();
       if (microOp.getMicroOp()->isVector() && m_gather_scatter_merge) {
-        physicalAddress &= ~(m_l1d_block_size-1);
-        memorySize = m_l1d_block_size;
+        // physicalAddress &= ~(m_l1d_block_size-1);
+        // memorySize = m_l1d_block_size;
+        memorySize = m_vlen / 8;
       }
       uint64_t producerSequenceNumber = find(physicalAddress, memorySize);
       if (producerSequenceNumber != INVALID_SEQNR) /* producer found */
@@ -56,7 +58,8 @@ void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowes
       uint64_t memorySize = microOp.getMicroOp()->getMemoryAccessSize();
       if (microOp.getMicroOp()->isVector()) {
         physicalAddress &= ~(m_l1d_block_size-1);
-        memorySize = m_l1d_block_size;
+        // memorySize = m_l1d_block_size;
+        memorySize = m_vlen / 8;
       }
 #ifdef DEBUG_PERCYCLE
       std::cerr << "Set store: "<< microOp.getMicroOp()->getInstruction()->getDisassembly() << " : " <<

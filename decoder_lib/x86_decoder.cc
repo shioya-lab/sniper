@@ -91,6 +91,14 @@ bool X86Decoder::invalid_register(decoder_reg r)
   return r == XED_REG_INVALID;
 }
 
+bool X86Decoder::is_reg_int(decoder_reg r)
+{
+  return false;
+}
+bool X86Decoder::is_reg_float(decoder_reg r)
+{
+  return false;
+}
 bool X86Decoder::is_reg_vector(decoder_reg r)
 {
   return false;

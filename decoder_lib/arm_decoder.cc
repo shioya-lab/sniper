@@ -149,6 +149,14 @@ bool ARMDecoder::invalid_register(decoder_reg r)
     return (r == ARM64_REG_INVALID);
 }
 
+bool ARMDecoder::is_reg_int(decoder_reg r)
+{
+  return false;
+}
+bool ARMDecoder::is_reg_float(decoder_reg r)
+{
+  return false;
+}
 bool ARMDecoder::is_reg_vector(decoder_reg r)
 {
   return false;

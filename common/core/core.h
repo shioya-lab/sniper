@@ -140,6 +140,10 @@ class Core
          m_spin_elapsed_time += elapsed_time;
       }
 
+      FILE* getO3Fp() { return m_o3_fp; }
+      FILE* getKanataFp() {return m_kanata_fp; }
+      uint64_t getGlobalSequenceIdAndInc() { return global_sequence_id++; }
+
    private:
       core_id_t m_core_id;
       const ComponentPeriod* m_dvfs_domain;
@@ -157,6 +161,10 @@ class Core
       State m_core_state;
 
       static Lock m_global_core_lock;
+
+      FILE *m_o3_fp;
+      FILE *m_kanata_fp;
+      uint64_t global_sequence_id = 0;
 
       MemoryResult initiateMemoryAccess(
           MemComponent::component_t mem_component,

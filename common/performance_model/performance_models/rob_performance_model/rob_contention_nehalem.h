@@ -29,6 +29,7 @@ class RobContentionNehalem : public RobContention {
 
       void initCycle(SubsecondTime now);
       bool tryIssue(const DynamicMicroOp &uop);
+      bool tryPreload () { return false; }
       bool noMore();
       void doIssue(DynamicMicroOp &uop);
 

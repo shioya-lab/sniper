@@ -41,7 +41,7 @@ class DynamicMicroOp
       /** This field contains the length of the dependencies array. */
       uint32_t dependenciesLength;
       /** This array contains the dependencies. The uint64_t stored in the array is the sequenceNumber of the dependency. */
-      uint64_t dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
+      uint64_t    dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
 
       /** The latency of the instruction. */
       uint32_t execLatency;
@@ -75,6 +75,8 @@ class DynamicMicroOp
       const uint8_t m_vector_issue_times_max;
 
       bool preload_done;
+      uint64_t initial_intraInstructionDependencies;
+      uint64_t initial_dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
 
    public:
 
@@ -176,6 +178,8 @@ class DynamicMicroOp
       void setPreloadDone() { preload_done = true; }
       bool isPreloadDone() { return preload_done; }
 
+      void backupInitialDependencies();
+      void rollbackDependencies(uint64_t sequenceNumber);
 };
 
 #endif // __DYNAMIC_MICRO_OP_INFO_H

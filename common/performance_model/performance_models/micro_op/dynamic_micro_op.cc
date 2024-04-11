@@ -33,7 +33,8 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
 
    for(uint32_t i = 0 ; i < MAXIMUM_NUMBER_OF_DEPENDENCIES; i++)
       this->dependencies[i] = -1;
-
+   for (uint32_t i = 0; i < MAXIMUM_NUMBER_OF_DEPENDENCIES; i++)
+      this->initial_dependencies[i] = -1;
    LOG_ASSERT_ERROR(m_uop != NULL, "uop is NULL");
 
    first = m_uop->isFirst();
@@ -144,3 +145,36 @@ bool DynamicMicroOp::isLongLatencyLoad() const
    // Also, honor the forceLLL request if indicated
    return (m_forceLongLatencyLoad || ((cutoff > 0) && (this->execLatency > cutoff)));
 }
+
+void DynamicMicroOp::backupInitialDependencies()
+{
+   for (uint64_t i = 0; i < dependenciesLength; i++) {
+      initial_dependencies[i] = dependencies[i];
+   }
+   initial_intraInstructionDependencies = intraInstructionDependencies;
+
+   return;
+}
+
+void DynamicMicroOp::rollbackDependencies(uint64_t sequenceNumber)
+{
+   intraInstructionDependencies = initial_intraInstructionDependencies;
+   
+   for (uint64_t i = 0, j = 0; i < MAXIMUM_NUMBER_OF_DEPENDENCIES; i++) {
+      if (initial_dependencies[i] == -1) break;
+      if (initial_dependencies[i] >= sequenceNumber) {
+         bool found = false;
+         for (uint64_t j = 0; j < dependenciesLength; j++) {
+            if (dependencies[j] == initial_dependencies[i]) {
+               found = true;
+               break;
+            }
+         }
+         if (!found) {
+            dependencies[dependenciesLength++] = initial_dependencies[i];
+         }
+      }
+   }
+   return;
+}
+

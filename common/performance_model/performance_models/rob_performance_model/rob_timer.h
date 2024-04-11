@@ -10,6 +10,7 @@
 #include "stats.h"
 #include "hooks_manager.h"
 #include "magic_server.h"
+#include "vector_dependencies.h"
 
 #include <deque>
 
@@ -47,6 +48,8 @@ private:
          SubsecondTime issued;
          SubsecondTime done;
 
+         uint64_t global_sequence_id;
+
          bool kanata_registered;  // Indicate Kanata Format Instruction Registered
          size_t phy_reg_index;    // Physical Register allocated index
    };
@@ -66,6 +69,7 @@ private:
    const bool m_vec_preload;
    uint64_t m_vsetvl_producer;
    uint64_t m_konata_count_max;
+   uint64_t m_konata_count = 0;
 
    Core *m_core;
 
@@ -79,9 +83,6 @@ private:
    bool m_enable_o3;
    bool m_enable_kanata;
    SubsecondTime m_last_kanata_time;
-
-   FILE *m_o3_fp;
-   FILE *m_kanata_fp;
 
    // When getMemAccessMerge=true, use this value
    uint64_t m_previous_latency;
@@ -105,6 +106,7 @@ private:
 
    RegisterDependencies* const registerDependencies;
    MemoryDependencies* const memoryDependencies;
+   VectorDependencies* const vectorDependencies;
 
    int addressMask;
 
@@ -207,17 +209,35 @@ private:
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
 
    // Physical Register: Freelist
-   bool m_late_phyreg_allocation;
+   bool m_vec_late_phyreg_allocation;
+   enum RegTypes { 
+      IntRegister = 0, 
+      FloatRegister = 1,
+      VectorRegister = 2
+   };
+
    typedef struct {
       SubsecondTime time;
       uint64_t      uop_idx;
    } phy_t;
-   std::vector<phy_t> m_phy_list;
-   uint64_t m_phyreg_max_usage;
+   typedef struct {
+      std::vector<phy_t> m_phy_list; // Physical Register List
+      uint64_t m_phyreg_max_usage;  // How many registers are used maximally.
+   } phy_list_t;
+   std::vector<phy_list_t> m_phy_registers{3};  // 3-types of registers defined: Int/Float/Vector
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
+
+   bool UpdateNormalBindPhyRegAllocation(uint64_t rob_idx);
+   bool UpdateLateBindPhyRegAllocation(uint64_t rob_idx);
    void preloadInstruction (uint64_t idx);
 
+   bool UpdateArchRegWAW(uint64_t rob_idx);
+
+   uint64_t m_late_bind_flush_count;
+   uint64_t m_full_dispatch_stall_count;
+
+   uint64_t m_preload_count;
 public:
 
    RobTimer(Core *core, PerformanceModel *perf, const CoreModel *core_model, int misprediction_penalty, int dispatch_width, int window_size);

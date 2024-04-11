@@ -44,6 +44,7 @@ class RobContentionBoomV1 : public RobContention {
 
       void initCycle(SubsecondTime now);
       bool tryIssue(const DynamicMicroOp &uop);
+      bool tryPreload ();
       bool noMore();
       void doIssue(DynamicMicroOp &uop);
 

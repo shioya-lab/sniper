@@ -123,6 +123,16 @@ bool RobContentionBoomV1::tryIssue(const DynamicMicroOp &uop)
    return true;
 }
 
+bool RobContentionBoomV1::tryPreload ()
+{
+  if (ports_memory >= 2) {
+    return false;
+  } else {
+    ports_memory++;
+    return true;
+  }
+}
+
 void RobContentionBoomV1::doIssue(DynamicMicroOp &uop)
 {
   const DynamicMicroOpBoomV1 *core_uop_info = uop.getCoreSpecificInfo<DynamicMicroOpBoomV1>();
