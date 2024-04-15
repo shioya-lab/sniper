@@ -1296,15 +1296,17 @@ SubsecondTime RobTimer::doIssue()
       }
       // If Vector and can't be issued, try to preload
       if (m_vec_preload && uop->getMicroOp()->isVecMem() && !uop->isPreloadDone()) {
-         fprintf(stderr, "Preload Target(rob_idx = %ld)\n", i);
+         if (enable_rob_timer_log) {
+            fprintf(stderr, "Preload Target(rob_idx = %ld)\n", i);
+         }
          if (m_rob_contention->tryPreload()) {
             // Pipeline available
             preloadInstruction (i);
-            // if (enable_rob_timer_log) {
+            if (enable_rob_timer_log) {
                std::cerr << "Early preload : tryIssue succeeded " << uop->getMicroOp()->toShortString() <<
                    ", index = " << uop->getSequenceNumber() <<
                    "\n";
-            // }
+            }
          } else {
            if (enable_rob_timer_log) {
              std::cerr << "Early preload : tryIssue failed " << uop->getMicroOp()->toShortString() <<
