@@ -65,16 +65,17 @@ RobTimer::RobTimer(
       , time_skipped(SubsecondTime::Zero())
       , enable_debug_printf(false)
       , enable_rob_timer_log(Sim()->getCfg()->getBoolArray("log/enable_rob_timer_log", core->getId()))
+      , enable_gatherscatter_log(Sim()->getCfg()->getBoolArray("log/enable_gatherscatter_log", core->getId()))
       , registerDependencies(new RegisterDependencies())
       , memoryDependencies(new MemoryDependencies())
       , vectorDependencies(new VectorDependencies())
+      , m_enable_ooo_check(Sim()->getCfg()->getBoolArray("log/enable_mem_ooo_check", core->getId()))
+      , m_ooo_check_region(Sim()->getCfg()->getIntArray("log/mem_ooo_check_region", core->getId()))
       , perf(_perf)
       , m_cpiCurrentFrontEndStall(NULL)
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
-      , m_vec_late_phyreg_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/late_phyreg_allocation", core->getId()))
-      , m_enable_ooo_check(Sim()->getCfg()->getBoolArray("log/enable_mem_ooo_check", core->getId()))
-      , m_ooo_check_region(Sim()->getCfg()->getIntArray("log/mem_ooo_check_region", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
+      , m_vec_late_phyreg_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/late_phyreg_allocation", core->getId()))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -486,7 +487,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       }
 
       if (enable_rob_timer_log) {
-         std::cerr << "Type = " << (*it)->getMicroOp()->getSubtype() <<
+         std::cout << "Type = " << (*it)->getMicroOp()->getSubtype() <<
              " count = " <<
              m_uop_type_count[(*it)->getMicroOp()->getSubtype()] << '\n';
       }
@@ -797,7 +798,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       && uop.getDCacheHitWhere() == HitWhere::UNKNOWN)
    {
       // Vector instruction, previous access merge, it can be skipped
-      if (!uop.getMemAccessMerge()) {
+      // if (!uop.getMemAccessMerge()) {
          uint64_t access_size_scale = uop.getMicroOp()->isVector() ? uop.getNumMergedInst() + 1 : 1;
          MemoryResult res = m_core->accessMemory(
             Core::NONE,
@@ -820,10 +821,10 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          uop.setExecLatency(uop.getExecLatency() + latency); // execlatency already contains bypass latency
          uop.setDCacheHitWhere(res.hit_where);
 
-      } else {
-         uop.setExecLatency(uop.getExecLatency() + m_previous_latency); // execlatency already contains bypass latency
-         uop.setDCacheHitWhere(m_previous_hit_where);
-      }
+      // } else {
+      //    uop.setExecLatency(uop.getExecLatency() + m_previous_latency); // execlatency already contains bypass latency
+      //    uop.setDCacheHitWhere(m_previous_hit_where);
+      // }
    }
 
    if (uop.getMicroOp()->isLoad())
@@ -896,14 +897,14 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    for(size_t idx = 0; idx < entry->getNumDependants(); ++idx)
    {
       RobEntry *depEntry = entry->getDependant(idx);
-      if (enable_rob_timer_log) {
-         printf("inst_seqnum = %ld, dep_seqnum = %ld\n", entry->uop->getSequenceNumber(),
-                                                         depEntry->uop->getSequenceNumber());
-      }
+      // if (enable_rob_timer_log) {
+      //    printf("inst_seqnum = %ld, dep_seqnum = %ld\n", entry->uop->getSequenceNumber(),
+      //                                                    depEntry->uop->getSequenceNumber());
+      // }
       LOG_ASSERT_ERROR(depEntry->uop->getDependenciesLength()> 0, "??");
 
       // Remove uop from dependency list and update readyMax
-      
+
       if (entry->uop->getSequenceNumber() + 1 == depEntry->uop->getSequenceNumber() &&
           entry->uop->getMicroOp()->getInstruction()->getAddress() == depEntry->uop->getMicroOp()->getInstruction()->getAddress()) {
          // ベクトル命令において、分解された命令間の順番依存では、latencyの情報を使用して解放するのではなく、
@@ -1042,21 +1043,21 @@ SubsecondTime RobTimer::doIssue()
       }
 
       else if (!m_rob_contention && num_issued == dispatchWidth) {
-        std::cerr << "  dispatch Width exceeded\n";
+        std::cout << "  dispatch Width exceeded\n";
          canIssue = false;          // no issue contention: issue width == dispatch width
       }
       else if (uop->getMicroOp()->isLoad() &&
                ( (uop->getMicroOp()->isVector() && !vec_load_queue.hasFreeSlot(now)) ||
                  (!uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now)))) {
          if (enable_rob_timer_log) {
-            std::cerr << "  load_queue.hasFreeSlot failed " << uop->getMicroOp()->toShortString() <<
+            std::cout << "  load_queue.hasFreeSlot failed " << uop->getMicroOp()->toShortString() <<
                          ", index = " << uop->getSequenceNumber() << '\n';
          }
          canIssue = false;          // load queue full
 
       } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
          if (enable_rob_timer_log) {
-            std::cerr << "  disambiguation" <<
+            std::cout << "  disambiguation" <<
                 ", index = " << uop->getSequenceNumber() << '\n';
          }
          canIssue = false;          // preceding store with unknown address
@@ -1071,7 +1072,7 @@ SubsecondTime RobTimer::doIssue()
          canIssue = true;           // issue!
 
       // if (enable_rob_timer_log) {
-      //   std::cerr << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
+      //   std::cout << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
       //       ", index = " << uop->getSequenceNumber() <<
       //       (canIssue ? " True" : " False") << std::endl;
       // }
@@ -1146,7 +1147,7 @@ SubsecondTime RobTimer::doIssue()
          IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
 
          if (m_bank_info[bank_index] == 0) {           // first bank acces
-            if (enable_rob_timer_log) {
+            if (enable_gatherscatter_log) {
                fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
@@ -1163,7 +1164,7 @@ SubsecondTime RobTimer::doIssue()
           } else if (m_bank_info[bank_index] == banked_cache_line) {
             // Same Bank Access and Can be Merge:
             uop->setMemAccessMerge();
-            if (enable_rob_timer_log) {
+            if (enable_gatherscatter_log) {
                fprintf (stderr, "%ld %s cacheline bank can be access %08lx with %08lx. bank=%ld, CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
@@ -1171,7 +1172,7 @@ SubsecondTime RobTimer::doIssue()
             }
           } else {
             canIssue = false;
-            if (enable_rob_timer_log) {
+            if (enable_gatherscatter_log) {
                fprintf (stderr, "%ld %s cacheline bank conflict %08lx with %08lx, bank=%ld, CanIssue = %d\n",
                         uop->getSequenceNumber(),
                         uop->getMicroOp()->toShortString().c_str(),
@@ -1269,7 +1270,7 @@ SubsecondTime RobTimer::doIssue()
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
          // if (enable_rob_timer_log) {
-         //    std::cerr << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
+         //    std::cout << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
          //        ", index = " << uop->getSequenceNumber() <<
          //        ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
          //        ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
@@ -1287,34 +1288,26 @@ SubsecondTime RobTimer::doIssue()
          }
       }
 
-      bool phyreg_allocate_failed = false;
+      // bool phyreg_allocate_failed = false;
       if (canIssue && m_vec_late_phyreg_allocation) {
          if (!UpdateLateBindPhyRegAllocation(i)) {
             canIssue = false;
-            phyreg_allocate_failed = true;
+            // phyreg_allocate_failed = true;
          }
       }
       // If Vector and can't be issued, try to preload
       if (m_vec_preload && uop->getMicroOp()->isVecMem() && !uop->isPreloadDone()) {
-         if (enable_rob_timer_log) {
-            fprintf(stderr, "Preload Target(rob_idx = %ld)\n", i);
-         }
          if (m_rob_contention->tryPreload()) {
             // Pipeline available
             preloadInstruction (i);
-            if (enable_rob_timer_log) {
-               std::cerr << "Early preload : tryIssue succeeded " << uop->getMicroOp()->toShortString() <<
-                   ", index = " << uop->getSequenceNumber() <<
-                   "\n";
-            }
-         } else {
-           if (enable_rob_timer_log) {
-             std::cerr << "Early preload : tryIssue failed " << uop->getMicroOp()->toShortString() <<
-                 ", index = " << uop->getSequenceNumber() <<
-                 ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
-                 ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
-                 "\n";
-           }
+         // } else {
+         //   if (enable_rob_timer_log) {
+         //     std::cout << "Early preload : tryIssue failed " << uop->getMicroOp()->toShortString() <<
+         //         ", index = " << uop->getSequenceNumber() <<
+         //         ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
+         //         ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
+         //         "\n";
+         //   }
          }
       }
 
@@ -1404,7 +1397,7 @@ SubsecondTime RobTimer::doIssue()
       if (canIssue && uop->getMicroOp()->isVector() &&
           uop->getMicroOp()->UopIdx() == 0) {
           // if (enable_rob_timer_log) {
-          //      std::cerr << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
+          //      std::cout << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
           //          ", index = " << uop->getSequenceNumber() << '\n';
           // }
         uop->setVirtuallyIssued();
@@ -1415,7 +1408,7 @@ SubsecondTime RobTimer::doIssue()
           if (subseq_uop->getMicroOp()->getInstruction()->getAddress() ==
               uop->getMicroOp()->getInstruction()->getAddress()) {
                // if (enable_rob_timer_log) {
-               //    std::cerr << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
+               //    std::cout << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
                //        ", index = " << subseq_uop->getSequenceNumber() << '\n';
                // }
             subseq_uop->setVirtuallyIssued();
@@ -1580,9 +1573,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          // Push Freelist
          m_phy_registers[reg_index].m_phy_list[entry->phy_reg_index].time = now;
          if (enable_rob_timer_log) {
-            printf("-- Destination Register pushed. %s freelist[%ld]=%ld\n", 
-               reg_index == 0 ? "Integer" : reg_index == 1 ? "Float" : "Vector", 
-               entry->phy_reg_index, 
+            printf("-- Destination Register pushed. %s freelist[%ld]=%ld\n",
+               reg_index == 0 ? "Integer" : reg_index == 1 ? "Float" : "Vector",
+               entry->phy_reg_index,
                SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
          }
       }
@@ -1809,6 +1802,14 @@ void RobTimer::printRob()
       }
       else
          std::cout<<"(dynamic)";
+
+      if (e->uop->getMicroOp()->isVecMem()) {
+         if (e->uop->isPreloadDone()) {
+            std::cout << " PRELD";
+         } else {
+            std::cout << "      ";
+         }
+      }
       std::cout<<std::endl;
    }
 }
@@ -1829,13 +1830,13 @@ void RobTimer::setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValid
 }
 
 
-void RobTimer::preloadInstruction(uint64_t idx)
+void RobTimer::preloadInstruction(uint64_t rob_idx)
 {
-   RobEntry *entry = &rob[idx];
+   RobEntry *entry = &rob[rob_idx];
    DynamicMicroOp &uop = *entry->uop;
 
    if (enable_rob_timer_log) {
-     std::cout<<"PRELOAD TRY " << uop.getSequenceNumber() << ", " << entry->uop->getMicroOp()->toShortString() << std::endl;
+      printf("PRELOAD TRY %ld, %s\n", uop.getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
    }
 
    if ((uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())
@@ -1844,7 +1845,7 @@ void RobTimer::preloadInstruction(uint64_t idx)
 
       if (!uop.getMemAccessMerge()) {
          uint64_t access_size_scale = uop.getMicroOp()->isVector() ? uop.getNumMergedInst() + 1 : 1;
-         MemoryResult res = m_core->accessMemory(
+         /* MemoryResult res = */ m_core->accessMemory(
              Core::NONE,
              Core::PRELOAD,
              uop.getAddress().address,
@@ -1856,9 +1857,15 @@ void RobTimer::preloadInstruction(uint64_t idx)
              now.getElapsedTime(),
              true
          );
- 
+
+         // if (enable_rob_timer_log) {
+         //    std::cout<<"PRELOAD " << uop.getSequenceNumber() << ", " << entry->uop->getMicroOp()->toShortString() << std::endl;
+         // }
          if (enable_rob_timer_log) {
-            std::cout<<"PRELOAD " << uop.getSequenceNumber() << ", " << entry->uop->getMicroOp()->toShortString() << std::endl;
+            printf("  Early preload : tryIssue succeeded %s, rod_idx = %ld, index = %ld\n",
+                   uop.getMicroOp()->toShortString().c_str(),
+                   rob_idx,
+                   uop.getSequenceNumber());
          }
          uop.setPreloadDone();
          if (m_enable_kanata && m_konata_count < m_konata_count_max) {
@@ -1867,6 +1874,14 @@ void RobTimer::preloadInstruction(uint64_t idx)
          }
 
          m_preload_count ++;
+      } else {
+         if (enable_rob_timer_log) {
+            printf("  TRY %ld Failure. Merge access failed\n", uop.getSequenceNumber());
+         }
+      }
+   } else {
+      if (enable_rob_timer_log) {
+         printf("  TRY %ld Failure. DCacheHitWhere failed\n", uop.getSequenceNumber());
       }
    }
 }
@@ -1928,7 +1943,7 @@ bool RobTimer::UpdateNormalBindPhyRegAllocation(uint64_t rob_idx)
         inflight_phyregs_count++;
       }
     }
-    m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32, 
+    m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
                                                              inflight_phyregs_count) + 32;
   }
 
@@ -2015,7 +2030,7 @@ bool RobTimer::UpdateLateBindPhyRegAllocation(uint64_t rob_idx)
       min_i = -1;
       for (size_t i = 0; it < m_phy_registers[reg_typ_index].m_phy_list.end(); i++, it++) {
          if (it->uop_idx < uop_id &&
-             m_phy_registers[reg_typ_index].m_phy_list[i].time != SubsecondTime::MaxTime() && 
+             m_phy_registers[reg_typ_index].m_phy_list[i].time != SubsecondTime::MaxTime() &&
              m_phy_registers[reg_typ_index].m_phy_list[i].time < now &&
              (m_phy_registers[reg_typ_index].m_phy_list[i].time > min_time || min_time == SubsecondTime::MaxTime())) {
             min_i = i;
@@ -2048,7 +2063,7 @@ bool RobTimer::UpdateLateBindPhyRegAllocation(uint64_t rob_idx)
          inflight_phyregs_count++;
       }
    }
-   m_phy_registers[reg_typ_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_typ_index].m_phyreg_max_usage - 32, 
+   m_phy_registers[reg_typ_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_typ_index].m_phyreg_max_usage - 32,
                                                                 inflight_phyregs_count) + 32;
 
    return result;
@@ -2070,9 +2085,9 @@ bool RobTimer::UpdateArchRegWAW(uint64_t rob_idx)
    if (inst_has_dest) {
       uint64_t vec_regidx = uop->getMicroOp()->getDestinationRegister(0) - 64;
       entry->phy_reg_index = vec_regidx;
-      fprintf (stderr, "WAW check (rob=%ld) : reg_idx = %ld, time = %ld\n", 
+      fprintf (stderr, "WAW check (rob=%ld) : reg_idx = %ld, time = %ld\n",
          rob_idx,
-         vec_regidx, 
+         vec_regidx,
          SubsecondTime::divideRounded(m_phy_registers[VectorRegister].m_phy_list[vec_regidx].time, m_core->getDvfsDomain()->getPeriod())
       );
       if (m_phy_registers[VectorRegister].m_phy_list[vec_regidx].time < now) {
