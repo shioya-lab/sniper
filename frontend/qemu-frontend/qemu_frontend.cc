@@ -325,7 +325,7 @@ void QemuFrontend::threadStart(unsigned int threadid)
       {
          case RISCV:
             m_executions[threadid].memory.reset(
-               new RiscvMemory<QemuFrontend>());
+               new RiscvMemory<QemuFrontend>(regs));
             break;
 
          default:
