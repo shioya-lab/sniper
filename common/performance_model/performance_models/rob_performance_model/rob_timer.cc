@@ -1100,99 +1100,108 @@ SubsecondTime RobTimer::doIssue()
 
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
-        // fprintf (stderr, "m_gather_scatter_merge = %d\n", m_gather_scatter_merge);
-        if (uop->getMicroOp()->isVector() &&
-            !uop->getMicroOp()->canVecSquash()) {
-          // Gather Scatter
-
-          if (dyn_vector_inorder) {
-            if (issued_vec_mem < 8 &&
-                (issued_vec_mem == 0 ||
-                 static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
-              last_vec_issued_idx = i;
-              issued_vec_mem++;
-              if (vector_someone_cant_be_issued) {
+         // fprintf (stderr, "m_gather_scatter_merge = %d\n", m_gather_scatter_merge);
+         if (uop->getMicroOp()->isVector() &&
+             !uop->getMicroOp()->canVecSquash()) {
+            // Gather Scatter
+ 
+            if (dyn_vector_inorder) {
+              if (issued_vec_mem < 8 &&
+                  (issued_vec_mem == 0 ||
+                   static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
+                last_vec_issued_idx = i;
+                issued_vec_mem++;
+                if (vector_someone_cant_be_issued) {
+                  canIssue = false;
+                }
+              } else {
                 canIssue = false;
               }
-            } else {
-              canIssue = false;
+            } else { // Vector Out-of-Order
+              // fprintf (stderr, "Vector can Issue? (%s) %s : ",
+              //          canIssue ? "Yes" : "No",
+              //          uop->getMicroOp()->toShortString().c_str());
+              if (issued_vec_mem < 8) {
+                issued_vec_mem++;
+                // canIssue = true;
+                fprintf (stderr, "%ld %s Enough entry slot: %s (%ld), canIssue=%d\n", 
+                       uop->getSequenceNumber(),
+                       uop->getMicroOp()->toShortString().c_str(),
+                       canIssue ? "Yes" : "No", issued_vec_mem, canIssue);
+                canIssue = canIssue; // Keep can issue
+              } else {
+                fprintf (stderr, "%ld %s Slot fulled: No %ld\n", 
+                          uop->getSequenceNumber(),
+                          uop->getMicroOp()->toShortString().c_str(),
+                          issued_vec_mem);
+                canIssue = false;
+              }
             }
-          } else { // Vector Out-of-Order
-            // fprintf (stderr, "Vector can Issue? (%s) %s : ",
-            //          canIssue ? "Yes" : "No",
-            //          uop->getMicroOp()->toShortString().c_str());
-            if (issued_vec_mem < 8) {
-              issued_vec_mem++;
-              // canIssue = true;
-              // fprintf (stderr, "Enough entry slot: %s (%ld)\n", canIssue ? "Yes" : "No", issued_vec_mem);
-              canIssue = canIssue; // Keep can issue
-            } else {
-              // fprintf (stderr, "Slot fulled: No %ld\n", issued_vec_mem);
-              canIssue = false;
-            }
-          }
 
-          // If Gather/Scatter Merge NOT, number of Vector Store request into Scalar LoadQ is,
-          // same as # of request
-          if (!m_gather_scatter_merge && canIssue) {
-            if (uop->getMicroOp()->isLoad()) {
-              m_VtoS_RdRequests ++;
-            } else {
-              m_VtoS_WrRequests ++;
-            }
-          }
-
-         IntPtr cache_line = uop->getAddress().address & ~(l1d_block_size-1);
-         IntPtr banked_cache_line = cache_line & ~(l1d_block_size * m_bank_info.size() - 1);
-         IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
-
-         if (m_bank_info[bank_index] == 0) {           // first bank acces
-            if (enable_gatherscatter_log) {
-               fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
-                        uop->getSequenceNumber(),
-                        uop->getMicroOp()->toShortString().c_str(),
-                        uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
-            }
-            m_bank_info[bank_index] = banked_cache_line;
-            if (m_gather_scatter_merge && canIssue) {
+            // If Gather/Scatter Merge NOT, number of Vector Store request into Scalar LoadQ is,
+            // same as # of request
+            if (!m_gather_scatter_merge && canIssue) {
               if (uop->getMicroOp()->isLoad()) {
                 m_VtoS_RdRequests ++;
               } else {
                 m_VtoS_WrRequests ++;
               }
             }
-          } else if (m_bank_info[bank_index] == banked_cache_line) {
-            // Same Bank Access and Can be Merge:
-            uop->setMemAccessMerge();
-            if (enable_gatherscatter_log) {
-               fprintf (stderr, "%ld %s cacheline bank can be access %08lx with %08lx. bank=%ld, CanIssue = %d\n",
-                        uop->getSequenceNumber(),
-                        uop->getMicroOp()->toShortString().c_str(),
-                        uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
-            }
-          } else {
-            canIssue = false;
-            if (enable_gatherscatter_log) {
-               fprintf (stderr, "%ld %s cacheline bank conflict %08lx with %08lx, bank=%ld, CanIssue = %d\n",
-                        uop->getSequenceNumber(),
-                        uop->getMicroOp()->toShortString().c_str(),
-                        uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
-            }
-          }
 
-          m_bank_info[bank_index] = banked_cache_line;
-        } else {   // Gather Scatter Merge doesn't happen
-          if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
-            canIssue = false;
-          }
-          if (canIssue) {
-            if (uop->getMicroOp()->isLoad()) {
-              m_VtoS_RdRequests ++;
-            } else {
-              m_VtoS_WrRequests ++;
+            if (canIssue) {
+
+               IntPtr cache_line = uop->getAddress().address & ~(l1d_block_size-1);
+               IntPtr banked_cache_line = cache_line & ~(l1d_block_size * m_bank_info.size() - 1);
+               IntPtr bank_index = (cache_line ^ banked_cache_line) / l1d_block_size;
+
+               if (m_bank_info[bank_index] == 0) {           // first bank acces
+                  if (enable_gatherscatter_log) {
+                     fprintf (stderr, "%ld %s cacheline bank initiated %08lx with %08lx. bank=%ld. CanIssue = %d\n",
+                              uop->getSequenceNumber(),
+                              uop->getMicroOp()->toShortString().c_str(),
+                              uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
+                  }
+                  m_bank_info[bank_index] = banked_cache_line;
+                  if (m_gather_scatter_merge && canIssue) {
+                    if (uop->getMicroOp()->isLoad()) {
+                      m_VtoS_RdRequests ++;
+                    } else {
+                      m_VtoS_WrRequests ++;
+                    }
+                  }
+               } else if (m_bank_info[bank_index] == banked_cache_line) {
+                  // Same Bank Access and Can be Merge:
+                  uop->setMemAccessMerge();
+                  if (enable_gatherscatter_log) {
+                     fprintf (stderr, "%ld %s cacheline bank can be access %08lx with %08lx. bank=%ld, CanIssue = %d\n",
+                              uop->getSequenceNumber(),
+                              uop->getMicroOp()->toShortString().c_str(),
+                              uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
+                  }
+               } else {
+                  canIssue = false;
+                  if (enable_gatherscatter_log) {
+                     fprintf (stderr, "%ld %s cacheline bank conflict %08lx with %08lx, bank=%ld, CanIssue = %d\n",
+                              uop->getSequenceNumber(),
+                              uop->getMicroOp()->toShortString().c_str(),
+                              uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
+                  }
+               }
+
+               m_bank_info[bank_index] = banked_cache_line;
             }
-          }
-        }
+         } else {   // Gather Scatter Merge doesn't happen
+            if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
+              canIssue = false;
+            }
+            if (canIssue) {
+              if (uop->getMicroOp()->isLoad()) {
+                m_VtoS_RdRequests ++;
+              } else {
+                m_VtoS_WrRequests ++;
+              }
+            }
+         }
       } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
           canIssue = false;
       }
@@ -1201,12 +1210,12 @@ SubsecondTime RobTimer::doIssue()
       inhead_vector_existed |= uop->getMicroOp()->isVector();
 
       if (v_to_s_block) {
-         // if (enable_rob_timer_log) {
-         //    fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
-         //             uop->getSequenceNumber(),
-         //             uop->getAddress().address,
-         //             uop->getMicroOp()->toShortString().c_str());
-         // }
+         if (enable_rob_timer_log) {
+            fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
+                     uop->getSequenceNumber(),
+                     uop->getAddress().address,
+                     uop->getMicroOp()->toShortString().c_str());
+         }
          canIssue = false;
          v_to_s_fenced = true;
       }
@@ -1269,13 +1278,13 @@ SubsecondTime RobTimer::doIssue()
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-         // if (enable_rob_timer_log) {
-         //    std::cout << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
-         //        ", index = " << uop->getSequenceNumber() <<
-         //        ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
-         //        ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
-         //        "\n";
-         // }
+         if (enable_rob_timer_log) {
+            std::cout << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
+                ", index = " << uop->getSequenceNumber() <<
+                ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
+                ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
+                "\n";
+         }
          canIssue = false;          // blocked by structural hazard
       }
 
@@ -1288,15 +1297,8 @@ SubsecondTime RobTimer::doIssue()
          }
       }
 
-      // bool phyreg_allocate_failed = false;
-      if (canIssue && m_vec_late_phyreg_allocation) {
-         if (!UpdateLateBindPhyRegAllocation(i)) {
-            canIssue = false;
-            // phyreg_allocate_failed = true;
-         }
-      }
       // If Vector and can't be issued, try to preload
-      if (m_vec_preload && uop->getMicroOp()->isVecMem() && !uop->isPreloadDone()) {
+      if (entry->ready <= now && !canIssue && m_vec_preload && uop->getMicroOp()->isVecMem() && !uop->isPreloadDone()) {
          if (m_rob_contention->tryPreload()) {
             // Pipeline available
             preloadInstruction (i);
@@ -1308,6 +1310,14 @@ SubsecondTime RobTimer::doIssue()
          //         ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
          //         "\n";
          //   }
+         }
+      }
+
+      // bool phyreg_allocate_failed = false;
+      if (canIssue && m_vec_late_phyreg_allocation && uop->getMicroOp()->isFirst()) {
+         if (!UpdateLateBindPhyRegAllocation(i)) {
+            canIssue = false;
+            // phyreg_allocate_failed = true;
          }
       }
 
