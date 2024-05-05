@@ -20,6 +20,7 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
    this->microOpTypeOffset = uop->microOpTypeOffset;
    this->squashedCount = 0;
    this->dependenciesLength = 0;
+   this->commitDependency = UINT64_MAX;
 
    this->execLatency = m_core_model->getInstructionLatency(uop);
 
@@ -159,7 +160,7 @@ void DynamicMicroOp::backupInitialDependencies()
 void DynamicMicroOp::rollbackDependencies(uint64_t sequenceNumber)
 {
    intraInstructionDependencies = initial_intraInstructionDependencies;
-   
+
    for (uint64_t i = 0, j = 0; i < MAXIMUM_NUMBER_OF_DEPENDENCIES; i++) {
       if (initial_dependencies[i] == -1) break;
       if (initial_dependencies[i] >= sequenceNumber) {
@@ -177,4 +178,3 @@ void DynamicMicroOp::rollbackDependencies(uint64_t sequenceNumber)
    }
    return;
 }
-

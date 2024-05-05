@@ -76,6 +76,7 @@ RobTimer::RobTimer(
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
       , m_vec_late_phyreg_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/late_phyreg_allocation", core->getId()))
+      , m_vec_reserved_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/reserved_allocation", core->getId()))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -275,6 +276,8 @@ void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
    numInlineDependants = 0;
    vectorDependants = NULL;
 
+   commitDependant = 0;
+
    kanata_registered = false;
 }
 
@@ -471,7 +474,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       LOG_ASSERT_ERROR(num_dtr < sizeof(deps_to_remove)/sizeof(deps_to_remove[0]), "Have to remove more dependencies than I expected");
       for(uint64_t i = 0; i < num_dtr; ++i)
          entry->uop->removeDependency(deps_to_remove[i]);
-      if (entry->uop->getDependenciesLength() == 0)
+      if (entry->uop->getDependenciesLength() == 0 && !entry->uop->hasCommitDependency())
       {
          // We have no dependencies in the ROB: mark ourselves as ready
          entry->ready = entry->readyMax;
@@ -654,17 +657,19 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
-         if (!vector_inorder & !m_vec_late_phyreg_allocation) {
+         if (!vector_inorder && m_vec_reserved_allocation) {
+            if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
+               break;
+            }
+         } else if (!vector_inorder && !m_vec_late_phyreg_allocation) {
             // When phy register are not remained,
             // return false --> break dispatch
             if (!UpdateNormalBindPhyRegAllocation(m_num_in_rob)) {
                m_full_dispatch_stall_count++;
-               if (enable_rob_timer_log) {
-                  fprintf(stderr, "Lack of Physical Register. Stalled.\n");
-               }
                break;
            }
          }
+
 
          entry->fetch = missed_icache;
          entry->dispatched = now;
@@ -791,7 +796,8 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    DynamicMicroOp &uop = *entry->uop;
 
    if (enable_rob_timer_log) {
-      std::cout<<"ISSUE    "<<entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
+      std::cout <<"ISSUE    "<< "(" << entry->uop->getSequenceNumber() << ") " <<
+               entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
    }
 
    if ((uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())
@@ -916,7 +922,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       depEntry->uop->removeDependency(uop.getSequenceNumber());
 
       // If all dependencies are resolved, mark the uop ready
-      if (depEntry->uop->getDependenciesLength() == 0)
+      if (depEntry->uop->getDependenciesLength() == 0 && !depEntry->uop->hasCommitDependency())
       {
          depEntry->ready = depEntry->readyMax;
          //std::cout<<"    ready @ "<<depEntry->ready<<std::endl;
@@ -1104,7 +1110,7 @@ SubsecondTime RobTimer::doIssue()
          if (uop->getMicroOp()->isVector() &&
              !uop->getMicroOp()->canVecSquash()) {
             // Gather Scatter
- 
+
             if (dyn_vector_inorder) {
               if (issued_vec_mem < 8 &&
                   (issued_vec_mem == 0 ||
@@ -1124,13 +1130,13 @@ SubsecondTime RobTimer::doIssue()
               if (issued_vec_mem < 8) {
                 issued_vec_mem++;
                 // canIssue = true;
-                fprintf (stderr, "%ld %s Enough entry slot: %s (%ld), canIssue=%d\n", 
+                fprintf (stderr, "%ld %s Enough entry slot: %s (%ld), canIssue=%d\n",
                        uop->getSequenceNumber(),
                        uop->getMicroOp()->toShortString().c_str(),
                        canIssue ? "Yes" : "No", issued_vec_mem, canIssue);
                 canIssue = canIssue; // Keep can issue
               } else {
-                fprintf (stderr, "%ld %s Slot fulled: No %ld\n", 
+                fprintf (stderr, "%ld %s Slot fulled: No %ld\n",
                           uop->getSequenceNumber(),
                           uop->getMicroOp()->toShortString().c_str(),
                           issued_vec_mem);
@@ -1453,7 +1459,8 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       RobEntry *entry = &rob.front();
 
       if (enable_rob_timer_log) {
-         std::cout<<"COMMIT   "<<entry->uop->getMicroOp()->toShortString()<< "(uop = " << entry->uop->getSequenceNumber() << ")" << std::endl;
+         std::cout<<"COMMIT   " << "(" << entry->uop->getSequenceNumber() << ") " <<
+            entry->uop->getMicroOp()->toShortString()<< "(uop = " << entry->uop->getSequenceNumber() << ")" << std::endl;
       }
 
       // Send instructions to loop tracer, in-order, once we know their issue time
@@ -1587,6 +1594,20 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                reg_index == 0 ? "Integer" : reg_index == 1 ? "Float" : "Vector",
                entry->phy_reg_index,
                SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
+         }
+      }
+
+      if (m_vec_reserved_allocation) {
+         UInt64 dependant_sequenceNumber;
+         if ((dependant_sequenceNumber = entry->getCommitDependant()) != 0) {
+            if (enable_rob_timer_log) {
+               printf("-- Reserve: seqId=%ld committed. Released dependant. seqId=%ld\n", entry->uop->getSequenceNumber(), dependant_sequenceNumber);
+            }
+            RobEntry *dependantEntry = this->findEntryBySequenceNumber(dependant_sequenceNumber);
+            dependantEntry->uop->removeCommitDependency();
+            if (dependantEntry->uop->getDependenciesLength() == 0) {
+              dependantEntry->ready = dependantEntry->readyMax;
+            }
          }
       }
 
@@ -1766,6 +1787,9 @@ void RobTimer::printRob()
 
       std::ostringstream state;
       if (i >= m_num_in_rob) state<<"PREROB ";
+      else if (e->uop->hasCommitDependency()) {
+         state<<"DEPC "<< e->uop->getCommitDependency() << " ";
+      }
       else if (e->done != SubsecondTime::MaxTime()) {
          uint64_t cycles;
          if (e->done > now)
@@ -1958,6 +1982,95 @@ bool RobTimer::UpdateNormalBindPhyRegAllocation(uint64_t rob_idx)
   }
 
   return true;
+}
+
+
+// ----------------------------------------------------
+// Note: This function is only for
+// Reserved Binding Physical Register Mode
+// This routine is called in "doDispatch"
+// レジスタ解放予約をした状態だとtrueを返し，とりあえず先に進むことができる状態とする．
+// ----------------------------------------------------
+bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
+{
+   // LOG_ASSERT_ERROR(!m_vec_late_phyreg_allocation, "This function must be called only when regular_binding mode");
+
+   RobEntry *entry = &rob.at(rob_idx);
+   DynamicMicroOp *uop = entry->uop;
+
+   dl::Decoder *dec = Sim()->getDecoder();
+   bool inst_has_dest =  uop->getMicroOp()->getDestinationRegistersLength() != 0;
+
+   size_t reg_index = 0;
+   size_t reg_base = 0;
+   if (inst_has_dest) {
+      dl::Decoder::decoder_reg dest_reg = uop->getMicroOp()->getDestinationRegister(0);
+      if (dec->is_reg_int(dest_reg)) {
+         reg_index = 0;
+         reg_base = 0;
+      } else if(dec->is_reg_float(dest_reg)) {
+         reg_index = 1;
+         reg_base = 32;
+      } else if (dec->is_reg_vector(dest_reg)){
+         reg_index = 2;
+         reg_base = 64;
+      } else {
+         LOG_ASSERT_ERROR (false, "Unknown register type.");
+      }
+
+      // When XPR and GPR, allocate as normal.
+      if (reg_index == 0 || reg_index == 1) {
+         return UpdateNormalBindPhyRegAllocation(rob_idx);
+      }
+
+      auto it = m_phy_registers[reg_index].m_phy_list.begin();
+      for (size_t i = 0; it < m_phy_registers[reg_index].m_phy_list.end(); i++, it++) {
+         if (it->time < now) {
+            // Find unused Physical Register Entry
+            it->time = SubsecondTime::MaxTime();
+            entry->phy_reg_index = i;
+
+            if (enable_rob_timer_log) {
+               printf("-- Reserve: seqId=%ld(rob_index=%ld), Destination Register poped. freelist[%ld]\n",
+                      uop->getSequenceNumber(),
+                      rob_idx,
+                      i);
+            }
+            break;
+         }
+      }
+      if (it == m_phy_registers[reg_index].m_phy_list.end()) {
+         // Not found available Physical Register
+         RobEntry *prodEntry = this->findEntryBySequenceNumber(m_rmt[reg_index][dest_reg - reg_base]);
+         // if (prodEntry->done == SubsecondTime::MaxTime()) {
+         uop->addCommitDependency (m_rmt[reg_index][dest_reg - reg_base]);
+         prodEntry->setCommitDependant(uop->getSequenceNumber());
+         entry->phy_reg_index = prodEntry->phy_reg_index;
+         // }
+         if (enable_rob_timer_log) {
+            printf("-- Reserve: seqId=%ld(rob_index=%ld), freelist become empty. reserve physical ID %ld from seqId=%ld\n",
+                   uop->getSequenceNumber(),
+                   rob_idx,
+                   prodEntry->phy_reg_index,
+                   prodEntry->uop->getSequenceNumber());
+         }
+      }
+
+      m_rmt[reg_index][dest_reg - reg_base] = uop->getSequenceNumber();
+
+      // Statistics:
+      //  Count inflight registers
+      size_t inflight_phyregs_count = 0;
+      for (auto it: m_phy_registers[reg_index].m_phy_list) {
+         if (it.time == SubsecondTime::MaxTime()) {
+            inflight_phyregs_count++;
+         }
+      }
+      m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
+                                                               inflight_phyregs_count) + 32;
+   }
+
+   return true;
 }
 
 

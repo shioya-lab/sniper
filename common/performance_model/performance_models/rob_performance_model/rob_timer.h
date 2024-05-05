@@ -25,6 +25,7 @@ private:
          RobEntry* inlineDependants[MAX_INLINE_DEPENDANTS];
          std::vector<RobEntry*> *vectorDependants;
          std::vector<uint64_t> addressProducers;
+         UInt64 commitDependant; // SequenceNumber
 
       public:
          void init(DynamicMicroOp *uop, UInt64 sequenceNumber);
@@ -37,6 +38,9 @@ private:
          void addAddressProducer(UInt64 sequenceNumber) { addressProducers.push_back(sequenceNumber); }
          UInt64 getNumAddressProducers() const { return addressProducers.size(); }
          UInt64 getAddressProducer(size_t idx) const { return addressProducers.at(idx); }
+
+         void setCommitDependant(UInt64 sequenceNumber) { commitDependant = sequenceNumber; }
+         UInt64 getCommitDependant() { return commitDependant; }
 
          DynamicMicroOp *uop;
          SubsecondTime fetch;
@@ -211,6 +215,7 @@ private:
 
    // Physical Register: Freelist
    bool m_vec_late_phyreg_allocation;
+   bool m_vec_reserved_allocation;
    enum RegTypes { 
       IntRegister = 0, 
       FloatRegister = 1,
@@ -226,10 +231,12 @@ private:
       uint64_t m_phyreg_max_usage;  // How many registers are used maximally.
    } phy_list_t;
    std::vector<phy_list_t> m_phy_registers{3};  // 3-types of registers defined: Int/Float/Vector
+   UInt64 m_rmt[3][32];                         // Rename Map Table for 3-types of registers 
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
 
    bool UpdateNormalBindPhyRegAllocation(uint64_t rob_idx);
+   bool UpdateReservedBindPhyRegAllocation(uint64_t rob_idx);
    bool UpdateLateBindPhyRegAllocation(uint64_t rob_idx);
    void preloadInstruction (uint64_t idx);
 
