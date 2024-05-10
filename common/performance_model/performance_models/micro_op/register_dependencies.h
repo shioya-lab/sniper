@@ -16,6 +16,7 @@ private:
     // FIXME Depending on the architecture we may have too many elements
     // Not easy to get last element statically with the library
   uint64_t producers[280];  //XED_REG_LAST;
+  uint64_t producerLength[280];
 public:
   RegisterDependencies();
 

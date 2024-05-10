@@ -1809,8 +1809,9 @@ void RobTimer::printRob()
       RobEntry *e = &rob.at(i);
 
       std::ostringstream state;
-      if (i >= m_num_in_rob) state<<"PREROB ";
-      else if (e->uop->hasCommitDependency()) {
+      // if (i >= m_num_in_rob) state<<"PREROB ";
+      // else
+      if (e->uop->hasCommitDependency()) {
          state<<"DEPC "<< e->uop->getCommitDependency() << " ";
       }
       else if (e->done != SubsecondTime::MaxTime()) {

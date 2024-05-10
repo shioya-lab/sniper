@@ -20,12 +20,42 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
       {
          if (producerSequenceNumber >= lowestValidSequenceNumber)
          {
-            microOp.addDependency(producerSequenceNumber);
+            for (uint64_t k = 0; k <= producerLength[sourceRegister]; k++) {
+               microOp.addDependency(producerSequenceNumber + k);
+               microOp.addRegDependency(producerSequenceNumber + k);
+            }
          }
          else
          {
             producers[mappedRegister] = INVALID_SEQNR;
          }
+      }
+   }
+
+   // producerLength:
+   // (0) vluxei v24,(a0),v24 // index-0
+   // (1) vluxei v24,(a0),v24 // index-1
+   // v24 is associated with (0) and (1)
+   // producer[v24] = (0) and producerLength[v24] = 1;
+   // --> consumer should depends on producer[v24] and producer[v24]+1
+   if (microOp.getMicroOp()->isVector() &&
+       !microOp.getMicroOp()->canVecSquash()) {
+      for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
+      {
+         uint32_t destinationRegister = microOp.getMicroOp()->getDestinationRegister(i);
+         LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
+         if (microOp.isFirst()) {
+            producerLength[destinationRegister] = 0;
+         } else {
+            producerLength[destinationRegister]++;
+         }
+      }
+   } else {
+      for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
+      {
+         uint32_t destinationRegister = microOp.getMicroOp()->getDestinationRegister(i);
+         LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
+         producerLength[destinationRegister] = 0;
       }
    }
 
@@ -39,9 +69,10 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
    // So, in this case (0) doesn't update producer denependency
    //
    if (microOp.getMicroOp()->isVector() &&
-       !microOp.getMicroOp()->canVecSquash() &&  // Not UnitStride, Gather/Scatter instructions are Issued in same time, then prevent Intermeditae Update
-       (microOp.getMicroOp()->UopIdx() != microOp.getMicroOp()->NumUop() - 1)) {
-     return;
+       !microOp.getMicroOp()->canVecSquash() &&
+       !microOp.isFirst()) {
+      // Not UnitStride, Gather/Scatter instructions are Issued in same time, then prevent Intermeditae Update
+      return;
    }
    // Update the producers
    for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
@@ -70,5 +101,6 @@ void RegisterDependencies::clear()
    for(uint32_t i = 0; i < Sim()->getDecoder()->last_reg(); i++)
    {
       producers[i] = INVALID_SEQNR;
+      producerLength[i] = 0;
    }
 }
