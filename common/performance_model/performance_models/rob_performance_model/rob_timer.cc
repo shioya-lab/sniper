@@ -706,18 +706,25 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                    uop->getMicroOp()->getInstruction()->getAddress(),
                    uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
            if (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) {
-            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAccess=%08lx\n", entry->global_sequence_id, 1,
+            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t\nAccess=%08lx\n", entry->global_sequence_id, 1,
                     uop->getAddress().address);
            }
            for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
-             dl::Decoder *dec = Sim()->getDecoder();
-             RobEntry *producerEntry = this->findEntryBySequenceNumber(uop->getDependency(i));
-             if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
-               continue;
-             }
-             fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
+              dl::Decoder *dec = Sim()->getDecoder();
+              uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
+              if (uop->getDependency(i) >= lowestValidSequenceNumber) {
+                 RobEntry *producerEntry = this->findEntryBySequenceNumber(uop->getDependency(i));
+                 if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
+                    continue;
+                 }
+                 fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
+              }
            }
-           fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
+           if (entry->uop->hasCommitDependency()) {
+              fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Wf"); // Wait in FIFO
+           } else {
+              fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
+           }
            // fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", uop->getSequenceNumber(), 0, "F");
          }
 
@@ -1120,38 +1127,28 @@ SubsecondTime RobTimer::doIssue()
              !uop->getMicroOp()->canVecSquash()) {
             // Gather Scatter
 
-            if (dyn_vector_inorder) {
-              if (issued_vec_mem < 8 &&
-                  (issued_vec_mem == 0 ||
-                   static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
-                last_vec_issued_idx = i;
-                issued_vec_mem++;
-                if (vector_someone_cant_be_issued) {
-                  canIssue = false;
-                }
-              } else {
-                canIssue = false;
-              }
-            } else { // Vector Out-of-Order
-              // fprintf (stderr, "Vector can Issue? (%s) %s : ",
-              //          canIssue ? "Yes" : "No",
-              //          uop->getMicroOp()->toShortString().c_str());
-              if (issued_vec_mem < 8) {
-                issued_vec_mem++;
-                // canIssue = true;
-                fprintf (stderr, "%ld %s Enough entry slot: %s (%ld), canIssue=%d\n",
-                       uop->getSequenceNumber(),
-                       uop->getMicroOp()->toShortString().c_str(),
-                       canIssue ? "Yes" : "No", issued_vec_mem, canIssue);
-                canIssue = canIssue; // Keep can issue
-              } else {
-                fprintf (stderr, "%ld %s Slot fulled: No %ld\n",
-                          uop->getSequenceNumber(),
-                          uop->getMicroOp()->toShortString().c_str(),
-                          issued_vec_mem);
-                canIssue = false;
-              }
-            }
+            // if (dyn_vector_inorder) {
+            //   if (issued_vec_mem < 8 &&
+            //       (issued_vec_mem == 0 ||
+            //        static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
+            //     last_vec_issued_idx = i;
+            //     issued_vec_mem++;
+            //     if (vector_someone_cant_be_issued) {
+            //       canIssue = false;
+            //     }
+            //   } else {
+            //     canIssue = false;
+            //   }
+            // } else { // Vector Out-of-Order
+            //   if (issued_vec_mem < 8) {
+            //     issued_vec_mem++;
+            //   } else {
+            //      if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            //         fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector Load slot full");
+            //      }
+            //      canIssue = false;
+            //   }
+            // }
 
             // If Gather/Scatter Merge NOT, number of Vector Store request into Scalar LoadQ is,
             // same as # of request
@@ -1320,12 +1317,19 @@ SubsecondTime RobTimer::doIssue()
             if (enable_rob_timer_log) {
                fprintf(stderr, "Vector Inorder WAW hazard. Stalled\n");
             }
+            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "WAW wait");
+            }
             canIssue = false;
          }
       }
 
       // If Vector and can't be issued, try to preload
-      if (entry->ready <= now && !canIssue && m_vec_preload && uop->getMicroOp()->isVecMem() && !uop->isPreloadDone()) {
+      if (entry->uop->getRegDependenciesLength() == 0 &&
+          !canIssue &&
+          m_vec_reserved_allocation &&
+          uop->getMicroOp()->isVecMem() && uop->getMicroOp()->isLoad() &&
+          !uop->isPreloadDone()) {
          if (m_rob_contention->tryPreload()) {
             // Pipeline available
             preloadInstruction (i);
@@ -1610,28 +1614,61 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          } else {
             LOG_ASSERT_ERROR (false, "Unknown register type.");
          }
-         // Push Freelist
-         m_phy_registers[reg_index].m_phy_list[entry->phy_reg_index].time = now;
-         if (enable_rob_timer_log) {
-            printf("-- Destination Register pushed. %s freelist[%ld]=%ld\n",
-               reg_index == 0 ? "Integer" : reg_index == 1 ? "Float" : "Vector",
-               entry->phy_reg_index,
-               SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
-         }
-      }
 
-      if (m_vec_reserved_allocation) {
-         UInt64 dependant_sequenceNumber;
-         if ((dependant_sequenceNumber = entry->getCommitDependant()) != 0) {
-            if (enable_rob_timer_log) {
-               printf("-- Reserve: seqId=%ld committed. Released dependant. seqId=%ld\n", entry->uop->getSequenceNumber(), dependant_sequenceNumber);
+
+         if (reg_index == 2 && !m_dispatch_fifo.empty()) {
+            RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
+            // waiting_entry->dispatched = now;
+            waiting_entry->uop->removeCommitDependency();
+            if (waiting_entry->uop->getDependenciesLength() == 0) {
+               waiting_entry->ready = now;
             }
-            RobEntry *dependantEntry = this->findEntryBySequenceNumber(dependant_sequenceNumber);
-            dependantEntry->uop->removeCommitDependency();
-            if (dependantEntry->uop->getDependenciesLength() == 0) {
-              dependantEntry->ready = dependantEntry->readyMax;
+            m_dispatch_fifo.pop();
+            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+               RobEntry *released_entry = findEntryBySequenceNumber(waiting_entry->uop->getSequenceNumber());
+               fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", released_entry->global_sequence_id, 0, "Ds"); // Dispatch
+            }
+            if (enable_rob_timer_log) {
+               printf("-- Reserve: seqId=%ld committed. Released FIFO. seqId=%ld\n", entry->uop->getSequenceNumber(), waiting_entry->uop->getSequenceNumber());
+            }
+         } else {
+            // Push Freelist
+            m_phy_registers[reg_index].m_phy_list[entry->phy_reg_index].time = now;
+            if (enable_rob_timer_log) {
+               printf("-- Destination Register pushed. seqId=%ld(rob_index=0), %s freelist[%ld]<-%ld\n",
+                      entry->uop->getSequenceNumber(),
+                      reg_index == 0 ? "Integer" : reg_index == 1 ? "Float" : "Vector",
+                      entry->phy_reg_index,
+                      SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
             }
          }
+
+         // if (m_vec_reserved_allocation) {
+         //    UInt64 dependant_sequenceNumber;
+         //    if ((dependant_sequenceNumber = entry->getCommitDependant()) != 0) {
+         //       if (enable_rob_timer_log) {
+         //          printf("-- Reserve: seqId=%ld committed. Released dependant. seqId=%ld\n", entry->uop->getSequenceNumber(), dependant_sequenceNumber);
+         //       }
+         //       RobEntry *dependantEntry = this->findEntryBySequenceNumber(dependant_sequenceNumber);
+         //       dependantEntry->uop->removeCommitDependency();
+         //       if (dependantEntry->uop->getDependenciesLength() == 0) {
+         //          dependantEntry->ready = dependantEntry->readyMax;
+         //       }
+         //       allow_push = false;
+         //    }
+         // }
+         //
+         // if (allow_push) {
+         //    // Push Freelist
+         //    m_phy_registers[reg_index].m_phy_list[entry->phy_reg_index].time = now;
+         //    if (enable_rob_timer_log) {
+         //        printf("-- Destination Register pushed. seqId=%ld(rob_index=0), %s freelist[%ld]<-%ld\n",
+         //             entry->uop->getSequenceNumber(),
+         //             reg_index == 0 ? "Integer" : reg_index == 1 ? "Float" : "Vector",
+         //             entry->phy_reg_index,
+         //             SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
+         //    }
+         // }
       }
 
       entry->free();
@@ -1835,6 +1872,9 @@ void RobTimer::printRob()
          state<<"DEPS ";
          for(uint32_t j = 0; j < e->uop->getDependenciesLength(); j++)
             state << std::dec << e->uop->getDependency(j) << " ";
+         state << std::dec << "|";
+         for(uint32_t j = 0; j < e->uop->getRegDependenciesLength(); j++)
+            state << std::dec << e->uop->getRegDependency(j) << " ";
       }
       std::cout<<std::left<<std::setw(20)<<state.str()<<"   ";
       std::cout<<std::right<<std::setw(10)<<e->uop->getSequenceNumber()<<"  ";
@@ -1952,60 +1992,69 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
 // ----------------------------------------------------
 bool RobTimer::UpdateNormalBindPhyRegAllocation(uint64_t rob_idx)
 {
-  // LOG_ASSERT_ERROR(!m_vec_late_phyreg_allocation, "This function must be called only when regular_binding mode");
+   // LOG_ASSERT_ERROR(!m_vec_late_phyreg_allocation, "This function must be called only when regular_binding mode");
 
-  RobEntry *entry = &rob.at(rob_idx);
-  DynamicMicroOp *uop = entry->uop;
+   RobEntry *entry = &rob.at(rob_idx);
+   DynamicMicroOp *uop = entry->uop;
 
-  dl::Decoder *dec = Sim()->getDecoder();
-  bool inst_has_dest =  uop->getMicroOp()->getDestinationRegistersLength() != 0;
+   dl::Decoder *dec = Sim()->getDecoder();
+   bool inst_has_dest =  uop->getMicroOp()->getDestinationRegistersLength() != 0;
 
-  size_t reg_index = 0;
+   size_t reg_index = 0;
 
-  if (inst_has_dest) {
-    if (dec->is_reg_int(uop->getMicroOp()->getDestinationRegister(0))) {
-      reg_index = 0;
-    } else if(dec->is_reg_float(uop->getMicroOp()->getDestinationRegister(0))) {
-      reg_index = 1;
-    } else if (dec->is_reg_vector(uop->getMicroOp()->getDestinationRegister(0))){
-      reg_index = 2;
-    } else {
-      LOG_ASSERT_ERROR (false, "Unknown register type.");
-    }
+   if (inst_has_dest) {
+      if (dec->is_reg_int(uop->getMicroOp()->getDestinationRegister(0))) {
+        reg_index = 0;
+      } else if(dec->is_reg_float(uop->getMicroOp()->getDestinationRegister(0))) {
+        reg_index = 1;
+      } else if (dec->is_reg_vector(uop->getMicroOp()->getDestinationRegister(0))){
+        reg_index = 2;
+      } else {
+        LOG_ASSERT_ERROR (false, "Unknown register type.");
+      }
 
-    auto it = m_phy_registers[reg_index].m_phy_list.begin();
-    for (size_t i = 0; it < m_phy_registers[reg_index].m_phy_list.end(); i++, it++) {
-      if (it->time < now) {
-        // Find unused Physical Register Entry
-        it->time = SubsecondTime::MaxTime();
-        entry->phy_reg_index = i;
-        if (enable_rob_timer_log) {
-          printf("-- Normal: Destination Register poped. freelist[%ld]\n", i);
+      // auto it = m_phy_registers[reg_index].m_phy_list.begin();
+      size_t phy_reg_index = 0;
+      for (phy_reg_index = 0; phy_reg_index < m_phy_registers[reg_index].m_phy_list.size(); phy_reg_index++) {
+        if (m_phy_registers[reg_index].m_phy_list[phy_reg_index].time < now) {
+           if (enable_rob_timer_log) {
+               printf("-- Normal: seqId=%ld(rob_index=%ld), Destination Register poped. freelist[%ld].time=%ld\n",
+                      uop->getSequenceNumber(),
+                      rob_idx,
+                      phy_reg_index,
+                      SubsecondTime::divideRounded(m_phy_registers[reg_index].m_phy_list[phy_reg_index].time, m_core->getDvfsDomain()->getPeriod())
+                      );
+           }
+
+           // Find unused Physical Register Entry
+           m_phy_registers[reg_index].m_phy_list[phy_reg_index].time = SubsecondTime::MaxTime();
+           entry->phy_reg_index = phy_reg_index;
+           break;
         }
-        break;
       }
-    }
-    if (it == m_phy_registers[reg_index].m_phy_list.end()) {
-      // Not found available Physical Register
-      if (enable_rob_timer_log) {
-        printf("-- Normal: freelist become empty.\n");
+      if (phy_reg_index == m_phy_registers[reg_index].m_phy_list.size()) {
+        // Not found available Physical Register
+        if (enable_rob_timer_log) {
+          printf("-- Normal: seqId=%ld(rob_index=%ld), freelist become empty.\n",
+                 uop->getSequenceNumber(),
+                 rob_idx);
+        }
+        return false;
       }
-      return false;
-    }
 
-    // Statistics:
-    //  Count inflight registers
-    size_t inflight_phyregs_count = 0;
-    for (auto it: m_phy_registers[reg_index].m_phy_list) {
-      if (it.time == SubsecondTime::MaxTime()) {
-        inflight_phyregs_count++;
+      // Statistics:
+      //  Count inflight registers
+      size_t inflight_phyregs_count = 0;
+      for (auto it: m_phy_registers[reg_index].m_phy_list) {
+        if (it.time == SubsecondTime::MaxTime()) {
+          inflight_phyregs_count++;
+        }
       }
-    }
-    m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
-                                                             inflight_phyregs_count) + 32;
-  }
+      m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
+                                                              inflight_phyregs_count) + 32;
+   }
 
-  return true;
+   return true;
 }
 
 
@@ -2026,18 +2075,18 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
    bool inst_has_dest =  uop->getMicroOp()->getDestinationRegistersLength() != 0;
 
    size_t reg_index = 0;
-   size_t reg_base = 0;
+   // size_t reg_base = 0;
    if (inst_has_dest) {
       dl::Decoder::decoder_reg dest_reg = uop->getMicroOp()->getDestinationRegister(0);
       if (dec->is_reg_int(dest_reg)) {
          reg_index = 0;
-         reg_base = 0;
+         // reg_base = 0;
       } else if(dec->is_reg_float(dest_reg)) {
          reg_index = 1;
-         reg_base = 32;
+         // reg_base = 32;
       } else if (dec->is_reg_vector(dest_reg)){
          reg_index = 2;
-         reg_base = 64;
+         // reg_base = 64;
       } else {
          LOG_ASSERT_ERROR (false, "Unknown register type.");
       }
@@ -2046,52 +2095,80 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       if (reg_index == 0 || reg_index == 1) {
          return UpdateNormalBindPhyRegAllocation(rob_idx);
       }
-
-      auto it = m_phy_registers[reg_index].m_phy_list.begin();
-      for (size_t i = 0; it < m_phy_registers[reg_index].m_phy_list.end(); i++, it++) {
-         if (it->time < now) {
-            // Find unused Physical Register Entry
-            it->time = SubsecondTime::MaxTime();
-            entry->phy_reg_index = i;
-
-            if (enable_rob_timer_log) {
-               printf("-- Reserve: seqId=%ld(rob_index=%ld), Destination Register poped. freelist[%ld]\n",
-                      uop->getSequenceNumber(),
-                      rob_idx,
-                      i);
-            }
-            break;
-         }
-      }
-      if (it == m_phy_registers[reg_index].m_phy_list.end()) {
-         // Not found available Physical Register
-         RobEntry *prodEntry = this->findEntryBySequenceNumber(m_rmt[reg_index][dest_reg - reg_base]);
-         // if (prodEntry->done == SubsecondTime::MaxTime()) {
-         uop->addCommitDependency (m_rmt[reg_index][dest_reg - reg_base]);
-         prodEntry->setCommitDependant(uop->getSequenceNumber());
-         entry->phy_reg_index = prodEntry->phy_reg_index;
-         // }
-         if (enable_rob_timer_log) {
-            printf("-- Reserve: seqId=%ld(rob_index=%ld), freelist become empty. reserve physical ID %ld from seqId=%ld\n",
-                   uop->getSequenceNumber(),
-                   rob_idx,
-                   prodEntry->phy_reg_index,
-                   prodEntry->uop->getSequenceNumber());
+      // When Vector Load, allocate as normal
+      if (reg_index == 2) {
+         if (UpdateNormalBindPhyRegAllocation(rob_idx)) {
+            return true;
          }
       }
 
-      m_rmt[reg_index][dest_reg - reg_base] = uop->getSequenceNumber();
-
-      // Statistics:
-      //  Count inflight registers
-      size_t inflight_phyregs_count = 0;
-      for (auto it: m_phy_registers[reg_index].m_phy_list) {
-         if (it.time == SubsecondTime::MaxTime()) {
-            inflight_phyregs_count++;
-         }
+      // ここに到達したということは、ベクトル命令のベクトル資源が枯渇したことを意味するので、FIFOに格納する。
+      if (m_dispatch_fifo.size() < 128) {
+         m_dispatch_fifo.push(uop->getSequenceNumber());
+         uop->addCommitDependency (0);
+         entry->phy_reg_index = 0;
+         return true;
+      } else {
+         return false;
       }
-      m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
-                                                               inflight_phyregs_count) + 32;
+
+      // ここから先は使用しない
+
+      // auto it = m_phy_registers[reg_index].m_phy_list.begin();
+      // for (size_t i = 0; it < m_phy_registers[reg_index].m_phy_list.end(); i++, it++) {
+      //    if (it->time < now) {
+      //       // Find unused Physical Register Entry
+      //       it->time = SubsecondTime::MaxTime();
+      //       entry->phy_reg_index = i;
+      //
+      //       if (enable_rob_timer_log) {
+      //          printf("-- Reserve: seqId=%ld(rob_index=%ld), Destination Register poped. freelist[%ld]\n",
+      //                 uop->getSequenceNumber(),
+      //                 rob_idx,
+      //                 i);
+      //       }
+      //       break;
+      //    }
+      // }
+      // if (it == m_phy_registers[reg_index].m_phy_list.end()) {
+      //    // Not found available Physical Register
+      //    if (m_rmt[reg_index][dest_reg - reg_base] < rob.at(0).uop->getSequenceNumber()) {
+      //       if (enable_rob_timer_log) {
+      //          printf("-- Reserve: seqId=%ld(rob_index=%ld), freelist become empty. From seqId=%ld. It can't be get reserved register\n",
+      //                 uop->getSequenceNumber(),
+      //                 rob_idx,
+      //                 m_rmt[reg_index][dest_reg - reg_base]);
+      //       }
+      //       return false;
+      //    }
+      //
+      //    RobEntry *prodEntry = this->findEntryBySequenceNumber(m_rmt[reg_index][dest_reg - reg_base]);
+      //    // if (prodEntry->done == SubsecondTime::MaxTime()) {
+      //    uop->addCommitDependency (m_rmt[reg_index][dest_reg - reg_base]);
+      //    prodEntry->setCommitDependant(uop->getSequenceNumber());
+      //    entry->phy_reg_index = prodEntry->phy_reg_index;
+      //    // }
+      //    if (enable_rob_timer_log) {
+      //       printf("-- Reserve: seqId=%ld(rob_index=%ld), freelist become empty. reserve physical ID %ld from seqId=%ld\n",
+      //              uop->getSequenceNumber(),
+      //              rob_idx,
+      //              prodEntry->phy_reg_index,
+      //              prodEntry->uop->getSequenceNumber());
+      //    }
+      // }
+      //
+      // m_rmt[reg_index][dest_reg - reg_base] = uop->getSequenceNumber();
+      //
+      // // Statistics:
+      // //  Count inflight registers
+      // size_t inflight_phyregs_count = 0;
+      // for (auto it: m_phy_registers[reg_index].m_phy_list) {
+      //    if (it.time == SubsecondTime::MaxTime()) {
+      //       inflight_phyregs_count++;
+      //    }
+      // }
+      // m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
+      //                                                          inflight_phyregs_count) + 32;
    }
 
    return true;

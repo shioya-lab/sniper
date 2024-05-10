@@ -121,7 +121,6 @@ void DynamicMicroOp::removeDependency(uint64_t sequenceNumber)
          // Move sequenceNumber to the end of the list
          uint64_t idx = Tools::index(dependencies, dependenciesLength, sequenceNumber);
          LOG_ASSERT_ERROR(idx != UINT64_MAX, "MicroOp dependency list does not contain %ld", sequenceNumber);
-         fprintf (stderr, "seqId=%ld, removeDependency : index %ld\n", getSequenceNumber(), idx);
          Tools::swap(dependencies, idx, dependenciesLength-1);
       }
       dependenciesLength--;
@@ -150,7 +149,6 @@ void DynamicMicroOp::removeRegDependency(uint64_t sequenceNumber)
       return;
    }
    LOG_ASSERT_ERROR(regDependenciesLength > 0, "Cannot remove register dependency when there are none");
-   fprintf (stderr, "seqId=%ld, removeRegDependency : index %ld, regDependenciesLength=%d\n", getSequenceNumber(), idx, regDependenciesLength);
    Tools::swap(reg_dependencies, idx, regDependenciesLength-1);
    regDependenciesLength--;
 }

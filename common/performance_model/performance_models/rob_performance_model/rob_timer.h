@@ -216,8 +216,8 @@ private:
    // Physical Register: Freelist
    bool m_vec_late_phyreg_allocation;
    bool m_vec_reserved_allocation;
-   enum RegTypes { 
-      IntRegister = 0, 
+   enum RegTypes {
+      IntRegister = 0,
       FloatRegister = 1,
       VectorRegister = 2
    };
@@ -231,7 +231,8 @@ private:
       uint64_t m_phyreg_max_usage;  // How many registers are used maximally.
    } phy_list_t;
    std::vector<phy_list_t> m_phy_registers{3};  // 3-types of registers defined: Int/Float/Vector
-   UInt64 m_rmt[3][32];                         // Rename Map Table for 3-types of registers 
+   // UInt64 m_rmt[3][32];                         // Rename Map Table for 3-types of registers
+   std::queue<UInt64> m_dispatch_fifo;
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
 
