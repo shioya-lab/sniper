@@ -1059,6 +1059,9 @@ SubsecondTime RobTimer::doIssue()
             std::cout << "  load_queue.hasFreeSlot failed " << uop->getMicroOp()->toShortString() <<
                          ", index = " << uop->getSequenceNumber() << '\n';
          }
+         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "LoadQueue full");
+         }
          canIssue = false;          // load queue full
 
       } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
@@ -1066,12 +1069,18 @@ SubsecondTime RobTimer::doIssue()
             std::cout << "  disambiguation" <<
                 ", index = " << uop->getSequenceNumber() << '\n';
          }
+         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "disambiguation failed");
+         }
          canIssue = false;          // preceding store with unknown address
       }
       else if (uop->getMicroOp()->isStore() && (!head_of_queue ||
                                                 ( uop->getMicroOp()->isVector() && !vec_store_queue.hasFreeSlot(now)) ||
                                                 (!uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now))))
       {
+         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "StoreQueue full");
+         }
          canIssue = false;          // store queue full
       }
       else
@@ -1192,6 +1201,9 @@ SubsecondTime RobTimer::doIssue()
                               uop->getMicroOp()->toShortString().c_str(),
                               uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
                   }
+                  if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+                     fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, bank conflict");
+                  }
                }
 
                m_bank_info[bank_index] = banked_cache_line;
@@ -1199,6 +1211,9 @@ SubsecondTime RobTimer::doIssue()
          } else {   // Gather Scatter Merge doesn't happen
             if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
               canIssue = false;
+            }
+            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
             }
             if (canIssue) {
               if (uop->getMicroOp()->isLoad()) {
@@ -1209,7 +1224,10 @@ SubsecondTime RobTimer::doIssue()
             }
          }
       } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
-          canIssue = false;
+         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector inorder, wait");
+         }
+         canIssue = false;
       }
 
       // Vector to Scalar, Fence mode, Scalar can't continue to isssue.
@@ -1291,6 +1309,9 @@ SubsecondTime RobTimer::doIssue()
                 ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
                 "\n";
          }
+         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
+         }
          canIssue = false;          // blocked by structural hazard
       }
 
@@ -1323,7 +1344,9 @@ SubsecondTime RobTimer::doIssue()
       if (canIssue && m_vec_late_phyreg_allocation && uop->getMicroOp()->isFirst()) {
          if (!UpdateLateBindPhyRegAllocation(i)) {
             canIssue = false;
-            // phyreg_allocate_failed = true;
+            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Late binding failed to allocate");
+            }
          }
       }
 
@@ -1903,7 +1926,7 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
          }
          uop.setPreloadDone();
          if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-            fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 1, "P");
+            fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAddress=%08lx\n", entry->global_sequence_id, 1, uop.getAddress().address);
          }
 
