@@ -38,6 +38,10 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
       this->initial_dependencies[i] = -1;
    LOG_ASSERT_ERROR(m_uop != NULL, "uop is NULL");
 
+   this->regDependenciesLength = 0;
+   for (uint32_t i = 0; i < MAXIMUM_NUMBER_OF_DEPENDENCIES; i++)
+      this->reg_dependencies[i] = -1;
+
    first = m_uop->isFirst();
    last = m_uop->isLast();
 
@@ -117,11 +121,40 @@ void DynamicMicroOp::removeDependency(uint64_t sequenceNumber)
          // Move sequenceNumber to the end of the list
          uint64_t idx = Tools::index(dependencies, dependenciesLength, sequenceNumber);
          LOG_ASSERT_ERROR(idx != UINT64_MAX, "MicroOp dependency list does not contain %ld", sequenceNumber);
+         fprintf (stderr, "seqId=%ld, removeDependency : index %ld\n", getSequenceNumber(), idx);
          Tools::swap(dependencies, idx, dependenciesLength-1);
       }
       dependenciesLength--;
    }
+
+   // If found,
+   removeRegDependency(sequenceNumber);
 }
+
+
+void DynamicMicroOp::addRegDependency(uint64_t sequenceNumber)
+{
+   if (!Tools::contains(reg_dependencies, regDependenciesLength, sequenceNumber)) {
+      assert(this->regDependenciesLength < MAXIMUM_NUMBER_OF_DEPENDENCIES);
+      reg_dependencies[regDependenciesLength] = sequenceNumber;
+      regDependenciesLength++;
+   }
+}
+
+void DynamicMicroOp::removeRegDependency(uint64_t sequenceNumber)
+{
+   // Move sequenceNumber to the end of the list
+   uint64_t idx = Tools::index(reg_dependencies, regDependenciesLength, sequenceNumber);
+   if(idx == UINT64_MAX) {
+      // If these dependency not included in register dependency, just skip
+      return;
+   }
+   LOG_ASSERT_ERROR(regDependenciesLength > 0, "Cannot remove register dependency when there are none");
+   fprintf (stderr, "seqId=%ld, removeRegDependency : index %ld, regDependenciesLength=%d\n", getSequenceNumber(), idx, regDependenciesLength);
+   Tools::swap(reg_dependencies, idx, regDependenciesLength-1);
+   regDependenciesLength--;
+}
+
 
 const Memory::Access& DynamicMicroOp::getLoadAccess() const
 {

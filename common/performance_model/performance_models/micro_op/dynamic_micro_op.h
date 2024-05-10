@@ -43,6 +43,11 @@ class DynamicMicroOp
       /** This array contains the dependencies. The uint64_t stored in the array is the sequenceNumber of the dependency. */
       uint64_t    dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
 
+      /** This field contains the length of the register dependencies array. */
+      uint32_t regDependenciesLength;
+      /** This array contains the dependencies. The uint64_t stored in the array is the sequenceNumber of the dependency. */
+      uint64_t reg_dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
+
       /** These dependencies are released only when target instruction is committed. */
       uint64_t  commitDependency;
 
@@ -113,6 +118,12 @@ class DynamicMicroOp
       uint64_t getDependency(uint32_t index) const;
       void addDependency(uint64_t sequenceNumber);
       void removeDependency(uint64_t sequenceNumber);
+
+      // オペランドの解決のみを判定するために，もう一つdependency listを作った
+      void addRegDependency(uint64_t sequenceNumber);
+      void removeRegDependency(uint64_t sequenceNumber);
+      uint64_t getRegDependency(uint32_t index) const { return dependencies[index]; }
+      uint32_t getRegDependenciesLength() const { return this->regDependenciesLength; }
 
       void addCommitDependency(uint64_t sequenceNumber) { commitDependency = sequenceNumber; }
       uint64_t getCommitDependency() { return commitDependency; }
