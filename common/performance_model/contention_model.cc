@@ -163,10 +163,12 @@ ContentionModel::getCompletionTime(SubsecondTime t_start, SubsecondTime t_delay,
 
    SubsecondTime t_end;
 
+   // LOG_ASSERT_ERROR(t_start >= m_t_last, "last time accessed contension is earlier than current.");
+
    if (t_start == SubsecondTime::Zero())
       t_end = t_delay;
 
-   else if (t_start < m_t_last)
+   else if (/* t_start < m_t_last */false)
    {
       /* Out of order packet. Assume no congestion, only transfer latency. */
       t_end = t_start + t_delay;

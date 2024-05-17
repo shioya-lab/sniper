@@ -419,7 +419,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       // Add ourselves to the dependants list of the uops we depend on
       uint64_t minProducerDistance = UINT64_MAX;
       m_totalConsumers += 1 ;
-      uint64_t deps_to_remove[8], num_dtr = 0;
+      uint64_t deps_to_remove[128], num_dtr = 0;
       for(unsigned int i = 0; i < entry->uop->getDependenciesLength(); ++i)
       {
          RobEntry *prodEntry = this->findEntryBySequenceNumber(entry->uop->getDependency(i));
@@ -429,6 +429,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
             // If producer is already done (but hasn't reached writeback stage), remove it from our dependency list
             deps_to_remove[num_dtr++] = entry->uop->getDependency(i);
             entry->readyMax = std::max(entry->readyMax, prodEntry->done);
+            LOG_ASSERT_ERROR(num_dtr < 128, "dependency list exceeds 8");
          }
          else
          {
@@ -474,7 +475,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       LOG_ASSERT_ERROR(num_dtr < sizeof(deps_to_remove)/sizeof(deps_to_remove[0]), "Have to remove more dependencies than I expected");
       for(uint64_t i = 0; i < num_dtr; ++i)
          entry->uop->removeDependency(deps_to_remove[i]);
-      if (entry->uop->getDependenciesLength() == 0 && !entry->uop->hasCommitDependency())
+      if (entry->uop->getDependenciesLength() == 0)
       {
          // We have no dependencies in the ROB: mark ourselves as ready
          entry->ready = entry->readyMax;
@@ -929,7 +930,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       depEntry->uop->removeDependency(uop.getSequenceNumber());
 
       // If all dependencies are resolved, mark the uop ready
-      if (depEntry->uop->getDependenciesLength() == 0 && !depEntry->uop->hasCommitDependency())
+      if (depEntry->uop->getDependenciesLength() == 0)
       {
          depEntry->ready = depEntry->readyMax;
          //std::cout<<"    ready @ "<<depEntry->ready<<std::endl;
@@ -1092,6 +1093,11 @@ SubsecondTime RobTimer::doIssue()
       }
       else
          canIssue = true;           // issue!
+
+
+      if (uop->hasCommitDependency()) {
+         canIssue = false;
+      }
 
       // if (enable_rob_timer_log) {
       //   std::cout << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
@@ -1328,6 +1334,7 @@ SubsecondTime RobTimer::doIssue()
       if (entry->uop->getRegDependenciesLength() == 0 &&
           !canIssue &&
           m_vec_reserved_allocation &&
+          m_vec_preload &&
           uop->getMicroOp()->isVecMem() && uop->getMicroOp()->isLoad() &&
           !uop->isPreloadDone()) {
          if (m_rob_contention->tryPreload()) {
@@ -1533,7 +1540,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         m_enable_o3 = false;
       }
 
-      if (m_enable_o3) {
+      if (m_enable_kanata) {
         m_konata_count ++;
       }
 
@@ -1617,20 +1624,27 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
 
          if (reg_index == 2 && !m_dispatch_fifo.empty()) {
-            RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
-            // waiting_entry->dispatched = now;
-            waiting_entry->uop->removeCommitDependency();
-            if (waiting_entry->uop->getDependenciesLength() == 0) {
-               waiting_entry->ready = now;
-            }
-            m_dispatch_fifo.pop();
-            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-               RobEntry *released_entry = findEntryBySequenceNumber(waiting_entry->uop->getSequenceNumber());
-               fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", released_entry->global_sequence_id, 0, "Ds"); // Dispatch
-            }
-            if (enable_rob_timer_log) {
-               printf("-- Reserve: seqId=%ld committed. Released FIFO. seqId=%ld\n", entry->uop->getSequenceNumber(), waiting_entry->uop->getSequenceNumber());
-            }
+            RobEntry *next_entry = NULL;
+            do {
+               RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
+               waiting_entry->dispatched = now;
+               waiting_entry->uop->removeCommitDependency();
+               // if (waiting_entry->uop->getDependenciesLength() == 0) {
+               //    waiting_entry->ready = now;
+               // }
+               m_dispatch_fifo.pop();
+               if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+                  RobEntry *released_entry = findEntryBySequenceNumber(waiting_entry->uop->getSequenceNumber());
+                  fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", released_entry->global_sequence_id, 0, "Ds"); // Dispatch
+               }
+               if (enable_rob_timer_log) {
+                  printf("-- Reserve: seqId=%ld committed. Released FIFO. seqId=%ld\n", entry->uop->getSequenceNumber(), waiting_entry->uop->getSequenceNumber());
+               }
+
+               if (!m_dispatch_fifo.empty()) {
+                  next_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
+               }
+            } while (!m_dispatch_fifo.empty() && !next_entry->uop->getMicroOp()->isFirst());
          } else {
             // Push Freelist
             m_phy_registers[reg_index].m_phy_list[entry->phy_reg_index].time = now;
@@ -1846,12 +1860,15 @@ void RobTimer::printRob()
       RobEntry *e = &rob.at(i);
 
       std::ostringstream state;
-      // if (i >= m_num_in_rob) state<<"PREROB ";
-      // else
       if (e->uop->hasCommitDependency()) {
-         state<<"DEPC "<< e->uop->getCommitDependency() << " ";
+         state << "WFIFO  ";
+      } else if (i >= m_num_in_rob) {
+         state << "PREROB ";
+      } else {
+         state << "       ";
       }
-      else if (e->done != SubsecondTime::MaxTime()) {
+
+      if (e->done != SubsecondTime::MaxTime()) {
          uint64_t cycles;
          if (e->done > now)
             cycles = SubsecondTime::divideRounded(e->done-now, now.getPeriod());
