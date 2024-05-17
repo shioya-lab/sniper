@@ -21,8 +21,10 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
          if (producerSequenceNumber >= lowestValidSequenceNumber)
          {
             for (uint64_t k = 0; k <= producerLength[sourceRegister]; k++) {
-               microOp.addDependency(producerSequenceNumber + k);
-               microOp.addRegDependency(producerSequenceNumber + k);
+               if (producerSequenceNumber < microOp.getSequenceNumber() - microOp.getMicroOp()->getTypeOffset()) {
+                  microOp.addDependency(producerSequenceNumber + k);
+                  microOp.addRegDependency(producerSequenceNumber + k);
+               }
             }
          }
          else

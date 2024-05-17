@@ -181,6 +181,8 @@ struct MicroOp
 
    void verify() const;
 
+   uint32_t getTypeOffset() const { return microOpTypeOffset; }
+
    uint32_t getSourceRegistersLength() const;
    dl::Decoder::decoder_reg getSourceRegister(uint32_t index) const;
    void addSourceRegister(dl::Decoder::decoder_reg registerId, const String& registerName);
