@@ -58,8 +58,8 @@ RobTimer::RobTimer(
       , last_store_done(SubsecondTime::Zero())
       , load_queue("rob_timer.load_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()))
       , store_queue("rob_timer.store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()))
-      , vec_load_queue("rob_timer.vec_load_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_loads", core->getId()))
-      , vec_store_queue("rob_timer.vec_store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_stores", core->getId()))
+      , vec_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_loads"))
+      , vec_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"))
       , nextSequenceNumber(0)
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
@@ -613,6 +613,21 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
+         // VLDQ full
+         if (uop.getMicroOp()->isVecLoad() && vec_load_queue == 0) {
+            if (enable_rob_timer_log) {
+               fprintf(stderr, "Vector Load Queue overflow\n");
+            }
+            break;
+         }
+
+         if (uop.getMicroOp()->isVecStore() && vec_store_queue == 0) {
+            if (enable_rob_timer_log) {
+               fprintf(stderr, "Vector Store Queue overflow\n");
+            }
+            break;
+         }
+
          // Dispatch up to 4 instructions
          if (uops_dispatched == dispatchWidth)
             break;
@@ -676,6 +691,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          entry->dispatched = now;
          ++m_num_in_rob;
          ++m_rs_entries_used;
+
+         if (uop.getMicroOp()->isVecLoad()) {
+            --vec_load_queue;
+         }
+         if (uop.getMicroOp()->isVecStore()) {
+            --vec_store_queue;
+         }
 
          switch (uop.getMicroOp()->getSubtype()) {
             case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
@@ -841,21 +863,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       // }
    }
 
-   if (uop.getMicroOp()->isLoad())
+   if (uop.getMicroOp()->isLoad() && !uop.getMicroOp()->isVector())
    {
-      if (uop.getMicroOp()->isVector()) {
-         vec_load_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
-      } else {
-         load_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
-      }
+      load_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
    }
-   else if (uop.getMicroOp()->isStore())
+   else if (uop.getMicroOp()->isStore() && !uop.getMicroOp()->isVector())
    {
-      if (uop.getMicroOp()->isVector()) {
-         vec_store_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
-      } else {
-         store_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
-      }
+      store_queue.getCompletionTime(now, uop.getExecLatency() * now.getPeriod(), uop.getAddress().address);
    }
 
    uint64_t additional_latency = uop.getVectorIssueMax() - 1;
@@ -1060,18 +1074,12 @@ SubsecondTime RobTimer::doIssue()
         std::cout << "  dispatch Width exceeded\n";
          canIssue = false;          // no issue contention: issue width == dispatch width
       }
-      else if (uop->getMicroOp()->isLoad() &&
-               ( (uop->getMicroOp()->isVector() && !vec_load_queue.hasFreeSlot(now)) ||
-                 (!uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now)))) {
+      else if (uop->getMicroOp()->isLoad() && !uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now)) {
+         // LDQ full
          if (enable_rob_timer_log) {
-            std::cout << "  load_queue.hasFreeSlot failed " << uop->getMicroOp()->toShortString() <<
-                         ", index = " << uop->getSequenceNumber() << '\n';
+            fprintf(stderr, "Scalar Load Queue overflow\n");
          }
-         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "LoadQueue full");
-         }
-         canIssue = false;          // load queue full
-
+         canIssue = false;
       } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
          if (enable_rob_timer_log) {
             std::cout << "  disambiguation" <<
@@ -1082,14 +1090,11 @@ SubsecondTime RobTimer::doIssue()
          }
          canIssue = false;          // preceding store with unknown address
       }
-      else if (uop->getMicroOp()->isStore() && (!head_of_queue ||
-                                                ( uop->getMicroOp()->isVector() && !vec_store_queue.hasFreeSlot(now)) ||
-                                                (!uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now))))
-      {
-         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "StoreQueue full");
+      else if (uop->getMicroOp()->isStore() && !uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now)) {
+         if (enable_rob_timer_log) {
+            fprintf(stderr, "Scalar Store Queue overflow\n");
          }
-         canIssue = false;          // store queue full
+         canIssue = false;
       }
       else
          canIssue = true;           // issue!
@@ -1599,6 +1604,14 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
            LOG_ASSERT_ERROR(false, "Not expected to this point");
       }
 
+      if (entry->uop->getMicroOp()->isVecLoad()) {
+         vec_load_queue++;
+      }
+      if (entry->uop->getMicroOp()->isVecStore()) {
+         vec_store_queue++;
+      }
+
+
       if (entry->uop->getMicroOp()->isVector() &&
           (entry->uop->getMicroOp()->isLoad() || entry->uop->getMicroOp()->isStore())) {
          if (enable_rob_timer_log) {
@@ -1853,7 +1866,7 @@ void RobTimer::printRob()
    }
    std::cout<<"   RS entries: "<<m_rs_entries_used<<std::endl;
    std::cout<<"   Outstanding loads: "<<load_queue.getNumUsed(now)<<"  stores: "<<store_queue.getNumUsed(now)<<std::endl;
-   std::cout<<"   Outstanding Vec loads: "<<vec_load_queue.getNumUsed(now)<<"  Vec stores: "<<vec_store_queue.getNumUsed(now)<<std::endl;
+   std::cout<<"   VLDQ entries remained: "<< vec_load_queue << "  VSTQ entries remained: "<< vec_store_queue << std::endl;
    for(unsigned int i = 0; i < rob.size(); ++i)
    {
       std::cout<<"   ["<<std::setw(3)<<i<<"]  ";
