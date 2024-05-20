@@ -16,12 +16,13 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
 
       uint64_t producerSequenceNumber;
       LOG_ASSERT_ERROR(sourceRegister < Sim()->getDecoder()->last_reg(), "Source register src[%u]=%u is invalid", i, sourceRegister);
+
       if ((producerSequenceNumber = producers[sourceRegister]) != INVALID_SEQNR)
       {
          if (producerSequenceNumber >= lowestValidSequenceNumber)
          {
             for (uint64_t k = 0; k <= producerLength[sourceRegister]; k++) {
-               if (producerSequenceNumber < microOp.getSequenceNumber() - microOp.getMicroOp()->getTypeOffset()) {
+               if (producerSequenceNumber < microOp.getSequenceNumber() - microOp.getMicroOpTypeOffset()) {
                   microOp.addDependency(producerSequenceNumber + k);
                   microOp.addRegDependency(producerSequenceNumber + k);
                }

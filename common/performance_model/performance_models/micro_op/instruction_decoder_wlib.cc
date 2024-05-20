@@ -75,10 +75,11 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
       {
          std::set<dl::Decoder::decoder_reg> regs;
          regs.insert(dec->mem_base_reg(ins, mem_idx));
-         regs.insert(dec->mem_index_reg(ins, mem_idx));
-
+         if (dec->has_index_reg (ins, mem_idx)) {
+           regs.insert(dec->mem_index_reg(ins, mem_idx));
+         }
          if (dec->op_read_mem(ins, mem_idx)) {
-           regs_loads.push_back(regs);
+            regs_loads.push_back(regs);
             memop_load_size.push_back(dec->size_mem_op(ins, mem_idx));
             numLoads++;
          }

@@ -429,7 +429,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
             // If producer is already done (but hasn't reached writeback stage), remove it from our dependency list
             deps_to_remove[num_dtr++] = entry->uop->getDependency(i);
             entry->readyMax = std::max(entry->readyMax, prodEntry->done);
-            LOG_ASSERT_ERROR(num_dtr < 128, "dependency list exceeds 8");
+            LOG_ASSERT_ERROR(num_dtr < 128, "dependency list exceeds 128");
          }
          else
          {
@@ -437,24 +437,22 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          }
       }
 
-      if (enable_rob_timer_log) {
-         // Make sure we are in the dependant list of all of our address producers
-         for(unsigned int i = 0; i < entry->getNumAddressProducers(); ++i)
-         {
-            if (rob.size() && entry->getAddressProducer(i) >= rob[0].uop->getSequenceNumber())
+      // Make sure we are in the dependant list of all of our address producers
+      for(unsigned int i = 0; i < entry->getNumAddressProducers(); ++i)
+      {
+        if (rob.size() && entry->getAddressProducer(i) >= rob[0].uop->getSequenceNumber())
+        {
+          RobEntry *prodEntry = this->findEntryBySequenceNumber(entry->getAddressProducer(i));
+          bool found = false;
+          for(unsigned int j = 0; j < prodEntry->getNumDependants(); ++j)
+            if (prodEntry->getDependant(j) == entry)
             {
-               RobEntry *prodEntry = this->findEntryBySequenceNumber(entry->getAddressProducer(i));
-               bool found = false;
-               for(unsigned int j = 0; j < prodEntry->getNumDependants(); ++j)
-                  if (prodEntry->getDependant(j) == entry)
-                  {
-                     found = true;
-                     break;
-                  }
-               LOG_ASSERT_ERROR(found == true, "Store %ld depends on %ld for address production, but is not in its dependants list",
-                                entry->uop->getSequenceNumber(), prodEntry->uop->getSequenceNumber());
+              found = true;
+              break;
             }
-         }
+          LOG_ASSERT_ERROR(found == true, "Store %ld depends on %ld for address production, but is not in its dependants list",
+                           entry->uop->getSequenceNumber(), prodEntry->uop->getSequenceNumber());
+        }
       }
 
       if (minProducerDistance != UINT64_MAX)
