@@ -236,6 +236,10 @@ RobTimer::RobTimer(
    m_phy_registers[2].m_phy_list = std::vector<phy_t>(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/vec_physical_registers", core->getId())-32);
    m_phy_registers[2].m_phyreg_max_usage = 32;
 
+   for (auto &regs : m_vec_wfifo_registers) {
+      regs = false;
+   }
+
    registerStatsMetric("rob_timer", core->getId(), "int_phyreg_max_usage",   &(m_phy_registers[0].m_phyreg_max_usage));
    registerStatsMetric("rob_timer", core->getId(), "float_phyreg_max_usage", &(m_phy_registers[1].m_phyreg_max_usage));
    registerStatsMetric("rob_timer", core->getId(), "vect_phyreg_max_usage",  &(m_phy_registers[2].m_phyreg_max_usage));
@@ -684,7 +688,6 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
            }
          }
 
-
          entry->fetch = missed_icache;
          entry->dispatched = now;
          ++m_num_in_rob;
@@ -1099,7 +1102,13 @@ SubsecondTime RobTimer::doIssue()
 
 
       if (uop->hasCommitDependency()) {
-         canIssue = false;
+         if (canIssue &&
+             uop->getCommitDependency() == DynamicMicroOp::wfifo_t::REGDEP &&
+             uop->getSequenceNumber() == m_dispatch_fifo.front()) {
+            m_dispatch_fifo.pop();
+         } else {
+            canIssue = false;
+         }
       }
 
       // if (enable_rob_timer_log) {
@@ -1638,11 +1647,18 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
             RobEntry *next_entry = NULL;
             do {
                RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
+               LOG_ASSERT_ERROR (waiting_entry->uop->hasCommitDependency(), "waiting fifo instruction should be set as commit Dependency");
+
                waiting_entry->dispatched = now;
                waiting_entry->uop->removeCommitDependency();
-               // if (waiting_entry->uop->getDependenciesLength() == 0) {
-               //    waiting_entry->ready = now;
-               // }
+
+               if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
+                  LOG_ASSERT_ERROR (waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0, "PHYREG dependency instruction need to have one more destination");
+                  dl::Decoder::decoder_reg dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegister(0);
+                  if (dec->is_reg_vector(dest_reg)){
+                     m_vec_wfifo_registers[dest_reg - 64] = false;
+                  }
+               }
                m_dispatch_fifo.pop();
                if (m_enable_kanata && m_konata_count < m_konata_count_max) {
                   RobEntry *released_entry = findEntryBySequenceNumber(waiting_entry->uop->getSequenceNumber());
@@ -1871,12 +1887,16 @@ void RobTimer::printRob()
       RobEntry *e = &rob.at(i);
 
       std::ostringstream state;
-      if (e->uop->hasCommitDependency()) {
-         state << "WFIFO  ";
+      if (e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
+         state << "WFIFO(PR) ";
+      } else if (e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::REGDEP) {
+         state << "WFIFO(RD) ";
+      } else if (e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::SQ) {
+         state << "WFIFO(SQ) ";
       } else if (i >= m_num_in_rob) {
-         state << "PREROB ";
+         state << "PREROB    ";
       } else {
-         state << "       ";
+         state << "          ";
       }
 
       if (e->done != SubsecondTime::MaxTime()) {
@@ -2133,70 +2153,27 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       // ここに到達したということは、ベクトル命令のベクトル資源が枯渇したことを意味するので、FIFOに格納する。
       if (m_dispatch_fifo.size() < 128) {
          m_dispatch_fifo.push(uop->getSequenceNumber());
-         uop->addCommitDependency (0);
+         uop->setCommitDependency (DynamicMicroOp::wfifo_t::PHYREG);
+         // Set Vector Register Dependent waiting list
+         m_vec_wfifo_registers[dest_reg - 64] = true;
+
          entry->phy_reg_index = 0;
          return true;
       } else {
          return false;
       }
+   } else {
+      for(unsigned int i = 0; i < uop->getMicroOp()->getSourceRegistersLength(); ++i) {
+         dl::Decoder *dec = Sim()->getDecoder();
+         dl::Decoder::decoder_reg sourceRegister = uop->getMicroOp()->getSourceRegister(i);
+         if (dec->is_reg_vector(sourceRegister) &&
+             m_vec_wfifo_registers[sourceRegister - 64]) {
+            m_dispatch_fifo.push(uop->getSequenceNumber());
+            uop->setCommitDependency (DynamicMicroOp::wfifo_t::REGDEP);
 
-      // ここから先は使用しない
-
-      // auto it = m_phy_registers[reg_index].m_phy_list.begin();
-      // for (size_t i = 0; it < m_phy_registers[reg_index].m_phy_list.end(); i++, it++) {
-      //    if (it->time < now) {
-      //       // Find unused Physical Register Entry
-      //       it->time = SubsecondTime::MaxTime();
-      //       entry->phy_reg_index = i;
-      //
-      //       if (enable_rob_timer_log) {
-      //          printf("-- Reserve: seqId=%ld(rob_index=%ld), Destination Register poped. freelist[%ld]\n",
-      //                 uop->getSequenceNumber(),
-      //                 rob_idx,
-      //                 i);
-      //       }
-      //       break;
-      //    }
-      // }
-      // if (it == m_phy_registers[reg_index].m_phy_list.end()) {
-      //    // Not found available Physical Register
-      //    if (m_rmt[reg_index][dest_reg - reg_base] < rob.at(0).uop->getSequenceNumber()) {
-      //       if (enable_rob_timer_log) {
-      //          printf("-- Reserve: seqId=%ld(rob_index=%ld), freelist become empty. From seqId=%ld. It can't be get reserved register\n",
-      //                 uop->getSequenceNumber(),
-      //                 rob_idx,
-      //                 m_rmt[reg_index][dest_reg - reg_base]);
-      //       }
-      //       return false;
-      //    }
-      //
-      //    RobEntry *prodEntry = this->findEntryBySequenceNumber(m_rmt[reg_index][dest_reg - reg_base]);
-      //    // if (prodEntry->done == SubsecondTime::MaxTime()) {
-      //    uop->addCommitDependency (m_rmt[reg_index][dest_reg - reg_base]);
-      //    prodEntry->setCommitDependant(uop->getSequenceNumber());
-      //    entry->phy_reg_index = prodEntry->phy_reg_index;
-      //    // }
-      //    if (enable_rob_timer_log) {
-      //       printf("-- Reserve: seqId=%ld(rob_index=%ld), freelist become empty. reserve physical ID %ld from seqId=%ld\n",
-      //              uop->getSequenceNumber(),
-      //              rob_idx,
-      //              prodEntry->phy_reg_index,
-      //              prodEntry->uop->getSequenceNumber());
-      //    }
-      // }
-      //
-      // m_rmt[reg_index][dest_reg - reg_base] = uop->getSequenceNumber();
-      //
-      // // Statistics:
-      // //  Count inflight registers
-      // size_t inflight_phyregs_count = 0;
-      // for (auto it: m_phy_registers[reg_index].m_phy_list) {
-      //    if (it.time == SubsecondTime::MaxTime()) {
-      //       inflight_phyregs_count++;
-      //    }
-      // }
-      // m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
-      //                                                          inflight_phyregs_count) + 32;
+            return true;
+         }
+      }
    }
 
    return true;

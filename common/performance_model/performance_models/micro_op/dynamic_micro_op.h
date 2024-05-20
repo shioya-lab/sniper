@@ -49,7 +49,16 @@ class DynamicMicroOp
       uint64_t reg_dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
 
       /** These dependencies are released only when target instruction is committed. */
-      uint64_t  commitDependency;
+  public:
+      enum wfifo_t
+      {
+         NONE,
+         PHYREG,
+         REGDEP,
+         SQ
+      };
+  private:
+      wfifo_t m_wfifo_wait_reason;
 
       /** The latency of the instruction. */
       uint32_t execLatency;
@@ -125,10 +134,10 @@ class DynamicMicroOp
       uint64_t getRegDependency(uint32_t index) const { return dependencies[index]; }
       uint32_t getRegDependenciesLength() const { return this->regDependenciesLength; }
 
-      void addCommitDependency(uint64_t sequenceNumber) { commitDependency = sequenceNumber; }
-      uint64_t getCommitDependency() { return commitDependency; }
-      void removeCommitDependency() { commitDependency = UINT64_MAX; }
-      bool hasCommitDependency() { return commitDependency != UINT64_MAX; }
+   void setCommitDependency(wfifo_t reason) { m_wfifo_wait_reason = reason; }
+   void removeCommitDependency() { m_wfifo_wait_reason = wfifo_t::NONE; }
+   bool hasCommitDependency() { return m_wfifo_wait_reason != wfifo_t::NONE; }
+   wfifo_t getCommitDependency() { return m_wfifo_wait_reason; }
 
       uint32_t getIntraInstrDependenciesLength() const { return this->intraInstructionDependencies; }
       void setIntraInstrDependenciesLength(uint32_t deps) { intraInstructionDependencies = deps;}

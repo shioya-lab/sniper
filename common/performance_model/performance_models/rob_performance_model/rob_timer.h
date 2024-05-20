@@ -233,6 +233,7 @@ private:
    std::vector<phy_list_t> m_phy_registers{3};  // 3-types of registers defined: Int/Float/Vector
    // UInt64 m_rmt[3][32];                         // Rename Map Table for 3-types of registers
    std::queue<UInt64> m_dispatch_fifo;
+   bool m_vec_wfifo_registers[32];
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
 
