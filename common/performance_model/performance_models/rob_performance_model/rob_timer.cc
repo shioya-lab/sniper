@@ -199,6 +199,7 @@ RobTimer::RobTimer(
    m_enable_o3 = false;
    m_enable_kanata = false;
    m_last_kanata_time = SubsecondTime::Zero();
+   m_kanata_generated_in_this_region = false;
    m_vsetvl_producer = 0;
 
    m_alu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/alu_window_size", core->getId());
@@ -749,6 +750,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
            } else {
               fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
            }
+           m_kanata_generated_in_this_region = true;
            // fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", uop->getSequenceNumber(), 0, "F");
          }
 
@@ -917,6 +919,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
    if (m_enable_kanata && m_konata_count < m_konata_count_max && entry->kanata_registered) {
      fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "X");
+     m_kanata_generated_in_this_region = true;
    }
 
    next_event = std::min(next_event, entry->done);
@@ -1088,6 +1091,7 @@ SubsecondTime RobTimer::doIssue()
          }
          if (m_enable_kanata && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "disambiguation failed");
+            m_kanata_generated_in_this_region = true;
          }
          canIssue = false;          // preceding store with unknown address
       }
@@ -1216,9 +1220,9 @@ SubsecondTime RobTimer::doIssue()
                               uop->getMicroOp()->toShortString().c_str(),
                               uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
                   }
-                  if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-                     fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, bank conflict");
-                  }
+                  // if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+                  //    fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, bank conflict");
+                  // }
                }
 
                m_bank_info[bank_index] = banked_cache_line;
@@ -1227,9 +1231,9 @@ SubsecondTime RobTimer::doIssue()
             if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
               canIssue = false;
             }
-            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
-            }
+            // if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            //    fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
+            // }
             if (canIssue) {
               if (uop->getMicroOp()->isLoad()) {
                 m_VtoS_RdRequests ++;
@@ -1241,6 +1245,7 @@ SubsecondTime RobTimer::doIssue()
       } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
          if (m_enable_kanata && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector inorder, wait");
+            m_kanata_generated_in_this_region = true;
          }
          canIssue = false;
       }
@@ -1337,6 +1342,7 @@ SubsecondTime RobTimer::doIssue()
             }
             if (m_enable_kanata && m_konata_count < m_konata_count_max) {
                fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "WAW wait");
+               m_kanata_generated_in_this_region = true;
             }
             canIssue = false;
          }
@@ -1369,6 +1375,7 @@ SubsecondTime RobTimer::doIssue()
             canIssue = false;
             if (m_enable_kanata && m_konata_count < m_konata_count_max) {
                fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Late binding failed to allocate");
+               m_kanata_generated_in_this_region = true;
             }
          }
       }
@@ -1588,6 +1595,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (m_enable_kanata && m_konata_count < m_konata_count_max && entry->kanata_registered) {
         fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
         fprintf(m_core->getKanataFp(), "R\t%ld\t%ld\t%d\n", entry->global_sequence_id, entry->uop->getSequenceNumber(), 0);
+        m_kanata_generated_in_this_region = true;
       }
 
       switch (entry->uop->getMicroOp()->getSubtype()) {
@@ -1663,6 +1671,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                if (m_enable_kanata && m_konata_count < m_konata_count_max) {
                   RobEntry *released_entry = findEntryBySequenceNumber(waiting_entry->uop->getSequenceNumber());
                   fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", released_entry->global_sequence_id, 0, "Ds"); // Dispatch
+                  m_kanata_generated_in_this_region = true;
                }
                if (enable_rob_timer_log) {
                   printf("-- Reserve: seqId=%ld committed. Released FIFO. seqId=%ld\n", entry->uop->getSequenceNumber(), waiting_entry->uop->getSequenceNumber());
@@ -1743,9 +1752,10 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    }
 
    if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-     if (m_last_kanata_time != now) {
+     if (m_kanata_generated_in_this_region && m_last_kanata_time != now) {
        fprintf(m_core->getKanataFp(), "C\t%ld\n", SubsecondTime::divideRounded(now - m_last_kanata_time, now.getPeriod()));
        m_last_kanata_time = now;
+       m_kanata_generated_in_this_region = false;
      }
    }
 
@@ -1784,8 +1794,10 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%08lx:%s\n", e->global_sequence_id, 0,
                    uop->getMicroOp()->getInstruction()->getAddress(),
                    uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+           m_kanata_generated_in_this_region = true;
          } else {
            fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", e->global_sequence_id, 0, "X");
+           m_kanata_generated_in_this_region = true;
          }
           m_konata_count++;
        }
@@ -2017,6 +2029,7 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
          if (m_enable_kanata && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAddress=%08lx\n", entry->global_sequence_id, 1, uop.getAddress().address);
+            m_kanata_generated_in_this_region = true;
          }
 
          m_preload_count ++;

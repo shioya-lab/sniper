@@ -87,6 +87,7 @@ private:
    bool m_enable_o3;
    bool m_enable_kanata;
    SubsecondTime m_last_kanata_time;
+   bool m_kanata_generated_in_this_region;
 
    // When getMemAccessMerge=true, use this value
    uint64_t m_previous_latency;
