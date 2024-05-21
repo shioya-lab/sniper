@@ -1106,9 +1106,19 @@ SubsecondTime RobTimer::doIssue()
 
 
       if (uop->hasCommitDependency()) {
+        LOG_ASSERT_ERROR (m_dispatch_fifo.size() > 0, "Uop=%ld has commit dependency, but fifo is empty", uop->getSequenceNumber());
+        // fprintf (stderr, "uopId=%ld, canIssue=%d, type=%d",
+        //          uop->getSequenceNumber(), canIssue, uop->getCommitDependency());
+        // if (m_dispatch_fifo.size() > 0) {
+        //   fprintf (stderr, ", dispatch FIFO=%ld\n",
+        //            m_dispatch_fifo.front());
+        // } else {
+        //   fprintf (stderr, "\n");
+        // }
          if (canIssue &&
              uop->getCommitDependency() == DynamicMicroOp::wfifo_t::REGDEP &&
              uop->getSequenceNumber() == m_dispatch_fifo.front()) {
+            uop->removeCommitDependency();
             m_dispatch_fifo.pop();
          } else {
             canIssue = false;
@@ -2165,6 +2175,9 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
 
       // ここに到達したということは、ベクトル命令のベクトル資源が枯渇したことを意味するので、FIFOに格納する。
       if (m_dispatch_fifo.size() < 128) {
+         if (m_dispatch_fifo.size() > 0) {
+           LOG_ASSERT_ERROR(m_dispatch_fifo.back() < uop->getSequenceNumber(), "0. inserted FIFO age should be larger than last entry");
+         }
          m_dispatch_fifo.push(uop->getSequenceNumber());
          uop->setCommitDependency (DynamicMicroOp::wfifo_t::PHYREG);
          // Set Vector Register Dependent waiting list
@@ -2181,10 +2194,16 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
          dl::Decoder::decoder_reg sourceRegister = uop->getMicroOp()->getSourceRegister(i);
          if (dec->is_reg_vector(sourceRegister) &&
              m_vec_wfifo_registers[sourceRegister - 64]) {
-            m_dispatch_fifo.push(uop->getSequenceNumber());
-            uop->setCommitDependency (DynamicMicroOp::wfifo_t::REGDEP);
-
-            return true;
+            if (m_dispatch_fifo.size() < 128) {
+              if (m_dispatch_fifo.size() > 0) {
+                LOG_ASSERT_ERROR(m_dispatch_fifo.back() < uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
+              }
+              m_dispatch_fifo.push(uop->getSequenceNumber());
+              uop->setCommitDependency (DynamicMicroOp::wfifo_t::REGDEP);
+              return true;
+            } else {
+              return false;
+            }
          }
       }
    }
