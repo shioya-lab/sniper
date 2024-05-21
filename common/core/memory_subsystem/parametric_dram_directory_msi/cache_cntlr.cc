@@ -920,13 +920,13 @@ CacheCntlr::doPrefetch(IntPtr prefetch_address, SubsecondTime t_start)
    getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_start); // Start the prefetch at the same time as the original miss
    HitWhere::where_t hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
 
-   if (m_enable_kanata_log) {
-      uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
-   }
+   // if (m_enable_kanata_log) {
+   //    uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
+   // }
 
    // Update Access History
    if (true /* m_roi_started*/) {
