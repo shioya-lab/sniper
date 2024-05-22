@@ -345,6 +345,9 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
    uint64_t totalInsnExec = 0;
    SubsecondTime totalLat = SubsecondTime::Zero();
 
+   // Deadlock possibility check
+   LOG_ASSERT_ERROR (now.getElapsedTime().getNS() - m_last_committed_time.getNS() < 10000, "Execution DEADLOCKED?");
+
    for (std::vector<DynamicMicroOp*>::const_iterator it = insts.begin(); it != insts.end(); it++ )
    {
       if ((*it)->isSquashed())
@@ -1503,6 +1506,11 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (entry->uop->isLast())
          instructionsExecuted++;
+
+      if (entry->uop->getSequenceNumber() != 0 && entry->uop->getSequenceNumber() % 10000 == 0) {
+         fprintf (stderr, "inst exec %ld\n", entry->uop->getSequenceNumber());
+      }
+      m_last_committed_time = now;
 
       Instruction *inst = entry->uop->getMicroOp()->getInstruction();
       if (cycle_activated &&

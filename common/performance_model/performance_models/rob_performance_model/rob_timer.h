@@ -242,6 +242,9 @@ private:
    uint64_t m_full_dispatch_stall_count;
 
    uint64_t m_preload_count;
+
+   SubsecondTime m_last_committed_time;
+
 public:
 
    RobTimer(Core *core, PerformanceModel *perf, const CoreModel *core_model, int misprediction_penalty, int dispatch_width, int window_size);
