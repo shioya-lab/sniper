@@ -253,6 +253,7 @@ void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
    addressReady = SubsecondTime::MaxTime();
    addressReadyMax = SubsecondTime::Zero();
    issued = SubsecondTime::MaxTime();
+   forwardable = SubsecondTime::MaxTime();
    done = SubsecondTime::MaxTime();
 
    uop = _uop;
@@ -348,8 +349,8 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
             if (addressProducer != INVALID_SEQNR)
             {
                RobEntry *prodEntry = this->findEntryBySequenceNumber(addressProducer);
-               if (prodEntry->done != SubsecondTime::MaxTime())
-                  entry->addressReadyMax = std::max(entry->addressReadyMax, prodEntry->done);
+               if (prodEntry->forwardable != SubsecondTime::MaxTime())
+                  entry->addressReadyMax = std::max(entry->addressReadyMax, prodEntry->forwardable);
                else
                   entry->addAddressProducer(addressProducer);
             }
@@ -395,11 +396,11 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       {
          RobEntry *prodEntry = this->findEntryBySequenceNumber(entry->uop->getDependency(i));
          minProducerDistance = std::min( minProducerDistance,  entry->uop->getSequenceNumber() - prodEntry->uop->getSequenceNumber() );
-         if (prodEntry->done != SubsecondTime::MaxTime())
+         if (prodEntry->forwardable != SubsecondTime::MaxTime())
          {
             // If producer is already done (but hasn't reached writeback stage), remove it from our dependency list
             deps_to_remove[num_dtr++] = entry->uop->getDependency(i);
-            entry->readyMax = std::max(entry->readyMax, prodEntry->done);
+            entry->readyMax = std::max(entry->readyMax, prodEntry->forwardable);
          }
          else
          {
@@ -822,6 +823,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       m_rob_contention->doIssue(uop);
 
    entry->issued = now;
+   entry->forwardable = cycle_depend;
    entry->done = cycle_done;
 
    startKanataStage(*entry, "X");
@@ -887,7 +889,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                depEntry->addressReadyMax = std::max(depEntry->addressReadyMax, cycle_depend.getElapsedTime());
             }
 
-            if (prodEntry && prodEntry->done == SubsecondTime::MaxTime())
+            if (prodEntry && prodEntry->forwardable == SubsecondTime::MaxTime())
             {
                // An address producer has not yet been issued: address remains not ready
                ready = false;
@@ -1537,13 +1539,11 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
    for (uint64_t i = 0; i < m_num_in_rob; ++i)
    {
       auto& entry = rob.at(i);
-      auto executed = entry.uop->getMicroOp()->isStore() ?
-                      entry.done : entry.done - now.getPeriod();
 
-      if (executed <= now)
+      if (entry.forwardable <= now)
          startKanataStage(entry, "Cm");
-      else if (executed < next_event)
-         next_event = executed;
+      else if (entry.forwardable < next_event)
+         next_event = entry.forwardable;
    }
 
    return next_event;

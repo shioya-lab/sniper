@@ -45,6 +45,7 @@ private:
          SubsecondTime addressReady;
          SubsecondTime addressReadyMax;
          SubsecondTime issued;
+         SubsecondTime forwardable;
          SubsecondTime done;
 
          bool kanata_registered;  // Indicate Kanata Format Instruction Registered
