@@ -75,7 +75,6 @@ RobTimer::RobTimer(
       , m_cpiCurrentFrontEndStall(NULL)
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
-      , m_vec_late_phyreg_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/late_phyreg_allocation", core->getId()))
       , m_vec_reserved_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/reserved_allocation", core->getId()))
 {
 
@@ -230,20 +229,22 @@ RobTimer::RobTimer(
    assert((m_ooo_check_region != 0) && !(m_ooo_check_region & (m_ooo_check_region - 1)));
    registerStatsMetric("rob_timer", core->getId(), "ooo_reorder_count", &m_ooo_region_count);
 
-   m_phy_registers[0].m_phy_list = std::vector<phy_t>(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/int_physical_registers", core->getId())-32);
-   m_phy_registers[0].m_phyreg_max_usage = 32;
-   m_phy_registers[1].m_phy_list = std::vector<phy_t>(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/float_physical_registers", core->getId())-32);
-   m_phy_registers[1].m_phyreg_max_usage = 32;
-   m_phy_registers[2].m_phy_list = std::vector<phy_t>(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/vec_physical_registers", core->getId())-32);
-   m_phy_registers[2].m_phyreg_max_usage = 32;
-
+   m_phy_registers[0] = 32;
+   m_phy_registers[1] = 32;
+   m_phy_registers[2] = 32;
+   m_max_phy_registers[0] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/int_physical_registers"  );
+   m_max_phy_registers[1] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/float_physical_registers");
+   m_max_phy_registers[2] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_physical_registers"  );
+   m_maxusage_phy_registers[0] = 32;
+   m_maxusage_phy_registers[1] = 32;
+   m_maxusage_phy_registers[2] = 32;
    for (auto &regs : m_vec_wfifo_registers) {
       regs = false;
    }
 
-   registerStatsMetric("rob_timer", core->getId(), "int_phyreg_max_usage",   &(m_phy_registers[0].m_phyreg_max_usage));
-   registerStatsMetric("rob_timer", core->getId(), "float_phyreg_max_usage", &(m_phy_registers[1].m_phyreg_max_usage));
-   registerStatsMetric("rob_timer", core->getId(), "vect_phyreg_max_usage",  &(m_phy_registers[2].m_phyreg_max_usage));
+   registerStatsMetric("rob_timer", core->getId(), "int_phyreg_max_usage",   &(m_maxusage_phy_registers[0]));
+   registerStatsMetric("rob_timer", core->getId(), "float_phyreg_max_usage", &(m_maxusage_phy_registers[1]));
+   registerStatsMetric("rob_timer", core->getId(), "vect_phyreg_max_usage",  &(m_maxusage_phy_registers[2]));
    // LOG_ASSERT_ERROR(m_freelist >= 0, "Number of physical register should be larger than 32");
 
    registerStatsMetric("rob_timer", core->getId(), "phyreg_late_bind_flush_count"    , &m_late_bind_flush_count);
@@ -259,9 +260,9 @@ RobTimer::~RobTimer()
 {
    for(Rob::iterator it = this->rob.begin(); it != this->rob.end(); ++it)
       it->free();
-   std::cout << "Maximum usage of Integer physical registers = " << (m_phy_registers[0].m_phyreg_max_usage + 32)<< '\n';
-   std::cout << "Maximum usage of Float   physical registers = " << (m_phy_registers[1].m_phyreg_max_usage + 32)<< '\n';
-   std::cout << "Maximum usage of Vector  physical registers = " << (m_phy_registers[2].m_phyreg_max_usage + 32)<< '\n';
+   std::cout << "Maximum usage of Integer physical registers = " << m_maxusage_phy_registers[0] << '\n';
+   std::cout << "Maximum usage of Float   physical registers = " << m_maxusage_phy_registers[1] << '\n';
+   std::cout << "Maximum usage of Vector  physical registers = " << m_maxusage_phy_registers[2] << '\n';
 }
 
 void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
@@ -676,17 +677,8 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
-         if (!vector_inorder && m_vec_reserved_allocation) {
-            if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
-               break;
-            }
-         } else if (!vector_inorder && !m_vec_late_phyreg_allocation) {
-            // When phy register are not remained,
-            // return false --> break dispatch
-            if (!UpdateNormalBindPhyRegAllocation(m_num_in_rob)) {
-               m_full_dispatch_stall_count++;
-               break;
-           }
+         if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
+            break;
          }
 
          entry->fetch = missed_icache;
@@ -1016,8 +1008,6 @@ SubsecondTime RobTimer::doIssue()
    if (m_rob_contention)
       m_rob_contention->initCycle(now);
 
-   int64_t last_vec_issued_idx = -1;
-   int64_t issued_vec_mem = 0;
    bool inhead_vector_existed = false;
    bool inhead_vecmem_existed = false;
 
@@ -1345,19 +1335,6 @@ SubsecondTime RobTimer::doIssue()
          canIssue = false;          // blocked by structural hazard
       }
 
-      if (canIssue && vector_inorder) {
-         if (!UpdateArchRegWAW(i)) {
-            if (enable_rob_timer_log) {
-               fprintf(stderr, "Vector Inorder WAW hazard. Stalled\n");
-            }
-            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "WAW wait");
-               m_kanata_generated_in_this_region = true;
-            }
-            canIssue = false;
-         }
-      }
-
       // If Vector and can't be issued, try to preload
       if (entry->uop->getRegDependenciesLength() == 0 &&
           !canIssue &&
@@ -1376,17 +1353,6 @@ SubsecondTime RobTimer::doIssue()
          //         ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
          //         "\n";
          //   }
-         }
-      }
-
-      // bool phyreg_allocate_failed = false;
-      if (canIssue && m_vec_late_phyreg_allocation && uop->getMicroOp()->isFirst()) {
-         if (!UpdateLateBindPhyRegAllocation(i)) {
-            canIssue = false;
-            if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Late binding failed to allocate");
-               m_kanata_generated_in_this_region = true;
-            }
          }
       }
 
@@ -1647,7 +1613,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          m_latest_vecmem_commit_time = times.commit;
       }
 
-      if (entry->uop->getMicroOp()->getDestinationRegistersLength() != 0) {
+      if (entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 && entry->uop->isLast()) {
          size_t reg_index;
          dl::Decoder *dec = Sim()->getDecoder();
          if (dec->is_reg_int(entry->uop->getMicroOp()->getDestinationRegister(0))) {
@@ -1663,37 +1629,59 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
          if (reg_index == 2 && !m_dispatch_fifo.empty()) {
             RobEntry *next_entry = NULL;
+            bool register_is_transferred = false;
             do {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
-               LOG_ASSERT_ERROR (waiting_entry->uop->hasCommitDependency(), "waiting fifo instruction should be set as commit Dependency");
+               while (!m_dispatch_fifo.empty()) {
+                  RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
+                  LOG_ASSERT_ERROR (waiting_entry->uop->hasCommitDependency(), "waiting fifo instruction should be set as commit Dependency");
 
-               waiting_entry->dispatched = now;
-               waiting_entry->uop->removeCommitDependency();
-
-               if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
-                  LOG_ASSERT_ERROR (waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0, "PHYREG dependency instruction need to have one more destination");
-                  dl::Decoder::decoder_reg dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegister(0);
-                  if (dec->is_reg_vector(dest_reg)){
-                     m_vec_wfifo_registers[dest_reg - 64] = false;
+                  m_dispatch_fifo.pop();
+                  // waiting_entry->dispatched = now;
+                  if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
+                     waiting_entry->uop->removeCommitDependency();
+                     LOG_ASSERT_ERROR (waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0,
+                                       "PHYREG dependency instruction need to have one more destination");
+                     dl::Decoder::decoder_reg dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegister(0);
+                     if (dec->is_reg_vector(dest_reg)){
+                        m_vec_wfifo_registers[dest_reg - 64] = false;
+                        register_is_transferred = true;
+                     }
+                     if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+                        fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", waiting_entry->global_sequence_id, 0, "Ds"); // Dispatch
+                        m_kanata_generated_in_this_region = true;
+                     }
+                     if (enable_rob_timer_log) {
+                        printf("-- Reserve: seqId=%ld committed. Released FIFO. seqId=%ld\n", entry->uop->getSequenceNumber(), waiting_entry->uop->getSequenceNumber());
+                     }
+                     break;
+                  } else {
+                     waiting_entry->uop->removeCommitDependency();
                   }
-               }
-               m_dispatch_fifo.pop();
-               if (m_enable_kanata && m_konata_count < m_konata_count_max) {
-                  RobEntry *released_entry = findEntryBySequenceNumber(waiting_entry->uop->getSequenceNumber());
-                  fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", released_entry->global_sequence_id, 0, "Ds"); // Dispatch
-                  m_kanata_generated_in_this_region = true;
-               }
-               if (enable_rob_timer_log) {
-                  printf("-- Reserve: seqId=%ld committed. Released FIFO. seqId=%ld\n", entry->uop->getSequenceNumber(), waiting_entry->uop->getSequenceNumber());
                }
 
                if (!m_dispatch_fifo.empty()) {
                   next_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
                }
             } while (!m_dispatch_fifo.empty() && !next_entry->uop->getMicroOp()->isFirst());
+
+            if (!register_is_transferred) {
+               // Push Freelist
+               // Very temporary: prevent becoming less than 32
+               // if (--m_phy_registers[reg_index] < 32) {
+               //    m_phy_registers[reg_index] = 32;
+               // }
+               --m_phy_registers[reg_index];
+               LOG_ASSERT_ERROR(m_phy_registers[reg_index] >= 32, "register usage become less than 32.");
+            }
          } else {
             // Push Freelist
-            m_phy_registers[reg_index].m_phy_list[entry->phy_reg_index].time = now;
+            // Very temporary: prevent becoming less than 32
+            // if (--m_phy_registers[reg_index] < 32) {
+            //    m_phy_registers[reg_index] = 32;
+            // }
+            --m_phy_registers[reg_index];
+            LOG_ASSERT_ERROR(m_phy_registers[reg_index] >= 32, "register usage become less than 32.");
+
             if (enable_rob_timer_log) {
                printf("-- Destination Register pushed. seqId=%ld(rob_index=0), %s freelist[%ld]<-%ld\n",
                       entry->uop->getSequenceNumber(),
@@ -1702,33 +1690,6 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                       SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
             }
          }
-
-         // if (m_vec_reserved_allocation) {
-         //    UInt64 dependant_sequenceNumber;
-         //    if ((dependant_sequenceNumber = entry->getCommitDependant()) != 0) {
-         //       if (enable_rob_timer_log) {
-         //          printf("-- Reserve: seqId=%ld committed. Released dependant. seqId=%ld\n", entry->uop->getSequenceNumber(), dependant_sequenceNumber);
-         //       }
-         //       RobEntry *dependantEntry = this->findEntryBySequenceNumber(dependant_sequenceNumber);
-         //       dependantEntry->uop->removeCommitDependency();
-         //       if (dependantEntry->uop->getDependenciesLength() == 0) {
-         //          dependantEntry->ready = dependantEntry->readyMax;
-         //       }
-         //       allow_push = false;
-         //    }
-         // }
-         //
-         // if (allow_push) {
-         //    // Push Freelist
-         //    m_phy_registers[reg_index].m_phy_list[entry->phy_reg_index].time = now;
-         //    if (enable_rob_timer_log) {
-         //        printf("-- Destination Register pushed. seqId=%ld(rob_index=0), %s freelist[%ld]<-%ld\n",
-         //             entry->uop->getSequenceNumber(),
-         //             reg_index == 0 ? "Integer" : reg_index == 1 ? "Float" : "Vector",
-         //             entry->phy_reg_index,
-         //             SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()));
-         //    }
-         // }
       }
 
       entry->free();
@@ -1900,6 +1861,11 @@ void RobTimer::printRob()
          std::cout << ", in I-cache miss";
       std::cout<<std::endl;
    }
+
+   std::cout<<"   Int Regs  : "<< std::dec << m_phy_registers[0] << std::endl;
+   std::cout<<"   Float Regs: "<< std::dec << m_phy_registers[1] << std::endl;
+   std::cout<<"   Vec Regs  : "<< std::dec << m_phy_registers[2] << std::endl;
+   std::cout<<"   WFIFO entries: "<< m_dispatch_fifo.size() << ", head=" << m_dispatch_fifo.front() << std::endl;
    std::cout<<"   RS entries: "<<m_rs_entries_used<<std::endl;
    std::cout<<"   Outstanding loads: "<<load_queue.getNumUsed(now)<<"  stores: "<<store_queue.getNumUsed(now)<<std::endl;
    std::cout<<"   VLDQ entries remained: "<< vec_load_queue << "  VSTQ entries remained: "<< vec_store_queue << std::endl;
@@ -1954,9 +1920,9 @@ void RobTimer::printRob()
          std::cout<<"STORE     ";
       else
          std::cout<<"EXEC ("<<std::right<<std::setw(2)<<e->uop->getExecLatency()<<") ";
-      if (e->uop->getMicroOp()->isFirst()) {
+      if (e->uop->isFirst()) {
          std::cout<<"F";
-      } else if (e->uop->getMicroOp()->isLast()) {
+      } else if (e->uop->isLast()) {
          std::cout<<"L";
       } else {
          std::cout<<" ";
@@ -2085,25 +2051,7 @@ bool RobTimer::UpdateNormalBindPhyRegAllocation(uint64_t rob_idx)
       }
 
       // auto it = m_phy_registers[reg_index].m_phy_list.begin();
-      size_t phy_reg_index = 0;
-      for (phy_reg_index = 0; phy_reg_index < m_phy_registers[reg_index].m_phy_list.size(); phy_reg_index++) {
-        if (m_phy_registers[reg_index].m_phy_list[phy_reg_index].time < now) {
-           if (enable_rob_timer_log) {
-               printf("-- Normal: seqId=%ld(rob_index=%ld), Destination Register poped. freelist[%ld].time=%ld\n",
-                      uop->getSequenceNumber(),
-                      rob_idx,
-                      phy_reg_index,
-                      SubsecondTime::divideRounded(m_phy_registers[reg_index].m_phy_list[phy_reg_index].time, m_core->getDvfsDomain()->getPeriod())
-                      );
-           }
-
-           // Find unused Physical Register Entry
-           m_phy_registers[reg_index].m_phy_list[phy_reg_index].time = SubsecondTime::MaxTime();
-           entry->phy_reg_index = phy_reg_index;
-           break;
-        }
-      }
-      if (phy_reg_index == m_phy_registers[reg_index].m_phy_list.size()) {
+      if (m_phy_registers[reg_index] >= m_max_phy_registers[reg_index]) {
         // Not found available Physical Register
         if (enable_rob_timer_log) {
           printf("-- Normal: seqId=%ld(rob_index=%ld), freelist become empty.\n",
@@ -2112,17 +2060,8 @@ bool RobTimer::UpdateNormalBindPhyRegAllocation(uint64_t rob_idx)
         }
         return false;
       }
-
-      // Statistics:
-      //  Count inflight registers
-      size_t inflight_phyregs_count = 0;
-      for (auto it: m_phy_registers[reg_index].m_phy_list) {
-        if (it.time == SubsecondTime::MaxTime()) {
-          inflight_phyregs_count++;
-        }
-      }
-      m_phy_registers[reg_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_index].m_phyreg_max_usage - 32,
-                                                              inflight_phyregs_count) + 32;
+      m_phy_registers[reg_index]++;
+      m_maxusage_phy_registers[reg_index] = std::max(m_maxusage_phy_registers[reg_index], m_phy_registers[reg_index]);
    }
 
    return true;
@@ -2141,6 +2080,10 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
 
    RobEntry *entry = &rob.at(rob_idx);
    DynamicMicroOp *uop = entry->uop;
+
+   if (!uop->getMicroOp()->isFirst()) {
+      return true;
+   }
 
    dl::Decoder *dec = Sim()->getDecoder();
    bool inst_has_dest =  uop->getMicroOp()->getDestinationRegistersLength() != 0;
@@ -2168,7 +2111,10 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       }
       // When Vector Load, allocate as normal
       if (reg_index == 2) {
-         if (UpdateNormalBindPhyRegAllocation(rob_idx)) {
+         bool alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
+         if (!m_vec_reserved_allocation) {
+            return alloc_success;
+         } else if (alloc_success) {
             return true;
          }
       }
@@ -2208,156 +2154,5 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       }
    }
 
-   return true;
-}
-
-
-// --------------------------------------------------
-// Note: This function is only for
-// Physical Register Late Binding Physical Register Mode
-// true : Found empty entry
-// false : Not found empty entry: need to wait.
-// --------------------------------------------------
-bool RobTimer::UpdateLateBindPhyRegAllocation(uint64_t rob_idx)
-{
-   LOG_ASSERT_ERROR(m_vec_late_phyreg_allocation, "This function must be called only when late_binding mode");
-
-   RobEntry *entry = &rob.at(rob_idx);
-   DynamicMicroOp *uop = entry->uop;
-
-   dl::Decoder *dec = Sim()->getDecoder();
-   bool inst_has_dest = uop->getMicroOp()->getDestinationRegistersLength() != 0;
-   UInt64 uop_id = uop->getSequenceNumber();
-
-   size_t reg_typ_index = 0;
-   bool result = true;
-
-   if (inst_has_dest) {
-      if (dec->is_reg_vector(uop->getMicroOp()->getDestinationRegister(0))){
-         reg_typ_index = 2;
-      } else {
-         return true;  // only apply in Vector Register, otherwise return
-      }
-
-      int64_t min_i = -1;
-      UInt64 min_uop = UINT64_MAX;
-      auto it = m_phy_registers[reg_typ_index].m_phy_list.begin();
-      // すべての物理レジスタが若い命令によって割り当てられているのかを調査する
-      it = m_phy_registers[reg_typ_index].m_phy_list.begin();
-      for (size_t i = 0; it < m_phy_registers[reg_typ_index].m_phy_list.end(); i++, it++) {
-         if (it->uop_idx < uop_id && it->uop_idx < min_uop) {
-            // 自分よりも古く、最も古い命令を見つける
-            min_i = i;
-            min_uop = it->uop_idx;
-         }
-      }
-      if (min_i == -1) {
-         // Not found empty entry
-         if (enable_rob_timer_log) {
-            printf("Freelist become empty. ROB flush. rob_idx = %ld, instId = %ld, %s\n", rob_idx, uop_id,
-                   entry->uop->getMicroOp()->toShortString(true).c_str());
-         }
-         // Flush All younger entries
-         uint64_t flush_sequence_number = uop_id;
-         rob_idx ++;
-         while (rob_idx < rob.size()) {
-            DynamicMicroOp *rollback_uop = rob.at(rob_idx).uop;
-            rob.at(rob_idx).ready  = SubsecondTime::MaxTime();
-            rob.at(rob_idx).issued = SubsecondTime::MaxTime();
-            rob.at(rob_idx).done   = SubsecondTime::MaxTime();
-            if (rollback_uop->getMicroOp()->isLoad() || rollback_uop->getMicroOp()->isStore()) {
-               rob.at(rob_idx).uop->setExecLatency(0);
-            }
-            rollback_uop->rollbackDependencies(flush_sequence_number);
-            if (rollback_uop->getDependenciesLength() == 0) {
-               rob.at(rob_idx).ready  = now;
-            }
-            rob_idx ++;
-         }
-         for (size_t i = 0; it < m_phy_registers[reg_typ_index].m_phy_list.end(); i++, it++) {
-            m_phy_registers[reg_typ_index].m_phy_list[i].time = SubsecondTime::Zero();
-         }
-         m_late_bind_flush_count++;
-         if (enable_rob_timer_log) {
-            printf("After flushing...\n");
-            printRob();
-         }
-         return false;
-      }
-
-      // 割り当て可能な物理レジスタを見つける
-      SubsecondTime min_time = SubsecondTime::MaxTime();
-      it = m_phy_registers[reg_typ_index].m_phy_list.begin();
-      min_i = -1;
-      for (size_t i = 0; it < m_phy_registers[reg_typ_index].m_phy_list.end(); i++, it++) {
-         if (it->uop_idx < uop_id &&
-             m_phy_registers[reg_typ_index].m_phy_list[i].time != SubsecondTime::MaxTime() &&
-             m_phy_registers[reg_typ_index].m_phy_list[i].time < now &&
-             (m_phy_registers[reg_typ_index].m_phy_list[i].time > min_time || min_time == SubsecondTime::MaxTime())) {
-            min_i = i;
-            min_time = m_phy_registers[reg_typ_index].m_phy_list[i].time;
-         }
-      }
-      if (min_i != -1) {
-         // Found the empty entry
-         entry->phy_reg_index = min_i;
-         m_phy_registers[reg_typ_index].m_phy_list[min_i].time = SubsecondTime::MaxTime();
-         m_phy_registers[reg_typ_index].m_phy_list[min_i].uop_idx = rob_idx;
-         if (enable_rob_timer_log) {
-            printf("UpdateLateBindPhyRegAllocation(rob=%ld,uop=%ld). Succeeded allocated. min_i = %ld\n", rob_idx, uop_id, min_i);
-         }
-         result = true;
-      } else {
-         // Older instruction will be release
-         if (enable_rob_timer_log) {
-            printf("UpdateLateBindPhyRegAllocation(rob=%ld,uop=%ld). Older instruction will be released. min_i = %ld\n", rob_idx, uop_id, min_i);
-         }
-         result = false;
-      }
-   }
-
-   // Statistics:
-   //  Count inflight registers
-   size_t inflight_phyregs_count = 0;
-   for (auto it: m_phy_registers[reg_typ_index].m_phy_list) {
-      if (it.time == SubsecondTime::MaxTime()) {
-         inflight_phyregs_count++;
-      }
-   }
-   m_phy_registers[reg_typ_index].m_phyreg_max_usage = std::max(m_phy_registers[reg_typ_index].m_phyreg_max_usage - 32,
-                                                                inflight_phyregs_count) + 32;
-
-   return result;
-}
-
-// ----------------------------------------------------
-// インオーダ実行におけるWAWレジスタ・ハザードのチェック
-// ----------------------------------------------------
-bool RobTimer::UpdateArchRegWAW(uint64_t rob_idx)
-{
-   LOG_ASSERT_ERROR(vector_inorder, "This function must be called only when regular_binding mode");
-
-   RobEntry *entry = &rob.at(rob_idx);
-   DynamicMicroOp *uop = entry->uop;
-
-   dl::Decoder *dec = Sim()->getDecoder();
-   bool inst_has_dest =  uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
-                         dec->is_reg_vector(uop->getMicroOp()->getDestinationRegister(0));
-   if (inst_has_dest) {
-      uint64_t vec_regidx = uop->getMicroOp()->getDestinationRegister(0) - 64;
-      entry->phy_reg_index = vec_regidx;
-      fprintf (stderr, "WAW check (rob=%ld) : reg_idx = %ld, time = %ld\n",
-         rob_idx,
-         vec_regidx,
-         SubsecondTime::divideRounded(m_phy_registers[VectorRegister].m_phy_list[vec_regidx].time, m_core->getDvfsDomain()->getPeriod())
-      );
-      if (m_phy_registers[VectorRegister].m_phy_list[vec_regidx].time < now) {
-         fprintf (stderr, "Newlly allocated\n");
-         m_phy_registers[VectorRegister].m_phy_list[vec_regidx].time = SubsecondTime::MaxTime();
-         return true;
-      } else {
-         return false;
-      }
-   }
    return true;
 }

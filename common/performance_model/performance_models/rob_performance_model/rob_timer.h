@@ -223,16 +223,9 @@ private:
       VectorRegister = 2
    };
 
-   typedef struct {
-      SubsecondTime time;
-      uint64_t      uop_idx;
-   } phy_t;
-   typedef struct {
-      std::vector<phy_t> m_phy_list; // Physical Register List
-      uint64_t m_phyreg_max_usage;  // How many registers are used maximally.
-   } phy_list_t;
-   std::vector<phy_list_t> m_phy_registers{3};  // 3-types of registers defined: Int/Float/Vector
-   // UInt64 m_rmt[3][32];                         // Rename Map Table for 3-types of registers
+   UInt64 m_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
+   UInt64 m_max_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
+   UInt64 m_maxusage_phy_registers[3];
    std::queue<UInt64> m_dispatch_fifo;
    bool m_vec_wfifo_registers[32];
 
