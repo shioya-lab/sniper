@@ -54,7 +54,7 @@ class DynamicMicroOp
       {
          NONE,
          PHYREG,
-         REGDEP,
+         RESOLVED,
          SQ
       };
   private:

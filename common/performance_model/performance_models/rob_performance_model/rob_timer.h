@@ -13,6 +13,7 @@
 #include "vector_dependencies.h"
 
 #include <deque>
+#include <list>
 
 class RobTimer
 {
@@ -226,7 +227,7 @@ private:
    UInt64 m_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
    UInt64 m_max_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
    UInt64 m_maxusage_phy_registers[3];
-   std::queue<UInt64> m_dispatch_fifo;
+   std::list<UInt64> m_dispatch_fifo;
    bool m_vec_wfifo_registers[32];
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
@@ -235,6 +236,9 @@ private:
    bool UpdateReservedBindPhyRegAllocation(uint64_t rob_idx);
    bool UpdateLateBindPhyRegAllocation(uint64_t rob_idx);
    void preloadInstruction (uint64_t idx);
+
+   bool ReserveVSTQ (uint64_t rob_idx);
+   void releaseWFIFO ();
 
    bool UpdateArchRegWAW(uint64_t rob_idx);
 

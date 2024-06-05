@@ -736,6 +736,7 @@ unsigned int RISCVDecoder::get_exec_microops(const DecodedInst *ins, int numLoad
     case rv_op_ld        :                     	/* Load Double */
 	case rv_op_lbu       :                    	/* Load Byte Unsigned */
 	case rv_op_lhu       :                    	/* Load Half Unsigned */
+	case rv_op_lwu       :                     	/* Load Word */
 	case rv_op_sd        :                    	/* Store Double */
 	case rv_op_sb        :                    	/* Store Byte */
 	case rv_op_sh        :                    	/* Store Half */
