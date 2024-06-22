@@ -557,6 +557,7 @@ Decoder::decoder_reg RISCVDecoder::get_op_reg (const DecodedInst * inst, unsigne
       case rv_operand_name_vs1:   reg = dec->rs1 + 64;   break;
       case rv_operand_name_vs2:   reg = dec->rs2 + 64;   break;
       case rv_operand_name_vs3:   reg = dec->rs3 + 64;   break;
+      case rv_operand_name_v0t:   reg = 64;              break;
       default: reg = 0;
     }
   }

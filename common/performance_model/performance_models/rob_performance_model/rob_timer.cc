@@ -18,6 +18,8 @@
 #include <sstream>
 #include <iomanip>
 
+#define WFIFO_SIZE  (512)
+
 // Define to get per-cycle printout of dispatch, issue, writeback stages
 // #define DEBUG_PERCYCLE
 //#define STOP_PERCYCLE
@@ -190,6 +192,9 @@ RobTimer::RobTimer(
 
    registerStatsMetric("rob_timer", core->getId(), "VtoS_RdRequests", &m_VtoS_RdRequests);
    registerStatsMetric("rob_timer", core->getId(), "VtoS_WrRequests", &m_VtoS_WrRequests);
+
+   m_VtoS_RdRequests = 0;
+   m_VtoS_WrRequests = 0;
 
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, RobTimer::hookRoiBegin, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
@@ -1173,13 +1178,6 @@ SubsecondTime RobTimer::doIssue()
 
             // If Gather/Scatter Merge NOT, number of Vector Store request into Scalar LoadQ is,
             // same as # of request
-            if (!m_gather_scatter_merge && canIssue) {
-              if (uop->getMicroOp()->isLoad()) {
-                m_VtoS_RdRequests ++;
-              } else {
-                m_VtoS_WrRequests ++;
-              }
-            }
 
             if (canIssue) {
 
@@ -1195,13 +1193,13 @@ SubsecondTime RobTimer::doIssue()
                               uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
                   }
                   m_bank_info[bank_index] = banked_cache_line;
-                  if (m_gather_scatter_merge && canIssue) {
-                    if (uop->getMicroOp()->isLoad()) {
-                      m_VtoS_RdRequests ++;
-                    } else {
-                      m_VtoS_WrRequests ++;
-                    }
-                  }
+                  // if (m_gather_scatter_merge && canIssue) {
+                  //   if (uop->getMicroOp()->isLoad()) {
+                  //     m_VtoS_RdRequests ++;
+                  //   } else {
+                  //     m_VtoS_WrRequests ++;
+                  //   }
+                  // }
                } else if (m_bank_info[bank_index] == banked_cache_line) {
                   // Same Bank Access and Can be Merge:
                   uop->setMemAccessMerge();
@@ -1233,13 +1231,13 @@ SubsecondTime RobTimer::doIssue()
             // if (m_enable_kanata && m_konata_count < m_konata_count_max) {
             //    fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
             // }
-            if (canIssue) {
-              if (uop->getMicroOp()->isLoad()) {
-                m_VtoS_RdRequests ++;
-              } else {
-                m_VtoS_WrRequests ++;
-              }
-            }
+            // if (canIssue) {
+            //   if (uop->getMicroOp()->isLoad()) {
+            //     m_VtoS_RdRequests ++;
+            //   } else {
+            //     m_VtoS_WrRequests ++;
+            //   }
+            // }
          }
       } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
          if (m_enable_kanata && m_konata_count < m_konata_count_max) {
@@ -1334,6 +1332,8 @@ SubsecondTime RobTimer::doIssue()
          canIssue = false;          // blocked by structural hazard
       }
 
+      bool done_preload = false;
+
       // If Vector and can't be issued, try to preload
       if (entry->uop->hasCommitDependency() &&
           m_vec_reserved_allocation &&
@@ -1355,6 +1355,7 @@ SubsecondTime RobTimer::doIssue()
          if (!real_dependency && m_rob_contention->tryPreload()) {
             // Pipeline available
             preloadInstruction (i);
+            done_preload = true;
          // } else {
          //   if (enable_rob_timer_log) {
          //     std::cout << "Early preload : tryIssue failed " << uop->getMicroOp()->toShortString() <<
@@ -1367,6 +1368,14 @@ SubsecondTime RobTimer::doIssue()
       } else {
          if (enable_rob_timer_log) {
             fprintf (stderr, "seqId=%ld : Preload condition failed, regDependenciesLength = %d\n", uop->getSequenceNumber(), entry->uop->getRegDependenciesLength());
+         }
+      }
+
+      if (canIssue && !done_preload) {
+         if (uop->getMicroOp()->isVecLoad()) {
+            m_VtoS_RdRequests ++;
+         } else if (uop->getMicroOp()->isVecStore()) {
+            m_VtoS_WrRequests ++;
          }
       }
 
@@ -1617,7 +1626,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (entry->uop->getMicroOp()->isVecLoad()) {
          vec_load_queue++;
       }
-      if (entry->uop->getMicroOp()->isVecStore() && entry->uop->isFirst()) {
+      if (entry->uop->getMicroOp()->isVecStore()) {
          vec_store_queue += 1;
          // fprintf (stderr, "vector Store queue increased : %ld\n", vec_store_queue);
          static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
@@ -1942,12 +1951,16 @@ void RobTimer::printRob()
             std::cout << "      ";
          }
       }
+
+      if (e->uop->getMicroOp()->isLoad() || e->uop->getMicroOp()->isStore()) {
+         std::cout << "(" << HitWhereString(e->uop->getDCacheHitWhere()) << ", "
+                   << e->uop->getExecLatency() << ")";
+      }
       std::cout<<std::endl;
 
       if (i < m_num_in_rob &&
           e->uop->getCommitDependency() != DynamicMicroOp::wfifo_t::SQ &&
-          e->uop->getMicroOp()->isVecStore() &&
-          e->uop->isFirst()) {
+          e->uop->getMicroOp()->isVecStore()) {
          // fprintf (stderr, "inflight Vector Store %ld\n", e->uop->getSequenceNumber());
          vecstore_count += 1;
       }
@@ -2130,7 +2143,7 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       }
 
       // ここに到達したということは、ベクトル命令のベクトル資源が枯渇したことを意味するので、FIFOに格納する。
-      if (m_dispatch_fifo.size() < 128) {
+      if (m_dispatch_fifo.size() < WFIFO_SIZE) {
          if (m_dispatch_fifo.size() > 0) {
            LOG_ASSERT_ERROR(m_dispatch_fifo.back() < uop->getSequenceNumber(), "0. inserted FIFO age should be larger than last entry");
          }
@@ -2152,11 +2165,13 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
             RobEntry *waiting_entry = this->findEntryBySequenceNumber(f);
             if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG &&
                 waiting_entry->uop->getMicroOp()->getDestinationRegister(0) == sourceRegister) {
-               if (m_dispatch_fifo.size() < 128) {
+               if (m_dispatch_fifo.size() < WFIFO_SIZE) {
                   if (m_dispatch_fifo.size() > 0) {
-                     LOG_ASSERT_ERROR(m_dispatch_fifo.back() < uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
+                     LOG_ASSERT_ERROR(m_dispatch_fifo.back() <= uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
                   }
-                  m_dispatch_fifo.push_back(uop->getSequenceNumber());
+                  if (m_dispatch_fifo.back() != uop->getSequenceNumber()) {
+                     m_dispatch_fifo.push_back(uop->getSequenceNumber());
+                  }
                   uop->setCommitDependency (DynamicMicroOp::wfifo_t::RESOLVED);
                   return true;
                } else {
@@ -2182,21 +2197,28 @@ bool RobTimer::ReserveVSTQ (uint64_t rob_idx)
    RobEntry *entry = &rob.at(rob_idx);
    DynamicMicroOp *uop = entry->uop;
 
-   if (!uop->isFirst()) {
-      return true;
-   }
-
+   // if (!uop->isFirst()) {
+   //    return true;
+   // }
 
    if (uop->getMicroOp()->isVecStore()) {
       // fprintf (stderr, "ReserveVSTQ seqId=%ld, ", uop->getSequenceNumber());
       if (vec_store_queue == 0) {
          // ここに到達したということは、ベクトル命令のベクトル資源が枯渇したことを意味するので、FIFOに格納する。
-         if (m_vec_reserved_allocation && m_dispatch_fifo.size() < 128) {
-            if (m_dispatch_fifo.size() > 0) {
-               LOG_ASSERT_ERROR(m_dispatch_fifo.back() < uop->getSequenceNumber(), "0. inserted FIFO age should be larger than last entry");
+         if (m_vec_reserved_allocation && m_dispatch_fifo.size() < WFIFO_SIZE) {
+            // if (m_dispatch_fifo.size() > 0) {
+            //    LOG_ASSERT_ERROR(m_dispatch_fifo.back() < uop->getSequenceNumber(),
+            //                     "0. inserted FIFO age should be larger than last entry");
+            // }
+            if (m_dispatch_fifo.back() == uop->getSequenceNumber()) {
+               // RegisterチェックでW-FIFOに依存関係のあるベクトルストアで，
+               // かつSTQの数が足りない
+               // --> ハザードの種類をSQに置き換える
+               uop->setCommitDependency (DynamicMicroOp::wfifo_t::SQ);
+            } else {
+               m_dispatch_fifo.push_back(uop->getSequenceNumber());
+               uop->setCommitDependency (DynamicMicroOp::wfifo_t::SQ);
             }
-            m_dispatch_fifo.push_back(uop->getSequenceNumber());
-            uop->setCommitDependency (DynamicMicroOp::wfifo_t::SQ);
             // fprintf (stderr, "setCommitDependency()\n");
             return true;
          } else {
