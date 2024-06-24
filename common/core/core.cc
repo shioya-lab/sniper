@@ -102,7 +102,21 @@ Core::Core(SInt32 id)
          this, m_network, m_shmem_perf_model);
 
    if (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", getId())) {
-      m_kanata_fp = fopen("kanata_trace.log", "w");
+      char template_name[] = "/tmp/kanata_trace_temp.XXXXXX";
+      int fd = -1;
+      if ((fd = mkstemp(template_name)) == -1) {
+         perror (template_name);
+      }
+      if ((m_kanata_fp = fdopen(fd, "w")) == NULL) {
+         perror (template_name);
+      }
+      FILE *tname_fp;
+      if ((tname_fp = fopen("kanata_tracename.txt", "w")) == NULL) {
+         perror("kanata_tracename.txt");
+      }
+      fprintf (tname_fp, "%s", template_name);
+      fclose (tname_fp);
+
       fprintf (m_kanata_fp, "Kanata\t0004\n");
       fprintf (m_kanata_fp, "C=\t%d\n", 0);
    }
