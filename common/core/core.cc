@@ -260,12 +260,12 @@ Core::readInstructionMemory(IntPtr address, UInt32 instruction_size)
              Core::NONE, Core::READ, address & blockmask, NULL, getMemoryManager()->getCacheBlockSize(), MEM_MODELED_COUNT_TLBTIME, 0, SubsecondTime::MaxTime());
 }
 
-void Core::accessMemoryFast(bool icache, mem_op_t mem_op_type, IntPtr address)
+void Core::accessMemoryFast(bool icache, mem_op_t mem_op_type, IntPtr address, IntPtr eip)
 {
    if (m_cheetah_manager && icache == false)
       m_cheetah_manager->access(mem_op_type, address);
 
-   SubsecondTime latency = getMemoryManager()->coreInitiateMemoryAccessFast(icache, mem_op_type, address);
+   SubsecondTime latency = getMemoryManager()->coreInitiateMemoryAccessFast(icache, mem_op_type, address, eip);
 
    if (latency > SubsecondTime::Zero())
       m_performance_model->handleMemoryLatency(latency, HitWhere::MISS);
@@ -369,7 +369,8 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
                mem_op_type,
                curr_addr_aligned, curr_offset,
                data_buf ? curr_data_buffer_head : NULL, curr_size,
-               modeled);
+               modeled,
+               eip);
 
       if (hit_where != (HitWhere::where_t)mem_component)
       {

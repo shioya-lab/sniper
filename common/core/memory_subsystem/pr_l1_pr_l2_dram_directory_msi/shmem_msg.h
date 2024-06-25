@@ -45,6 +45,7 @@ namespace PrL1PrL2DramDirectoryMSI
          MemComponent::component_t m_sender_mem_component;
          MemComponent::component_t m_receiver_mem_component;
          core_id_t m_requester;
+         IntPtr m_eip;
          HitWhere::where_t m_where;
          IntPtr m_address;
          Byte* m_data_buf;
@@ -58,6 +59,7 @@ namespace PrL1PrL2DramDirectoryMSI
                MemComponent::component_t sender_mem_component,
                MemComponent::component_t receiver_mem_component,
                core_id_t requester,
+               IntPtr eip,
                IntPtr address,
                Byte* data_buf,
                UInt32 data_length,
@@ -77,6 +79,7 @@ namespace PrL1PrL2DramDirectoryMSI
          MemComponent::component_t getSenderMemComponent() { return m_sender_mem_component; }
          MemComponent::component_t getReceiverMemComponent() { return m_receiver_mem_component; }
          core_id_t getRequester() { return m_requester; }
+         IntPtr getEip() { return m_eip; }
          IntPtr getAddress() { return m_address; }
          Byte* getDataBuf() { return m_data_buf; }
          UInt32 getDataLength() { return m_data_length; }

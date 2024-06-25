@@ -421,7 +421,8 @@ MemoryManager::coreInitiateMemoryAccess(
       Core::mem_op_t mem_op_type,
       IntPtr address, UInt32 offset,
       Byte* data_buf, UInt32 data_length,
-      Core::MemModeled modeled)
+      Core::MemModeled modeled,
+      IntPtr eip)
 {
    LOG_ASSERT_ERROR(mem_component <= m_last_level_cache,
       "Error: invalid mem_component (%d) for coreInitiateMemoryAccess", mem_component);
@@ -432,6 +433,7 @@ MemoryManager::coreInitiateMemoryAccess(
       accessTLB(m_dtlb, address, false, modeled);
 
    return m_cache_cntlrs[mem_component]->processMemOpFromCore(
+         eip,
          lock_signal,
          mem_op_type,
          address, offset,
@@ -536,11 +538,11 @@ MYLOG("end");
 }
 
 void
-MemoryManager::sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, core_id_t receiver, IntPtr address, Byte* data_buf, UInt32 data_length, HitWhere::where_t where, ShmemPerf *perf, ShmemPerfModel::Thread_t thread_num)
+MemoryManager::sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, core_id_t receiver, IntPtr eip, IntPtr address, Byte* data_buf, UInt32 data_length, HitWhere::where_t where, ShmemPerf *perf, ShmemPerfModel::Thread_t thread_num)
 {
 MYLOG("send msg %u %ul%u > %ul%u", msg_type, requester, sender_mem_component, receiver, receiver_mem_component);
    assert((data_buf == NULL) == (data_length == 0));
-   PrL1PrL2DramDirectoryMSI::ShmemMsg shmem_msg(msg_type, sender_mem_component, receiver_mem_component, requester, address, data_buf, data_length, perf);
+   PrL1PrL2DramDirectoryMSI::ShmemMsg shmem_msg(msg_type, sender_mem_component, receiver_mem_component, requester, eip, address, data_buf, data_length, perf);
    shmem_msg.setWhere(where);
 
    Byte* msg_buf = shmem_msg.makeMsgBuf();
@@ -562,11 +564,11 @@ MYLOG("send msg %u %ul%u > %ul%u", msg_type, requester, sender_mem_component, re
 }
 
 void
-MemoryManager::broadcastMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, IntPtr address, Byte* data_buf, UInt32 data_length, ShmemPerf *perf, ShmemPerfModel::Thread_t thread_num)
+MemoryManager::broadcastMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, IntPtr eip, IntPtr address, Byte* data_buf, UInt32 data_length, ShmemPerf *perf, ShmemPerfModel::Thread_t thread_num)
 {
 MYLOG("bcast msg");
    assert((data_buf == NULL) == (data_length == 0));
-   PrL1PrL2DramDirectoryMSI::ShmemMsg shmem_msg(msg_type, sender_mem_component, receiver_mem_component, requester, address, data_buf, data_length, perf);
+   PrL1PrL2DramDirectoryMSI::ShmemMsg shmem_msg(msg_type, sender_mem_component, receiver_mem_component, requester, eip, address, data_buf, data_length, perf);
 
    Byte* msg_buf = shmem_msg.makeMsgBuf();
    SubsecondTime msg_time = getShmemPerfModel()->getElapsedTime(thread_num);

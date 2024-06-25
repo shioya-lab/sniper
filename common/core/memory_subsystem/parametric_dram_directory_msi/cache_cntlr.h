@@ -291,10 +291,10 @@ namespace ParametricDramDirectoryMSI
          bool operationPermissibleinCache(
                IntPtr address, Core::mem_op_t mem_op_type, CacheBlockInfo **cache_block_info = NULL);
 
-         void copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, bool modeled, SubsecondTime t_start);
-         void trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue);
-         void Prefetch(SubsecondTime t_start);
-         void doPrefetch(IntPtr prefetch_address, SubsecondTime t_start);
+         void copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, IntPtr eip, bool modeled, SubsecondTime t_start);
+         void trainPrefetcher(IntPtr address, IntPtr eip, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue);
+         void Prefetch(IntPtr eip, SubsecondTime t_start);
+         void doPrefetch(IntPtr prefetch_address, IntPtr eip, SubsecondTime t_start);
 
          // Cache meta-data operations
          SharedCacheBlockInfo* getCacheBlockInfo(IntPtr address);
@@ -307,19 +307,19 @@ namespace ParametricDramDirectoryMSI
          void retrieveCacheBlock(IntPtr address, Byte* data_buf, ShmemPerfModel::Thread_t thread_num, bool update_replacement);
 
 
-         SharedCacheBlockInfo* insertCacheBlock(IntPtr address, CacheState::cstate_t cstate, Byte* data_buf, core_id_t requester, ShmemPerfModel::Thread_t thread_num);
+         SharedCacheBlockInfo* insertCacheBlock(IntPtr address, IntPtr eip, CacheState::cstate_t cstate, Byte* data_buf, core_id_t requester, ShmemPerfModel::Thread_t thread_num);
          std::pair<SubsecondTime, bool> updateCacheBlock(IntPtr address, CacheState::cstate_t cstate, Transition::reason_t reason, Byte* out_buf, ShmemPerfModel::Thread_t thread_num);
          void writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf, UInt32 data_length, ShmemPerfModel::Thread_t thread_num);
 
          // Handle Request from previous level cache
-         HitWhere::where_t processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t mem_op_type, IntPtr address, bool modeled, bool count, Prefetch::prefetch_type_t isPrefetch, SubsecondTime t_issue, bool have_write_lock);
+         HitWhere::where_t processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t mem_op_type, IntPtr address, IntPtr eip, bool modeled, bool count, Prefetch::prefetch_type_t isPrefetch, SubsecondTime t_issue, bool have_write_lock);
 
          // Process Request from L1 Cache
-         boost::tuple<HitWhere::where_t, SubsecondTime> accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte* data_buf);
-         void initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, SubsecondTime t_issue);
-         void processExReqToDirectory(IntPtr address);
-         void processShReqToDirectory(IntPtr address);
-         void processUpgradeReqToDirectory(IntPtr address, ShmemPerf *perf, ShmemPerfModel::Thread_t thread_num);
+         boost::tuple<HitWhere::where_t, SubsecondTime> accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, IntPtr eip, bool isPrefetch, Byte* data_buf);
+         void initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr eip, IntPtr address, bool isPrefetch, SubsecondTime t_issue);
+         void processExReqToDirectory(IntPtr eip, IntPtr address);
+         void processShReqToDirectory(IntPtr eip, IntPtr address);
+         void processUpgradeReqToDirectory(IntPtr eip, IntPtr address, ShmemPerf *perf, ShmemPerfModel::Thread_t thread_num);
 
          // Process Request from Dram Dir
          void processExRepFromDramDirectory(core_id_t sender, core_id_t requester, PrL1PrL2DramDirectoryMSI::ShmemMsg* shmem_msg);
@@ -381,6 +381,7 @@ namespace ParametricDramDirectoryMSI
          void setDRAMDirectAccess(DramCntlrInterface* dram_cntlr, UInt64 num_outstanding);
 
          HitWhere::where_t processMemOpFromCore(
+               IntPtr eip,
                Core::lock_signal_t lock_signal,
                Core::mem_op_t mem_op_type,
                IntPtr ca_address, UInt32 offset,

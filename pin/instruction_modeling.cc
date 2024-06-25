@@ -370,5 +370,5 @@ VOID InstructionModeling::accessInstructionCacheWarmup(THREADID threadid, ADDRIN
 {
    Core *core = localStore[threadid].thread->getCore();
    assert(core);
-   core->accessMemoryFast(true, Core::READ, address);
+   core->accessMemoryFast(true, Core::READ, address, address);
 }

@@ -259,6 +259,7 @@ DramDirectoryCntlr::processNextReqFromL2Cache(IntPtr address)
 DirectoryEntry*
 DramDirectoryCntlr::processDirectoryEntryAllocationReq(ShmemReq* shmem_req)
 {
+   IntPtr eip = shmem_req->getShmemMsg()->getEip();
    IntPtr address = shmem_req->getShmemMsg()->getAddress();
    core_id_t requester = shmem_req->getShmemMsg()->getRequester();
    SubsecondTime msg_time = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD);
@@ -294,7 +295,7 @@ DramDirectoryCntlr::processDirectoryEntryAllocationReq(ShmemReq* shmem_req)
    // We get the entry with the lowest number of sharers
    DirectoryEntry* directory_entry = m_dram_directory_cache->replaceDirectoryEntry(replaced_address, address, true);
 
-   ShmemMsg nullify_msg(ShmemMsg::NULLIFY_REQ, MemComponent::TAG_DIR, MemComponent::TAG_DIR, requester, replaced_address, NULL, 0, &m_dummy_shmem_perf);
+   ShmemMsg nullify_msg(ShmemMsg::NULLIFY_REQ, MemComponent::TAG_DIR, MemComponent::TAG_DIR, requester, eip, replaced_address, NULL, 0, &m_dummy_shmem_perf);
 
    ShmemReq* nullify_req = new ShmemReq(&nullify_msg, msg_time);
 
@@ -312,6 +313,7 @@ DramDirectoryCntlr::processDirectoryEntryAllocationReq(ShmemReq* shmem_req)
 void
 DramDirectoryCntlr::processNullifyReq(ShmemReq* shmem_req)
 {
+   IntPtr eip = shmem_req->getShmemMsg()->getEip();
    IntPtr address = shmem_req->getShmemMsg()->getAddress();
    core_id_t requester = shmem_req->getShmemMsg()->getRequester();
 
@@ -333,6 +335,7 @@ DramDirectoryCntlr::processNullifyReq(ShmemReq* shmem_req)
                MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                requester /* requester */,
                directory_entry->getOwner() /* receiver */,
+               eip,
                address,
                NULL, 0,
                HitWhere::UNKNOWN,
@@ -351,6 +354,7 @@ DramDirectoryCntlr::processNullifyReq(ShmemReq* shmem_req)
                getMemoryManager()->broadcastMsg(ShmemMsg::INV_REQ,
                      MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                      requester /* requester */,
+                     eip,
                      address,
                      NULL, 0,
                      NULL,
@@ -365,6 +369,7 @@ DramDirectoryCntlr::processNullifyReq(ShmemReq* shmem_req)
                         MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                         requester /* requester */,
                         sharers_list_pair.second[i] /* receiver */,
+                        eip,
                         address,
                         NULL, 0,
                         HitWhere::UNKNOWN,
@@ -396,6 +401,7 @@ DramDirectoryCntlr::processNullifyReq(ShmemReq* shmem_req)
 void
 DramDirectoryCntlr::processExReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_data_buf)
 {
+   IntPtr eip = shmem_req->getShmemMsg()->getEip();
    IntPtr address = shmem_req->getShmemMsg()->getAddress();
    core_id_t requester = shmem_req->getShmemMsg()->getRequester();
 
@@ -424,6 +430,7 @@ DramDirectoryCntlr::processExReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
                MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                requester /* requester */,
                directory_entry->getOwner() /* receiver */,
+               eip,
                address,
                NULL, 0,
                HitWhere::UNKNOWN, shmem_req->getShmemMsg()->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -441,6 +448,7 @@ DramDirectoryCntlr::processExReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
             getMemoryManager()->broadcastMsg(ShmemMsg::INV_REQ,
                   MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                   requester /* requester */,
+                  eip,
                   address,
                   NULL, 0,
                   NULL, // No ShmemPerf on broadcast
@@ -456,6 +464,7 @@ DramDirectoryCntlr::processExReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
                               MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                               requester /* requester */,
                               sharers_list_pair.second[i] /* receiver */,
+                              eip,
                               address,
                               NULL, 0,
                               HitWhere::UNKNOWN,
@@ -474,7 +483,7 @@ DramDirectoryCntlr::processExReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
          directory_entry->setOwner(requester);
          directory_block_info->setDState(DirectoryState::MODIFIED);
 
-         retrieveDataAndSendToL2Cache(ShmemMsg::EX_REP, requester, address, cached_data_buf, shmem_req->getShmemMsg());
+         retrieveDataAndSendToL2Cache(ShmemMsg::EX_REP, requester, eip, address, cached_data_buf, shmem_req->getShmemMsg());
          break;
       }
 
@@ -488,6 +497,7 @@ DramDirectoryCntlr::processExReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
 void
 DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_data_buf)
 {
+   IntPtr eip = shmem_req->getShmemMsg()->getEip();
    IntPtr address = shmem_req->getShmemMsg()->getAddress();
    core_id_t requester = shmem_req->getShmemMsg()->getRequester();
 
@@ -516,6 +526,7 @@ DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
                MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                requester /* requester */,
                directory_entry->getOwner() /* receiver */,
+               eip,
                address,
                NULL, 0,
                HitWhere::UNKNOWN, shmem_req->getShmemMsg()->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -530,6 +541,7 @@ DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
                MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                requester /* requester */,
                directory_entry->getOwner() /* receiver */,
+               eip,
                address,
                NULL, 0,
                HitWhere::UNKNOWN, shmem_req->getShmemMsg()->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -547,7 +559,7 @@ DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
                // Forwarder evicted the data while we requested it. Will have to get it from DRAM anyway.
                ++forward_failed;
             }
-            retrieveDataAndSendToL2Cache(ShmemMsg::SH_REP, requester, address, cached_data_buf, shmem_req->getShmemMsg());
+            retrieveDataAndSendToL2Cache(ShmemMsg::SH_REP, requester, eip, address, cached_data_buf, shmem_req->getShmemMsg());
          }
          else
          {
@@ -561,6 +573,7 @@ DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
                      MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                      requester /* requester */,
                      sharer_id /* receiver */,
+                     eip,
                      address,
                      NULL, 0,
                      HitWhere::UNKNOWN, shmem_req->getShmemMsg()->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -568,7 +581,7 @@ DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
             else
             {
                MYLOG("SHARED state, retrieve data and send")
-               retrieveDataAndSendToL2Cache(ShmemMsg::SH_REP, requester, address, cached_data_buf, shmem_req->getShmemMsg());
+               retrieveDataAndSendToL2Cache(ShmemMsg::SH_REP, requester, eip, address, cached_data_buf, shmem_req->getShmemMsg());
             }
          }
          break;
@@ -586,12 +599,12 @@ DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
          if (m_protocol == CoherencyProtocol::MSI)
          {
             directory_block_info->setDState(DirectoryState::SHARED);
-            retrieveDataAndSendToL2Cache(ShmemMsg::SH_REP, requester, address, cached_data_buf, shmem_req->getShmemMsg());
+            retrieveDataAndSendToL2Cache(ShmemMsg::SH_REP, requester, eip, address, cached_data_buf, shmem_req->getShmemMsg());
          }
          else
          {
             directory_block_info->setDState(DirectoryState::EXCLUSIVE);
-            retrieveDataAndSendToL2Cache(ShmemMsg::EX_REP, requester, address, cached_data_buf, shmem_req->getShmemMsg());
+            retrieveDataAndSendToL2Cache(ShmemMsg::EX_REP, requester, eip, address, cached_data_buf, shmem_req->getShmemMsg());
          }
 
          break;
@@ -606,7 +619,7 @@ DramDirectoryCntlr::processShReqFromL2Cache(ShmemReq* shmem_req, Byte* cached_da
 
 void
 DramDirectoryCntlr::retrieveDataAndSendToL2Cache(ShmemMsg::msg_t reply_msg_type,
-      core_id_t receiver, IntPtr address, Byte* cached_data_buf, ShmemMsg *orig_shmem_msg)
+      core_id_t receiver, IntPtr eip, IntPtr address, Byte* cached_data_buf, ShmemMsg *orig_shmem_msg)
 {
    DirectoryEntry* directory_entry = m_dram_directory_cache->getDirectoryEntry(address);
    assert(directory_entry != NULL);
@@ -624,6 +637,7 @@ DramDirectoryCntlr::retrieveDataAndSendToL2Cache(ShmemMsg::msg_t reply_msg_type,
             MemComponent::TAG_DIR, MemComponent::L2_CACHE,
             receiver /* requester */,
             receiver /* receiver */,
+            eip,
             address,
             cached_data_buf, getCacheBlockSize(),
             HitWhere::CACHE_REMOTE /* cached_data_buf was filled by a WB_REQ or FLUSH_REQ */,
@@ -650,6 +664,7 @@ DramDirectoryCntlr::retrieveDataAndSendToL2Cache(ShmemMsg::msg_t reply_msg_type,
                   MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                   receiver /* requester */,
                   receiver /* receiver */,
+                  eip,
                   address,
                   nuca_data_buf, getCacheBlockSize(),
                   HitWhere::NUCA_CACHE,
@@ -681,6 +696,7 @@ DramDirectoryCntlr::retrieveDataAndSendToL2Cache(ShmemMsg::msg_t reply_msg_type,
             MemComponent::TAG_DIR, MemComponent::L2_CACHE,
             receiver /* requester */,
             forwarder /* receiver */,
+            eip,
             address,
             NULL, 0,
             HitWhere::UNKNOWN, shmem_req->getShmemMsg()->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -706,6 +722,7 @@ DramDirectoryCntlr::retrieveDataAndSendToL2Cache(ShmemMsg::msg_t reply_msg_type,
             MemComponent::TAG_DIR, MemComponent::DRAM,
             receiver /* requester */,
             dram_node /* receiver */,
+            eip,
             address,
             NULL, 0,
             HitWhere::UNKNOWN,
@@ -718,6 +735,7 @@ DramDirectoryCntlr::retrieveDataAndSendToL2Cache(ShmemMsg::msg_t reply_msg_type,
 void
 DramDirectoryCntlr::processDRAMReply(core_id_t sender, ShmemMsg* shmem_msg)
 {
+   IntPtr eip = shmem_msg->getEip();
    IntPtr address = shmem_msg->getAddress();
 
    MYLOG("Start @ %lx", address);
@@ -778,6 +796,7 @@ DramDirectoryCntlr::processDRAMReply(core_id_t sender, ShmemMsg* shmem_msg)
          MemComponent::TAG_DIR, MemComponent::L2_CACHE,
          shmem_req->getShmemMsg()->getRequester() /* requester */,
          shmem_req->getShmemMsg()->getRequester() /* receiver */,
+         eip,
          address,
          shmem_msg->getDataBuf(), getCacheBlockSize(),
          hit_where,
@@ -785,7 +804,7 @@ DramDirectoryCntlr::processDRAMReply(core_id_t sender, ShmemMsg* shmem_msg)
          ShmemPerfModel::_SIM_THREAD);
 
    // Keep a copy in NUCA
-   sendDataToNUCA(address, shmem_req->getShmemMsg()->getRequester(), shmem_msg->getDataBuf(), getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD), false);
+   sendDataToNUCA(eip, address, shmem_req->getShmemMsg()->getRequester(), shmem_msg->getDataBuf(), getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD), false);
 
    // Process Next Request
    processNextReqFromL2Cache(address);
@@ -902,6 +921,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
 {
    ShmemMsg* shmem_msg = shmem_req->getShmemMsg();
 
+   IntPtr eip = shmem_msg->getEip();
    IntPtr address = shmem_msg->getAddress();
    core_id_t requester = shmem_msg->getRequester();
    updateShmemPerf(shmem_req);
@@ -946,6 +966,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
                         MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                         requester /* requester */,
                         requester /* receiver */,
+                        eip,
                         address,
                         NULL, 0,
                         HitWhere::UNKNOWN, shmem_msg->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -962,6 +983,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
                   MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                   requester /* requester */,
                   directory_entry->getOwner() /* receiver */,
+                  eip,
                   address,
                   NULL, 0,
                   HitWhere::UNKNOWN, shmem_msg->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -982,6 +1004,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
                   MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                   requester /* requester */,
                   requester /* receiver */,
+                  eip,
                   address,
                   NULL, 0,
                   HitWhere::UNKNOWN, shmem_msg->getPerf(), ShmemPerfModel::_SIM_THREAD);
@@ -1004,6 +1027,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
                getMemoryManager()->broadcastMsg(ShmemMsg::INV_REQ,
                      MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                      requester /* requester */,
+                     eip,
                      address,
                      NULL, 0,
                      NULL, // No ShmemPerf on broadcast
@@ -1025,6 +1049,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
                            MemComponent::TAG_DIR, MemComponent::L2_CACHE,
                            requester /* requester */,
                            sharers_list_pair.second[i] /* receiver */,
+                           eip,
                            address,
                            NULL, 0,
                            HitWhere::UNKNOWN,
@@ -1053,7 +1078,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
             // maybe the data is stored in the msg already?
             cached_data_buf = shmem_msg->getDataBuf();
          }
-         retrieveDataAndSendToL2Cache(ShmemMsg::EX_REP, requester, address, cached_data_buf, shmem_msg);
+         retrieveDataAndSendToL2Cache(ShmemMsg::EX_REP, requester, eip, address, cached_data_buf, shmem_msg);
 
          break;
       }
@@ -1069,6 +1094,7 @@ DramDirectoryCntlr::processUpgradeReqFromL2Cache(ShmemReq* shmem_req, Byte* cach
 void
 DramDirectoryCntlr::processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem_msg)
 {
+   IntPtr eip = shmem_msg->getEip();
    IntPtr address = shmem_msg->getAddress();
    SubsecondTime now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD);
 
@@ -1114,7 +1140,7 @@ DramDirectoryCntlr::processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem
       else if (shmem_req->getShmemMsg()->getMsgType() == ShmemMsg::SH_REQ)
       {
          // Write Data to Dram
-         sendDataToDram(address, shmem_msg->getRequester(), shmem_msg->getDataBuf(), now);
+         sendDataToDram(eip, address, shmem_msg->getRequester(), shmem_msg->getDataBuf(), now);
          processShReqFromL2Cache(shmem_req, shmem_msg->getDataBuf());
       }
       else if (shmem_req->getShmemMsg()->getMsgType() == ShmemMsg::UPGRADE_REQ)
@@ -1140,7 +1166,7 @@ DramDirectoryCntlr::processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem
       else // shmem_req->getShmemMsg()->getMsgType() == ShmemMsg::NULLIFY_REQ
       {
          // Write Data To Dram
-         sendDataToDram(address, shmem_msg->getRequester(), shmem_msg->getDataBuf(), now);
+         sendDataToDram(eip, address, shmem_msg->getRequester(), shmem_msg->getDataBuf(), now);
          processNullifyReq(shmem_req);
       }
    }
@@ -1148,7 +1174,7 @@ DramDirectoryCntlr::processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem
    {
       // This was just an eviction
       // Write Data to Dram
-      sendDataToDram(address, shmem_msg->getRequester(), shmem_msg->getDataBuf(), now);
+      sendDataToDram(eip, address, shmem_msg->getRequester(), shmem_msg->getDataBuf(), now);
    }
 
    MYLOG("End @ %lx", address);
@@ -1197,7 +1223,7 @@ DramDirectoryCntlr::processWbRepFromL2Cache(core_id_t sender, ShmemMsg* shmem_ms
 }
 
 void
-DramDirectoryCntlr::sendDataToNUCA(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, bool count)
+DramDirectoryCntlr::sendDataToNUCA(IntPtr eip, IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, bool count)
 {
    if (m_nuca_cache)
    {
@@ -1221,6 +1247,7 @@ DramDirectoryCntlr::sendDataToNUCA(IntPtr address, core_id_t requester, Byte* da
                MemComponent::TAG_DIR, MemComponent::DRAM,
                m_core_id /* requester */,
                dram_node /* receiver */,
+               eip,
                evict_address,
                evict_buf, getCacheBlockSize(),
                HitWhere::UNKNOWN,
@@ -1232,7 +1259,7 @@ DramDirectoryCntlr::sendDataToNUCA(IntPtr address, core_id_t requester, Byte* da
 }
 
 void
-DramDirectoryCntlr::sendDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now)
+DramDirectoryCntlr::sendDataToDram(IntPtr eip, IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now)
 {
    MYLOG("Start @ %lx", address);
 
@@ -1240,7 +1267,7 @@ DramDirectoryCntlr::sendDataToDram(IntPtr address, core_id_t requester, Byte* da
    {
       // If we have a NUCA cache: write it there, it will be written to DRAM on eviction
 
-      sendDataToNUCA(address, requester, data_buf, now, true);
+      sendDataToNUCA(eip, address, requester, data_buf, now, true);
    }
    else
    {
@@ -1251,6 +1278,7 @@ DramDirectoryCntlr::sendDataToDram(IntPtr address, core_id_t requester, Byte* da
             MemComponent::TAG_DIR, MemComponent::DRAM,
             requester /* requester */,
             dram_node /* receiver */,
+            eip,
             address,
             data_buf, getCacheBlockSize(),
             HitWhere::UNKNOWN,

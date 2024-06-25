@@ -25,7 +25,8 @@ namespace FastNehalem
          SubsecondTime coreInitiateMemoryAccessFast(
                bool use_icache,
                Core::mem_op_t mem_op_type,
-               IntPtr address)
+               IntPtr address,
+               IntPtr eip)
          {
             IntPtr tag = address >> CACHE_LINE_BITS;
             return (use_icache ? icache : dcache)->access(mem_op_type, tag);

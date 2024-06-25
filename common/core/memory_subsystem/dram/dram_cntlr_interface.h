@@ -38,8 +38,8 @@ class DramCntlrInterface
       {}
       virtual ~DramCntlrInterface() {}
 
-      virtual boost::tuple<SubsecondTime, HitWhere::where_t> getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf) = 0;
-      virtual boost::tuple<SubsecondTime, HitWhere::where_t> putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now) = 0;
+      virtual boost::tuple<SubsecondTime, HitWhere::where_t> getDataFromDram(IntPtr address, IntPtr eip, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf) = 0;
+      virtual boost::tuple<SubsecondTime, HitWhere::where_t> putDataToDram(IntPtr address, IntPtr eip, core_id_t requester, Byte* data_buf, SubsecondTime now) = 0;
 
       void handleMsgFromTagDirectory(core_id_t sender, PrL1PrL2DramDirectoryMSI::ShmemMsg* shmem_msg);
 };

@@ -48,11 +48,13 @@ class MemoryManagerBase
             Core::mem_op_t mem_op_type,
             IntPtr address, UInt32 offset,
             Byte* data_buf, UInt32 data_length,
-            Core::MemModeled modeled) = 0;
+            Core::MemModeled modeled,
+            IntPtr eip) = 0;
       virtual SubsecondTime coreInitiateMemoryAccessFast(
             bool icache,
             Core::mem_op_t mem_op_type,
-            IntPtr address)
+            IntPtr address,
+            IntPtr eip)
       {
          // Emulate fast interface by calling into slow interface
          SubsecondTime initial_time = getCore()->getPerformanceModel()->getElapsedTime();
@@ -64,7 +66,8 @@ class MemoryManagerBase
                mem_op_type,
                address - (address % getCacheBlockSize()), 0,
                NULL, getCacheBlockSize(),
-               Core::MEM_MODELED_COUNT_TLBTIME);
+               Core::MEM_MODELED_COUNT_TLBTIME,
+               eip);
 
          // Get the final cycle time
          SubsecondTime final_time = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
@@ -90,8 +93,8 @@ class MemoryManagerBase
 
       Core* getCore() { return m_core; }
 
-      virtual void sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, core_id_t receiver, IntPtr address, Byte* data_buf = NULL, UInt32 data_length = 0, HitWhere::where_t where = HitWhere::UNKNOWN, ShmemPerf *perf = NULL, ShmemPerfModel::Thread_t thread_num = ShmemPerfModel::NUM_CORE_THREADS) = 0;
-      virtual void broadcastMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, IntPtr address, Byte* data_buf = NULL, UInt32 data_length = 0, ShmemPerf *perf = NULL, ShmemPerfModel::Thread_t thread_num = ShmemPerfModel::NUM_CORE_THREADS) = 0;
+      virtual void sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, core_id_t receiver, IntPtr eip, IntPtr address, Byte* data_buf = NULL, UInt32 data_length = 0, HitWhere::where_t where = HitWhere::UNKNOWN, ShmemPerf *perf = NULL, ShmemPerfModel::Thread_t thread_num = ShmemPerfModel::NUM_CORE_THREADS) = 0;
+      virtual void broadcastMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::msg_t msg_type, MemComponent::component_t sender_mem_component, MemComponent::component_t receiver_mem_component, core_id_t requester, IntPtr eip, IntPtr address, Byte* data_buf = NULL, UInt32 data_length = 0, ShmemPerf *perf = NULL, ShmemPerfModel::Thread_t thread_num = ShmemPerfModel::NUM_CORE_THREADS) = 0;
 
       static CachingProtocol_t parseProtocolType(String& protocol_type);
       static MemoryManagerBase* createMMU(String protocol_type,

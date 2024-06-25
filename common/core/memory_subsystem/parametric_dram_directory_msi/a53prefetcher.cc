@@ -18,7 +18,7 @@ A53Prefetcher::A53Prefetcher(String configName, core_id_t core_id)
 {
 }
 
-std::vector<IntPtr> A53Prefetcher::getNextAddress(IntPtr currentAddress, core_id_t core_id) {
+std::vector<IntPtr> A53Prefetcher::getNextAddress(IntPtr currentAddress, IntPtr eip, core_id_t core_id) {
    std::vector<IntPtr> prefetchAddress;
 
    if (firstAddress) {

@@ -181,7 +181,7 @@ void handleMemoryRead(THREADID thread_id, BOOL executing, ADDRINT eip, bool is_a
    Core *core = localStore[thread_id].thread->getCore();
    assert(core);
    if (executing)
-      core->accessMemoryFast(false, Core::READ, read_address);
+      core->accessMemoryFast(false, Core::READ, read_address, eip);
 }
 
 void handleMemoryReadDetailed(THREADID thread_id, BOOL executing, ADDRINT eip, bool is_atomic_update, IntPtr read_address, UInt32 read_data_size)
@@ -298,7 +298,7 @@ void handleMemoryWrite(THREADID thread_id, BOOL executing, ADDRINT eip, bool is_
    if (is_atomic_update && executing)
       core->logMemoryHit(false, Core::WRITE, write_address, Core::MEM_MODELED_COUNT, eip);
    else if (executing)
-      core->accessMemoryFast(false, Core::WRITE, write_address);
+      core->accessMemoryFast(false, Core::WRITE, write_address, eip);
 }
 
 void handleMemoryWriteDetailed(THREADID thread_id, BOOL executing, ADDRINT eip, bool is_atomic_update, IntPtr write_address, UInt32 write_data_size)

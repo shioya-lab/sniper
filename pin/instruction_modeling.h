@@ -15,7 +15,7 @@ class InstructionModeling
       static void handleInstruction(THREADID thread_id, Instruction *instruction);
       static void handleBasicBlock(THREADID thread_id);
       static VOID countInstructions(THREADID threadid, ADDRINT address, INT32 count);
-      static VOID accessInstructionCacheWarmup(THREADID threadid, ADDRINT address, UINT32 size);
+      static VOID accessInstructionCacheWarmup(THREADID threadid, ADDRINT address, UINT32 size, ADDRINT eip);
 };
 
 #endif
