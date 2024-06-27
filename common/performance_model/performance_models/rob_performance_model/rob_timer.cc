@@ -27,6 +27,8 @@
 // Define to not skip any cycles, but assert that the skip logic is working fine
 //#define ASSERT_SKIP
 
+#define ROB_DEBUG_PRINTF(...) { if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) { fprintf(stderr, __VA_ARGS__); }}
+
 RobTimer::RobTimer(
          Core *core, PerformanceModel *_perf, const CoreModel *core_model,
          int misprediction_penalty,
@@ -45,7 +47,9 @@ RobTimer::RobTimer(
       , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
       , m_vec_preload(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/vec_preload", core->getId()))
+      , m_vsetvl_producer(0)
       , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
+      , m_konata_count(0)
       , m_core(core)
       , rob(window_size + 255)
       , m_num_in_rob(0)
@@ -54,6 +58,11 @@ RobTimer::RobTimer(
          Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/issue_contention", core->getId())
          ? core_model->createRobContentionModel(core)
          : NULL)
+      , m_roi_started(false)
+      , m_enable_o3 (Sim()->getCfg()->getBoolArray("log/enable_o3_log", m_core->getId()))
+      , m_enable_kanata (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", m_core->getId()))
+      , m_active_o3_gen (false)
+      , m_active_kanata_gen (false)
       , now(core->getDvfsDomain())
       , frontend_stalled_until(SubsecondTime::Zero())
       , in_icache_miss(false)
@@ -65,8 +74,8 @@ RobTimer::RobTimer(
       , nextSequenceNumber(0)
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
-      , enable_debug_printf(false)
       , enable_rob_timer_log(Sim()->getCfg()->getBoolArray("log/enable_rob_timer_log", core->getId()))
+      , rob_start_cycle(Sim()->getCfg()->getIntArray("log/rob_debug_start_cycle", core->getId()))
       , enable_gatherscatter_log(Sim()->getCfg()->getBoolArray("log/enable_gatherscatter_log", core->getId()))
       , registerDependencies(new RegisterDependencies())
       , memoryDependencies(new MemoryDependencies())
@@ -78,6 +87,7 @@ RobTimer::RobTimer(
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
       , m_vec_reserved_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/reserved_allocation", core->getId()))
+      , m_last_committed_time(core->getDvfsDomain())
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -117,6 +127,8 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "cpiBranchPredictor", &m_cpiBranchPredictor);
    registerStatsMetric("rob_timer", core->getId(), "cpiSerialization", &m_cpiSerialization);
    registerStatsMetric("rob_timer", core->getId(), "cpiRSFull", &m_cpiRSFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiVPhyRegFull", &m_cpiVPhyRegFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiVSTQFull", &m_cpiVSTQFull);
 
    m_cpiInstructionCache.resize(HitWhere::NUM_HITWHERES, SubsecondTime::Zero());
    for (int h = HitWhere::WHERE_FIRST ; h < HitWhere::NUM_HITWHERES ; h++)
@@ -199,12 +211,8 @@ RobTimer::RobTimer(
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_BEGIN, RobTimer::hookRoiBegin, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, RobTimer::hookRoiEnd, (UInt64)this);
    Sim()->getHooksManager()->registerHook(HookType::HOOK_MAGIC_USER, RobTimer::hookSetVL, (UInt64)this);
-   m_roi_started = false;
-   m_enable_o3 = false;
-   m_enable_kanata = false;
    m_last_kanata_time = SubsecondTime::Zero();
    m_kanata_generated_in_this_region = false;
-   m_vsetvl_producer = 0;
 
    m_alu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/alu_window_size", core->getId());
    m_lsu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/lsu_window_size", core->getId());
@@ -351,11 +359,11 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
    SubsecondTime totalLat = SubsecondTime::Zero();
 
    // Deadlock possibility check
-   LOG_ASSERT_ERROR (m_last_committed_time.getNS() == 0 ? true :
-                     now.getElapsedTime().getNS() - m_last_committed_time.getNS() < 10000,
+   LOG_ASSERT_ERROR (m_last_committed_time.getCycleCount() == 0 ? true :
+                     now.getCycleCount() - m_last_committed_time.getCycleCount() < 1000000,
                      "Execution DEADLOCKED?, now=%ld, last=%ld",
-                     now.getElapsedTime().getNS(),
-                     m_last_committed_time.getNS());
+                     now.getCycleCount(),
+                     m_last_committed_time.getCycleCount());
 
    for (std::vector<DynamicMicroOp*>::const_iterator it = insts.begin(); it != insts.end(); it++ )
    {
@@ -500,13 +508,11 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       // Backup initial dependencies (rollbacks when flush)
       entry->uop->backupInitialDependencies();
 
-      if (enable_rob_timer_log) {
-         if (enable_debug_printf) {
-            std::cout<<"** simulate: "<< entry->uop->getMicroOp()->toShortString(true) << std::endl << entry->uop->getMicroOp()->toString()<<std::endl;
-         }
+      if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
+         std::cout<<"** simulate: "<< entry->uop->getMicroOp()->toShortString(true) << std::endl << entry->uop->getMicroOp()->toString()<<std::endl;
       }
 
-      if (enable_rob_timer_log) {
+      if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          std::cout << "Type = " << (*it)->getMicroOp()->getSubtype() <<
              " count = " <<
              m_uop_type_count[(*it)->getMicroOp()->getSubtype()] << '\n';
@@ -521,7 +527,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          LOG_PRINT_WARNING_ONCE("Significant fraction of x87 instructions encountered, accuracy will be low. Compile without -mno-sse2 -mno-sse3 to avoid.");
    }
 
-   if (enable_rob_timer_log) {
+   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
 #ifdef STOP_PERCYCLE
    char a;
    std::cin >> a;
@@ -537,7 +543,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       totalLat += latency;
       if (latency == SubsecondTime::Zero())
          break;
-      if (enable_rob_timer_log) {
+      if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
 #ifdef STOP_PERCYCLE
           std::cin >> a;
 #endif
@@ -599,46 +605,37 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
             m_fpu_num_in_rob > m_fpu_window_size) {
-            if (enable_rob_timer_log) {
-               fprintf(stderr, "doDispatch : seqId=%ld : FPU Instruction Window Overflow\n", uop.getSequenceNumber());
-            }
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : FPU Instruction Window Overflow\n", uop.getSequenceNumber());
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
               m_alu_num_in_rob > m_alu_window_size) {
-            if (enable_rob_timer_log) {
-               fprintf(stderr, "doDispatch : seqId=%ld : ALU Instruction Window Overflow\n", uop.getSequenceNumber());
-            }
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : ALU Instruction Window Overflow\n", uop.getSequenceNumber());
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_MEMACC) &&
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
              m_lsu_num_in_rob > m_lsu_window_size) {
-            if (enable_rob_timer_log) {
-               fprintf(stderr, "doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
-            }
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
              m_vec_num_in_rob > m_vec_window_size) {
-            if (enable_rob_timer_log) {
-               fprintf(stderr, "doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
-            }
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
             break;
          }
 
          // VLDQ full
          if (uop.getMicroOp()->isVecLoad() && vec_load_queue == 0) {
-            if (enable_rob_timer_log) {
-               fprintf(stderr, "doDispatch : seqId=%ld : Vector Load Queue overflow\n", uop.getSequenceNumber());
-            }
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n", uop.getSequenceNumber());
             break;
          }
 
          // if (uop.getMicroOp()->isVecStore() && vec_store_queue == 0) {
-         //    if (enable_rob_timer_log) {
+         //    if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          //       fprintf(stderr, "Vector Store Queue overflow\n");
          //    }
          //    break;
@@ -661,16 +658,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             if (in_icache_miss)
             {
                // We just took the latency for this instruction, now dispatch it
-               if (enable_rob_timer_log) {
-                  std::cout<<"-- icache return"<<std::endl;
-               }
+               ROB_DEBUG_PRINTF("-- icache return\n");
                in_icache_miss = false;
             }
             else
             {
-               if (enable_rob_timer_log) {
-                  std::cout<<"-- icache miss (" << std::hex << uop.getMicroOp()->getInstruction()->getAddress() << ") ("<<uop.getICacheLatency()<<")"<<std::endl;
-               }
+               ROB_DEBUG_PRINTF("-- icache miss (%08lx) (%d)\n", uop.getMicroOp()->getInstruction()->getAddress(), uop.getICacheLatency());
                frontend_stalled_until = now + uop.getICacheLatency();
                in_icache_miss = true;
                entry->fetch = now;
@@ -690,9 +683,11 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          }
 
          if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
+            cpiFrontEnd = &m_cpiVPhyRegFull;
             break;
          }
          if (!ReserveVSTQ (m_num_in_rob)) {
+            cpiFrontEnd = &m_cpiVSTQFull;
             break;
          }
 
@@ -712,7 +707,8 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                break;
             case MicroOp::UOP_SUBTYPE_LOAD :
             case MicroOp::UOP_SUBTYPE_STORE :
-            case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
+            case MicroOp::UOP_SUBTYPE_VEC_LOAD :
+            case MicroOp::UOP_SUBTYPE_VEC_STORE :
                m_lsu_num_in_rob ++;
                break;
             case MicroOp::UOP_SUBTYPE_GENERIC :
@@ -726,7 +722,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                LOG_ASSERT_ERROR(false, "Not expected to this point");
          }
 
-         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
            DynamicMicroOp *uop = entry->uop;
            entry->kanata_registered = true;
            entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
@@ -766,9 +762,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          entry->ready = std::max(entry->ready, (now + 1ul).getElapsedTime());
          next_event = std::min(next_event, entry->ready);
 
-         if (enable_rob_timer_log) {
-            std::cout<<"DISPATCH "<<entry->uop->getMicroOp()->toShortString()<<std::endl;
-         }
+         ROB_DEBUG_PRINTF ("DISPATCH %s\n", entry->uop->getMicroOp()->toShortString().c_str());
 
          #ifdef ASSERT_SKIP
             LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
@@ -778,9 +772,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.getMicroOp()->isBranch() && uop.isBranchMispredicted())
          {
             frontend_stalled_until = SubsecondTime::MaxTime();
-            if (enable_rob_timer_log) {
-               std::cout<<"-- branch mispredict"<<std::endl;
-            }
+            ROB_DEBUG_PRINTF ("-- branch mispredict\n");
             cpiFrontEnd = &m_cpiBranchPredictor;
             break;
          }
@@ -832,7 +824,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    RobEntry *entry = &rob[idx];
    DynamicMicroOp &uop = *entry->uop;
 
-   if (enable_rob_timer_log) {
+   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
       std::cout <<"ISSUE    "<< "(" << entry->uop->getSequenceNumber() << ") " <<
                entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
    }
@@ -921,7 +913,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    entry->issued = now;
    entry->done = cycle_done;
 
-   if (m_enable_kanata && m_konata_count < m_konata_count_max && entry->kanata_registered) {
+   if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
      fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "X");
      m_kanata_generated_in_this_region = true;
    }
@@ -933,7 +925,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    for(size_t idx = 0; idx < entry->getNumDependants(); ++idx)
    {
       RobEntry *depEntry = entry->getDependant(idx);
-      // if (enable_rob_timer_log) {
+      // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
       //    printf("inst_seqnum = %ld, dep_seqnum = %ld\n", entry->uop->getSequenceNumber(),
       //                                                    depEntry->uop->getSequenceNumber());
       // }
@@ -994,7 +986,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    if (uop.getMicroOp()->isBranch() && uop.isBranchMispredicted())
    {
       frontend_stalled_until = now + (misprediction_penalty - 2); // The frontend needs to start 2 cycles earlier to get a total penalty of <misprediction_penalty>
-      if (enable_rob_timer_log) {
+      if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          std::cout<<"-- branch resolve"<<std::endl;
       }
    }
@@ -1082,25 +1074,18 @@ SubsecondTime RobTimer::doIssue()
       }
       else if (uop->getMicroOp()->isLoad() && !uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now)) {
          // LDQ full
-         if (enable_rob_timer_log) {
-            fprintf(stderr, "Scalar Load Queue overflow\n");
-         }
+         ROB_DEBUG_PRINTF ("Scalar Load Queue overflow\n");
          canIssue = false;
       } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
-         if (enable_rob_timer_log) {
-            std::cout << "  disambiguation" <<
-                ", index = " << uop->getSequenceNumber() << '\n';
-         }
-         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+         ROB_DEBUG_PRINTF ("  disambiguation, index = %ld\n", uop->getSequenceNumber());
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "disambiguation failed");
             m_kanata_generated_in_this_region = true;
          }
          canIssue = false;          // preceding store with unknown address
       }
       else if (uop->getMicroOp()->isStore() && !uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now)) {
-         if (enable_rob_timer_log) {
-            fprintf(stderr, "seqId=%ld, Scalar Store Queue overflow\n", uop->getSequenceNumber());
-         }
+         ROB_DEBUG_PRINTF ("seqId=%ld, Scalar Store Queue overflow\n", uop->getSequenceNumber());
          canIssue = false;
       }
       else
@@ -1119,7 +1104,7 @@ SubsecondTime RobTimer::doIssue()
          }
       }
 
-      // if (enable_rob_timer_log) {
+      // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
       //   std::cout << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
       //       ", index = " << uop->getSequenceNumber() <<
       //       (canIssue ? " True" : " False") << std::endl;
@@ -1133,7 +1118,7 @@ SubsecondTime RobTimer::doIssue()
                                                                                   inhead_vecmem_existed);
       bool v_to_s_block = (v_to_s_fence && inhead_vector_existed && !uop->getMicroOp()->isVector()) || scalar_lsu_fence;
 
-      // if (enable_rob_timer_log) {
+      // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
       //    if (!uop->getMicroOp()->isVector() &&
       //                            (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore())) {
       //       fprintf(stderr, "Instr %ld, inflight_vecmem_block condition?: %s\n", uop->getSequenceNumber(),
@@ -1169,7 +1154,7 @@ SubsecondTime RobTimer::doIssue()
             //   if (issued_vec_mem < 8) {
             //     issued_vec_mem++;
             //   } else {
-            //      if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            //      if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
             //         fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector Load slot full");
             //      }
             //      canIssue = false;
@@ -1217,7 +1202,7 @@ SubsecondTime RobTimer::doIssue()
                               uop->getMicroOp()->toShortString().c_str(),
                               uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
                   }
-                  // if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+                  // if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
                   //    fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, bank conflict");
                   // }
                }
@@ -1228,7 +1213,7 @@ SubsecondTime RobTimer::doIssue()
             if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
               canIssue = false;
             }
-            // if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+            // if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
             //    fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
             // }
             // if (canIssue) {
@@ -1240,7 +1225,7 @@ SubsecondTime RobTimer::doIssue()
             // }
          }
       } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
-         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector inorder, wait");
             m_kanata_generated_in_this_region = true;
          }
@@ -1251,12 +1236,10 @@ SubsecondTime RobTimer::doIssue()
       inhead_vector_existed |= uop->getMicroOp()->isVector();
 
       if (v_to_s_block) {
-         if (enable_rob_timer_log) {
-            fprintf (stderr, "%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
-                     uop->getSequenceNumber(),
-                     uop->getAddress().address,
-                     uop->getMicroOp()->toShortString().c_str());
-         }
+         ROB_DEBUG_PRINTF ("%ld was stopped by Vector to Scalar Fence. PC=%08lx, %s\n",
+                           uop->getSequenceNumber(),
+                           uop->getAddress().address,
+                           uop->getMicroOp()->toShortString().c_str());
          canIssue = false;
          v_to_s_fenced = true;
       }
@@ -1272,7 +1255,7 @@ SubsecondTime RobTimer::doIssue()
             }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                vec_ooo_issue_count ++;
-               // if (enable_rob_timer_log) {
+               // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
                //    fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
                //                      uop->getSequenceNumber(),
                //                      uop->getAddress().address,
@@ -1281,7 +1264,7 @@ SubsecondTime RobTimer::doIssue()
             }
          } else if (!uop->isVirtuallyIssued()) {
             vector_someone_wait_issue = true;
-            // if (enable_rob_timer_log) {
+            // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
             //    fprintf (stderr, "Vector %ld waiting: %s %ld\n",
             //                      uop->getSequenceNumber(),
             //                      uop->getMicroOp()->toShortString().c_str(),
@@ -1299,7 +1282,7 @@ SubsecondTime RobTimer::doIssue()
             }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                scalar_ooo_issue_count++;
-               // if (enable_rob_timer_log) {
+               // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
                //    fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
                //                      uop->getSequenceNumber(),
                //                      uop->getAddress().address,
@@ -1308,7 +1291,7 @@ SubsecondTime RobTimer::doIssue()
             }
          } else {
             scalar_someone_wait_issue = true;
-            // if (enable_rob_timer_log) {
+            // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
             //    fprintf (stderr, "Scalar %ld waiting: %s %ld\n",
             //                      uop->getSequenceNumber(),
             //                      uop->getMicroOp()->toShortString().c_str(),
@@ -1319,14 +1302,14 @@ SubsecondTime RobTimer::doIssue()
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-         if (enable_rob_timer_log) {
+         if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
             std::cout << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
                 ", index = " << uop->getSequenceNumber() <<
                 ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
                 ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
                 "\n";
          }
-         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
          }
          canIssue = false;          // blocked by structural hazard
@@ -1357,7 +1340,7 @@ SubsecondTime RobTimer::doIssue()
             preloadInstruction (i);
             done_preload = true;
          // } else {
-         //   if (enable_rob_timer_log) {
+         //   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          //     std::cout << "Early preload : tryIssue failed " << uop->getMicroOp()->toShortString() <<
          //         ", index = " << uop->getSequenceNumber() <<
          //         ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
@@ -1366,9 +1349,7 @@ SubsecondTime RobTimer::doIssue()
          //   }
          }
       } else {
-         if (enable_rob_timer_log) {
-            fprintf (stderr, "seqId=%ld : Preload condition failed, regDependenciesLength = %d\n", uop->getSequenceNumber(), entry->uop->getRegDependenciesLength());
-         }
+         ROB_DEBUG_PRINTF ("seqId=%ld : Preload condition failed, regDependenciesLength = %d\n", uop->getSequenceNumber(), entry->uop->getRegDependenciesLength());
       }
 
       if (canIssue && !done_preload) {
@@ -1464,7 +1445,7 @@ SubsecondTime RobTimer::doIssue()
 
       if (canIssue && uop->getMicroOp()->isVector() &&
           uop->getMicroOp()->UopIdx() == 0) {
-          // if (enable_rob_timer_log) {
+          // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
           //      std::cout << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
           //          ", index = " << uop->getSequenceNumber() << '\n';
           // }
@@ -1475,7 +1456,7 @@ SubsecondTime RobTimer::doIssue()
 
           if (subseq_uop->getMicroOp()->getInstruction()->getAddress() ==
               uop->getMicroOp()->getInstruction()->getAddress()) {
-               // if (enable_rob_timer_log) {
+               // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
                //    std::cout << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
                //        ", index = " << subseq_uop->getSequenceNumber() << '\n';
                // }
@@ -1510,7 +1491,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
    {
       RobEntry *entry = &rob.front();
 
-      if (enable_rob_timer_log) {
+      if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          std::cout<<"COMMIT   " << "(" << entry->uop->getSequenceNumber() << ") " <<
             entry->uop->getMicroOp()->toShortString()<< "(uop = " << entry->uop->getSequenceNumber() << ")" << std::endl;
       }
@@ -1537,33 +1518,33 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
           inst->getDisassembly().find("add            zero, zero, zero") != std::string::npos) {
       }
 
-      if (enable_debug_printf &&
+      if (enable_rob_timer_log &&
           cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos &&
           m_konata_count < m_konata_count_max) {
 
-         m_enable_o3     = Sim()->getCfg()->getBoolArray("log/enable_o3_log", m_core->getId());
-         m_enable_kanata = Sim()->getCfg()->getBoolArray("log/enable_kanata_log", m_core->getId());
+         m_active_o3_gen     = m_enable_o3;
+         m_active_kanata_gen = m_enable_kanata;
 
          std::cout << "KonataStart " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
                    << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
                    << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
-      if (enable_debug_printf &&
+      if (enable_rob_timer_log &&
           cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, sp") != std::string::npos) {
-        m_enable_o3 = false;
-        m_enable_kanata = false;
+        m_active_o3_gen = false;
+        m_active_kanata_gen = false;
         std::cout << "KonataStop " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
                   << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
                   << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
-      if (m_enable_o3 &&
+      if (m_active_o3_gen &&
           m_konata_count >= m_konata_count_max) {
-        m_enable_o3 = false;
+        m_active_o3_gen = false;
       }
 
-      if (m_enable_kanata) {
+      if (m_active_kanata_gen) {
         m_konata_count ++;
       }
 
@@ -1573,7 +1554,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         cycle_activated = false;
       }
 
-      if (m_enable_o3) {
+      if (m_active_o3_gen) {
 
         uint64_t cycle_fetch    = SubsecondTime::divideRounded(entry->fetch,      m_core->getDvfsDomain()->getPeriod());
         uint64_t cycle_dispatch = SubsecondTime::divideRounded(entry->dispatched, m_core->getDvfsDomain()->getPeriod());
@@ -1596,7 +1577,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         fprintf (m_core->getO3Fp(), "O3PipeView:retire:%ld:store:0\n",        (cycle_commit    )*500);
       }
 
-      if (m_enable_kanata && m_konata_count < m_konata_count_max && entry->kanata_registered) {
+      if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
         fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
         fprintf(m_core->getKanataFp(), "R\t%ld\t%ld\t%d\n", entry->global_sequence_id, entry->uop->getSequenceNumber(), 0);
         m_kanata_generated_in_this_region = true;
@@ -1609,7 +1590,8 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
             break;
          case MicroOp::UOP_SUBTYPE_LOAD :
          case MicroOp::UOP_SUBTYPE_STORE :
-         case MicroOp::UOP_SUBTYPE_VEC_MEMACC :
+         case MicroOp::UOP_SUBTYPE_VEC_LOAD :
+         case MicroOp::UOP_SUBTYPE_VEC_STORE :
             m_lsu_num_in_rob--;
             break;
          case MicroOp::UOP_SUBTYPE_GENERIC :
@@ -1645,11 +1627,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (entry->uop->getMicroOp()->isVector() &&
           (entry->uop->getMicroOp()->isLoad() || entry->uop->getMicroOp()->isStore())) {
-         if (enable_rob_timer_log) {
-            fprintf(stderr, "Set Vector Memory Access Commit Time as %ld %s\n",
-                  SubsecondTime::divideRounded(times.commit, m_core->getDvfsDomain()->getPeriod()),
-                  entry->uop->getMicroOp()->toShortString(true).c_str());
-         }
+         ROB_DEBUG_PRINTF ("Set Vector Memory Access Commit Time as %ld %s\n",
+                           SubsecondTime::divideRounded(times.commit, m_core->getDvfsDomain()->getPeriod()),
+                           entry->uop->getMicroOp()->toShortString(true).c_str());
          m_latest_vecmem_commit_time = times.commit;
       }
 
@@ -1707,12 +1687,12 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    instructionsExecuted = 0;
    SubsecondTime *cpiComponent = NULL;
 
-   if (enable_rob_timer_log) {
+   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
       std::cout<<std::endl;
       std::cout<<"Running cycles "<< std::dec << SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
    }
 
-   if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+   if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
      if (m_kanata_generated_in_this_region && m_last_kanata_time != now) {
        fprintf(m_core->getKanataFp(), "C\t%ld\n", SubsecondTime::divideRounded(now - m_last_kanata_time, now.getPeriod()));
        m_last_kanata_time = now;
@@ -1744,7 +1724,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    SubsecondTime next_issue    = doIssue();
    SubsecondTime next_commit   = doCommit(instructionsExecuted);
 
-   if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+   if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
      for(unsigned int i = 0; i < rob.size(); ++i) {
        RobEntry *e = &rob.at(i);
 
@@ -1766,7 +1746,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
      }
    }
 
-   if (enable_rob_timer_log) {
+   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
       #ifdef ASSERT_SKIP
          if (! will_skip)
          {
@@ -1778,7 +1758,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    }
 
 
-   if (enable_rob_timer_log) {
+   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
       std::cout << "Next event: D(" << SubsecondTime::divideRounded(next_dispatch, now.getPeriod())
                 << ") I(" << SubsecondTime::divideRounded(next_issue, now.getPeriod())
                 << ") C(" <<SubsecondTime::divideRounded(next_commit, now.getPeriod())
@@ -1788,7 +1768,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    SubsecondTime skip;
    if (next_event != SubsecondTime::MaxTime() && next_event > now + 1ul)
    {
-      if (enable_rob_timer_log) {
+      if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          std::cout<<"++ Skip "<<SubsecondTime::divideRounded(next_event - now, now.getPeriod())<<std::endl;
       }
       will_skip = true;
@@ -1992,9 +1972,7 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
    RobEntry *entry = &rob[rob_idx];
    DynamicMicroOp &uop = *entry->uop;
 
-   if (enable_rob_timer_log) {
-      printf("PRELOAD TRY %ld, %s\n", uop.getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
-   }
+   ROB_DEBUG_PRINTF ("PRELOAD TRY %ld, %s\n", uop.getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
 
    if ((uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())
        && uop.getDCacheHitWhere() == HitWhere::UNKNOWN) {
@@ -2015,17 +1993,15 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
              true
          );
 
-         // if (enable_rob_timer_log) {
+         // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          //    std::cout<<"PRELOAD " << uop.getSequenceNumber() << ", " << entry->uop->getMicroOp()->toShortString() << std::endl;
          // }
-         if (enable_rob_timer_log) {
-            printf("  Early preload : tryIssue succeeded %s, rod_idx = %ld, index = %ld\n",
-                   uop.getMicroOp()->toShortString().c_str(),
-                   rob_idx,
-                   uop.getSequenceNumber());
-         }
+         ROB_DEBUG_PRINTF ("  Early preload : tryIssue succeeded %s, rod_idx = %ld, index = %ld\n",
+                           uop.getMicroOp()->toShortString().c_str(),
+                           rob_idx,
+                           uop.getSequenceNumber());
          uop.setPreloadDone();
-         if (m_enable_kanata && m_konata_count < m_konata_count_max) {
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAddress=%08lx\n", entry->global_sequence_id, 1, uop.getAddress().address);
             m_kanata_generated_in_this_region = true;
@@ -2033,14 +2009,10 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
 
          m_preload_count ++;
       } else {
-         if (enable_rob_timer_log) {
-            printf("  TRY %ld Failure. Merge access failed\n", uop.getSequenceNumber());
-         }
+         ROB_DEBUG_PRINTF ("  TRY %ld Failure. Merge access failed\n", uop.getSequenceNumber());
       }
    } else {
-      if (enable_rob_timer_log) {
-         printf("  TRY %ld Failure. DCacheHitWhere failed\n", uop.getSequenceNumber());
-      }
+      ROB_DEBUG_PRINTF ("  TRY %ld Failure. DCacheHitWhere failed\n", uop.getSequenceNumber());
    }
 }
 
@@ -2076,11 +2048,9 @@ bool RobTimer::UpdateNormalBindPhyRegAllocation(uint64_t rob_idx)
       // auto it = m_phy_registers[reg_index].m_phy_list.begin();
       if (m_phy_registers[reg_index] >= m_max_phy_registers[reg_index]) {
         // Not found available Physical Register
-        if (enable_rob_timer_log) {
-          printf("-- Normal: seqId=%ld(rob_index=%ld), freelist become empty.\n",
+        ROB_DEBUG_PRINTF ("-- Normal: seqId=%ld(rob_index=%ld), freelist become empty.\n",
                  uop->getSequenceNumber(),
                  rob_idx);
-        }
         return false;
       }
       m_phy_registers[reg_index]++;

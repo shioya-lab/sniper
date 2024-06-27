@@ -87,6 +87,8 @@ private:
    bool m_roi_started; // due to record roi_start time
    bool m_enable_o3;
    bool m_enable_kanata;
+   bool m_active_o3_gen;
+   bool m_active_kanata_gen;
    SubsecondTime m_last_kanata_time;
    bool m_kanata_generated_in_this_region;
 
@@ -107,8 +109,8 @@ private:
    bool will_skip;
    SubsecondTime time_skipped;
 
-   bool enable_debug_printf;
    bool enable_rob_timer_log;
+   UInt64 rob_start_cycle;
    bool enable_gatherscatter_log;
 
    RegisterDependencies* const registerDependencies;
@@ -190,6 +192,8 @@ private:
    SubsecondTime m_cpiBranchPredictor;
    SubsecondTime m_cpiSerialization;
    SubsecondTime m_cpiRSFull;
+   SubsecondTime m_cpiVPhyRegFull;
+   SubsecondTime m_cpiVSTQFull;
 
    std::vector<SubsecondTime> m_cpiInstructionCache;
    std::vector<SubsecondTime> m_cpiDataCache;
@@ -247,7 +251,7 @@ private:
 
    uint64_t m_preload_count;
 
-   SubsecondTime m_last_committed_time;
+   ComponentTime m_last_committed_time;
 
 public:
 
@@ -269,13 +273,11 @@ public:
 
   void roiBegin() {
     m_roi_started = true;
-    enable_debug_printf = !enable_debug_printf;
   }
 
   void roiEnd() {
     std::cout << "CycleTrace " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << '\n';
     // std::cout << "CycleTrace End\n";
-    enable_debug_printf = !enable_debug_printf;
     m_enable_o3 = 0;
   }
 
