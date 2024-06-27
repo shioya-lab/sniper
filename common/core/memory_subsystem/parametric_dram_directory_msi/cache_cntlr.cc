@@ -602,7 +602,7 @@ MYLOG("access done");
 
    if (modeled && m_master->m_prefetcher)
    {
-       trainPrefetcher(ca_address, cache_hit, prefetch_hit, false, t_start);
+       trainPrefetcher(ca_address + offset, cache_hit, prefetch_hit, false, t_start);
       if (m_enable_log) {
          fprintf(stderr, "%s processMemOpFromCore::trainPrefetcher() finished\n", m_configName.c_str());
       }
@@ -707,11 +707,13 @@ CacheCntlr::trainPrefetcher(IntPtr address, bool cache_hit, bool prefetch_hit, b
 
       for(std::vector<IntPtr>::iterator it = prefetchList.begin(); it != prefetchList.end(); ++it)
       {
+         auto aligned = (*it) - (*it) % m_cache_block_size;
+
          // Keep at most PREFETCH_MAX_QUEUE_LENGTH entries in the prefetch queue
          if (m_master->m_prefetch_list.size() > PREFETCH_MAX_QUEUE_LENGTH)
             break;
-         if (!operationPermissibleinCache(*it, Core::READ)) {
-            m_master->m_prefetch_list.push_back(*it);
+         if (!operationPermissibleinCache(aligned, Core::READ)) {
+            m_master->m_prefetch_list.push_back(aligned);
          }
       }
    }
