@@ -446,6 +446,33 @@ Core::initiateMemoryAccess(MemComponent::component_t mem_component,
    return makeMemoryResult(hit_where, shmem_time);
 }
 
+MemoryResult
+Core::prefetch(SubsecondTime now)
+{
+   // Setting the initial time
+   SubsecondTime initial_time = (now == SubsecondTime::MaxTime()) ? getPerformanceModel()->getElapsedTime() : now;
+
+   getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, initial_time);
+   auto hit_where = getMemoryManager()->prefetch(MemComponent::L1_DCACHE, MEM_MODELED_RETURN);
+   LOG_ASSERT_ERROR(hit_where != HitWhere::UNKNOWN, "HitWhere == UNKNOWN");
+   auto final_time = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
+
+   LOG_ASSERT_ERROR(final_time >= initial_time,
+         "final_time(%s) < initial_time(%s)",
+         itostr(final_time).c_str(),
+         itostr(initial_time).c_str());
+
+   // Calculate the round-trip time
+   // fprintf (stderr, "shmem_time = final_time=%lu - initial_time=%lu = %lu\n",
+   //          SubsecondTime::divideRounded(final_time, getDvfsDomain()->getPeriod()),
+   //          SubsecondTime::divideRounded(initial_time, getDvfsDomain()->getPeriod()),
+   //          SubsecondTime::divideRounded(final_time - initial_time, getDvfsDomain()->getPeriod()));
+   auto shmem_time = final_time - initial_time;
+   getShmemPerfModel()->incrTotalMemoryAccessLatency(shmem_time);
+
+   return makeMemoryResult(hit_where, shmem_time);
+}
+
 // FIXME: This should actually be 'accessDataMemory()'
 /*
  * accessMemory (lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size)

@@ -75,6 +75,12 @@ class MemoryManagerBase
          return latency;
       }
 
+      virtual HitWhere::where_t prefetch(MemComponent::component_t mem_component,
+                                         Core::MemModeled modeled)
+      {
+         return HitWhere::where_t(mem_component);
+      }
+
       virtual void handleMsgFromNetwork(NetPacket& packet) = 0;
 
       // FIXME: Take this out of here

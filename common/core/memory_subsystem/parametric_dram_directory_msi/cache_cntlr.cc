@@ -332,14 +332,15 @@ CacheCntlr::setDRAMDirectAccess(DramCntlrInterface* dram_cntlr, UInt64 num_outst
  *****************************************************************************/
 
 HitWhere::where_t
-CacheCntlr::processMemOpFromCore(
+CacheCntlr::processMemOp(
       IntPtr eip,
       Core::lock_signal_t lock_signal,
       Core::mem_op_t mem_op_type,
       IntPtr ca_address, UInt32 offset,
       Byte* data_buf, UInt32 data_length,
       bool modeled,
-      bool count)
+      bool count,
+      bool prefetch)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
 
@@ -437,7 +438,8 @@ MYLOG("L1 hit");
                ++stats.load_overlapping_misses;
 
             SubsecondTime latency = t_completed - t_now;
-            getShmemPerfModel()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
+            if (!prefetch)
+               getShmemPerfModel()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
          }
       }
 
@@ -451,7 +453,8 @@ MYLOG("L1 hit");
          {
             SubsecondTime latency = m_master->mshr[ca_address].t_complete - t_now;
             stats.mshr_latency += latency;
-            getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
+            if (!prefetch)
+               getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
          }
       }
 
@@ -551,6 +554,9 @@ MYLOG("processMemOpFromCore l%d after next fill", m_mem_component);
          ScopedLock sl(getLock());
          m_master->m_l1_mshr.getCompletionTime(t_miss_begin, t_miss_end - t_mshr_avail, ca_address);
       }
+
+      if (prefetch)
+         getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_miss_begin); // Ignore changes to time made by the prefetch call
    }
 
 
@@ -601,21 +607,12 @@ MYLOG("access done");
          stats.loads_where[hit_where]++;
    }
 
-   if (modeled && m_master->m_prefetcher)
+   if (modeled && !prefetch && m_master->m_prefetcher)
    {
        trainPrefetcher(ca_address + offset, eip, cache_hit, prefetch_hit, false, t_start);
       if (m_enable_log) {
          fprintf(stderr, "%s processMemOpFromCore::trainPrefetcher() finished\n", m_configName.c_str());
       }
-   }
-
-   // Call Prefetch on next-level caches (but not for atomic instructions as that causes a locking mess)
-   if (lock_signal != Core::LOCK && modeled)
-   {
-      if (m_enable_log) {
-         fprintf(stderr, "%s processMemOpFromCore::Prefetch(t_start) call\n", m_configName.c_str());
-      }
-      Prefetch(eip, t_start);
    }
 
    if (Sim()->getConfig()->getCacheEfficiencyCallbacks().notify_access_func)
@@ -720,9 +717,11 @@ CacheCntlr::trainPrefetcher(IntPtr address, IntPtr eip, bool cache_hit, bool pre
    }
 }
 
-void
-CacheCntlr::Prefetch(IntPtr eip, SubsecondTime t_now)
+HitWhere::where_t
+CacheCntlr::Prefetch(bool modeled, bool count)
 {
+   SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
+
    if (m_enable_log) {
       fprintf(stderr, "  %s CacheCntlr::Prefetch() called\n", m_configName.c_str());
       fprintf(stderr, "  %s m_prefetch_list.size = %ld\n", m_configName.c_str(), m_master->m_prefetch_list.size());
@@ -733,22 +732,10 @@ CacheCntlr::Prefetch(IntPtr eip, SubsecondTime t_now)
    {
       ScopedLock sl(getLock());
 
-      if (m_master->m_prefetch_next <= t_now)
+      if (m_master->m_prefetch_next <= t_now && !m_master->m_prefetch_list.empty())
       {
-         while(!m_master->m_prefetch_list.empty())
-         {
-            IntPtr address = m_master->m_prefetch_list.front();
-            m_master->m_prefetch_list.pop_front();
-
-            // Check address again, maybe some other core already brought it into the cache
-            if (!operationPermissibleinCache(address, Core::READ))
-            {
-               //addresses_to_prefetch[count++] = address;
-               address_to_prefetch = address;
-               // Do at most one prefetch now, save the rest for a future call
-               break;
-            }
-         }
+         address_to_prefetch = m_master->m_prefetch_list.front();
+         m_master->m_prefetch_list.pop_front();
       }
    }
 
@@ -759,42 +746,29 @@ CacheCntlr::Prefetch(IntPtr eip, SubsecondTime t_now)
    if (address_to_prefetch != INVALID_ADDRESS)
    {
       /*for (int i = 0; i < count; ++i) {
-         doPrefetch(addresses_to_prefetch[i], m_master->m_prefetch_next);
+         doPrefetch(addresses_to_prefetch[i], modeled, count);
       }*/
-      doPrefetch(address_to_prefetch, eip, m_master->m_prefetch_next);
-      atomic_add_subsecondtime(m_master->m_prefetch_next, PREFETCH_INTERVAL);
+      return doPrefetch(address_to_prefetch, modeled, count);
    }
 
    // In case the next-level cache has a prefetcher, run it
    if (m_next_cache_cntlr)
-      m_next_cache_cntlr->Prefetch(eip, t_now);
+      return m_next_cache_cntlr->Prefetch(modeled, count);
+
+   return HitWhere::where_t(m_mem_component);
 }
 
-void
-CacheCntlr::doPrefetch(IntPtr prefetch_address, IntPtr eip, SubsecondTime t_start)
+HitWhere::where_t
+CacheCntlr::doPrefetch(IntPtr prefetch_address, bool modeled, bool count)
 {
+   auto offset = prefetch_address % m_cache_block_size;
+
    ++stats.prefetches;
-   acquireStackLock(prefetch_address);
    MYLOG("prefetching %lx", prefetch_address);
-   SubsecondTime t_before = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
-   getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_start); // Start the prefetch at the same time as the original miss
-   HitWhere::where_t hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, eip, true, true, Prefetch::OWN, t_start, false);
 
-   if (hit_where == HitWhere::MISS)
-   {
-      /* last level miss, a message has been sent. */
-
-      releaseStackLock(prefetch_address);
-      waitForNetworkThread();
-      wakeUpNetworkThread();
-
-      hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, eip, false, false, Prefetch::OWN, t_start, false);
-
-      LOG_ASSERT_ERROR(hit_where != HitWhere::MISS, "Line was not there after prefetch");
-   }
-
-   getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_before); // Ignore changes to time made by the prefetch call
-   releaseStackLock(prefetch_address);
+   return processMemOp(INVALID_ADDRESS, Core::NONE, Core::READ,
+                       prefetch_address - offset, offset, nullptr, 0, modeled,
+                       count, true);
 }
 
 

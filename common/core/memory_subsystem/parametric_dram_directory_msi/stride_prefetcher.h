@@ -30,7 +30,9 @@ class StridePrefetcher final : public Prefetcher
         {
             static const uint8_t data = 0;
             gem5::Gem5Internal::_curTickPtr = &m_tick;
-            auto req = std::make_shared<gem5::Request>(current_address, 1, 0, core_id, eip, gem5::InvalidContextID);
+            auto req = eip == INVALID_ADDRESS ?
+                       std::make_shared<gem5::Request>(current_address, 1, 0, core_id) :
+                       std::make_shared<gem5::Request>(current_address, 1, 0, core_id, eip, gem5::InvalidContextID);
             req->setPaddr(current_address);
             gem5::Packet pkt(req, gem5::MemCmd());
             pkt.dataStaticConst(&data);

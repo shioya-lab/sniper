@@ -93,6 +93,7 @@ private:
    bool in_icache_miss;
    SubsecondTime last_store_done;
    ContentionModel load_queue;
+   ContentionModel prefetch_queue;
    ContentionModel store_queue;
    ContentionModel vec_load_queue;
    ContentionModel vec_store_queue;
@@ -207,6 +208,7 @@ private:
    SubsecondTime doDispatch(SubsecondTime **cpiComponent);
    SubsecondTime doIssue();
    SubsecondTime doCommit(uint64_t& instructionsExecuted);
+   SubsecondTime doPrefetch();
 
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
 

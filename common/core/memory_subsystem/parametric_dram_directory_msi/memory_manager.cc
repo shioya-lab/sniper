@@ -442,6 +442,15 @@ MemoryManager::coreInitiateMemoryAccess(
          modeled == Core::MEM_MODELED_NONE ? false : true);
 }
 
+HitWhere::where_t
+MemoryManager::prefetch(MemComponent::component_t mem_component,
+                        Core::MemModeled modeled)
+{
+   return m_cache_cntlrs[mem_component]->Prefetch(
+         modeled == Core::MEM_MODELED_NONE || modeled == Core::MEM_MODELED_COUNT ? false : true,
+         modeled == Core::MEM_MODELED_NONE ? false : true);
+}
+
 void
 MemoryManager::handleMsgFromNetwork(NetPacket& packet)
 {

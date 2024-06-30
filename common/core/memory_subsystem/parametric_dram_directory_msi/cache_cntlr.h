@@ -291,10 +291,19 @@ namespace ParametricDramDirectoryMSI
          bool operationPermissibleinCache(
                IntPtr address, Core::mem_op_t mem_op_type, CacheBlockInfo **cache_block_info = NULL);
 
+         HitWhere::where_t processMemOp(
+               IntPtr eip,
+               Core::lock_signal_t lock_signal,
+               Core::mem_op_t mem_op_type,
+               IntPtr ca_address, UInt32 offset,
+               Byte* data_buf, UInt32 data_length,
+               bool modeled,
+               bool count,
+               bool prefetch);
+
          void copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, IntPtr eip, bool modeled, SubsecondTime t_start);
          void trainPrefetcher(IntPtr address, IntPtr eip, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue);
-         void Prefetch(IntPtr eip, SubsecondTime t_start);
-         void doPrefetch(IntPtr prefetch_address, IntPtr eip, SubsecondTime t_start);
+         HitWhere::where_t doPrefetch(IntPtr prefetch_address, bool modeled, bool count);
 
          // Cache meta-data operations
          SharedCacheBlockInfo* getCacheBlockInfo(IntPtr address);
@@ -387,8 +396,14 @@ namespace ParametricDramDirectoryMSI
                IntPtr ca_address, UInt32 offset,
                Byte* data_buf, UInt32 data_length,
                bool modeled,
-               bool count);
+               bool count)
+         {
+            return processMemOp(eip, lock_signal, mem_op_type, ca_address,
+                                offset, data_buf, data_length, modeled,
+                                count, false);
+         }
          void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
+         HitWhere::where_t Prefetch(bool modeled, bool count);
 
          // Notify next level cache of so it can update its sharing set
          void notifyPrevLevelInsert(core_id_t core_id, MemComponent::component_t mem_component, IntPtr address);

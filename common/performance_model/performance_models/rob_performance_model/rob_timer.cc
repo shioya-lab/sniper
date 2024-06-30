@@ -55,6 +55,7 @@ RobTimer::RobTimer(
       , in_icache_miss(false)
       , last_store_done(SubsecondTime::Zero())
       , load_queue("rob_timer.load_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()))
+      , prefetch_queue("rob_timer.prefetch_queue", 1)
       , store_queue("rob_timer.store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()))
       , vec_load_queue("rob_timer.vec_load_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_loads", core->getId()))
       , vec_store_queue("rob_timer.vec_store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_vec_stores", core->getId()))
@@ -1532,6 +1533,22 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
    return next_event;
 }
 
+SubsecondTime RobTimer::doPrefetch()
+{
+   while (prefetch_queue.hasFreeSlot(now))
+   {
+      auto res = m_core->prefetch(now);
+      auto latency = SubsecondTime::divideRounded(res.latency, now.getPeriod());
+
+      if (!latency)
+         return SubsecondTime::MaxTime();
+
+      prefetch_queue.getCompletionTime(now, latency * now.getPeriod());
+   }
+
+   return prefetch_queue.getStartTime(now);
+}
+
 void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
 {
    latency = SubsecondTime::Zero();
@@ -1572,6 +1589,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    SubsecondTime next_dispatch = doDispatch(&cpiComponent);
    SubsecondTime next_issue    = doIssue();
    SubsecondTime next_commit   = doCommit(instructionsExecuted);
+   SubsecondTime next_prefetch = doPrefetch();
 
    if (enable_rob_timer_log) {
       #ifdef ASSERT_SKIP
@@ -1590,7 +1608,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    if (enable_rob_timer_log) {
       std::cout<<"Next event: D("<<SubsecondTime::divideRounded(next_dispatch, now.getPeriod())<<") I("<<SubsecondTime::divideRounded(next_issue, now.getPeriod())<<") C("<<SubsecondTime::divideRounded(next_commit, now.getPeriod())<<")"<<std::endl;
    }
-   SubsecondTime next_event = std::min(next_dispatch, std::min(next_issue, next_commit));
+   SubsecondTime next_event = std::min(next_dispatch, std::min(next_issue, std::min(next_commit, next_prefetch)));
    SubsecondTime skip;
    if (next_event != SubsecondTime::MaxTime() && next_event > now + 1ul)
    {
