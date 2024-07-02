@@ -77,7 +77,8 @@ struct MicroOp
       UOP_SUBTYPE_GENERIC,
       UOP_SUBTYPE_BRANCH,
       UOP_SUBTYPE_VEC_ARITH,
-      UOP_SUBTYPE_VEC_MEMACC,
+      UOP_SUBTYPE_VEC_LOAD,
+      UOP_SUBTYPE_VEC_STORE,
       UOP_SUBTYPE_SIZE,
    };
    uop_subtype_t uop_subtype;

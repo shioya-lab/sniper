@@ -124,6 +124,9 @@ private:
    UInt64 m_uops_x87;
    UInt64 m_uops_pause;
 
+   UInt64 m_inst_type_count[MicroOp::UOP_SUBTYPE_SIZE];
+   UInt64 m_inst_total;
+
    uint64_t m_numICacheOverlapped;
    uint64_t m_numBPredOverlapped;
    uint64_t m_numDCacheOverlapped;

@@ -167,10 +167,14 @@ MicroOp::uop_subtype_t MicroOp::getSubtype(const MicroOp& uop)
 {
    // Count all of the ADD/SUB/DIV/LD/ST/BR, and if we have too many, break
    // Count all of the GENERIC insns, and if we have too many (3x-per-cycle), break
-   if (uop.isLoad())
-     return uop.isVector() ? UOP_SUBTYPE_VEC_MEMACC : UOP_SUBTYPE_LOAD;
+   if (uop.isVecLoad())
+      return UOP_SUBTYPE_VEC_LOAD;
+   else if (uop.isVecStore())
+      return UOP_SUBTYPE_VEC_STORE;
+   else if (uop.isLoad())
+     return UOP_SUBTYPE_LOAD;
    else if (uop.isStore())
-     return uop.isVector() ? UOP_SUBTYPE_VEC_MEMACC : UOP_SUBTYPE_STORE;
+     return UOP_SUBTYPE_STORE;
    else if (uop.isBranch()) // conditional branches
       return UOP_SUBTYPE_BRANCH;
    else if (uop.isExecute())
@@ -196,8 +200,10 @@ String MicroOp::getSubtypeString(uop_subtype_t uop_subtype)
          return "branch";
       case UOP_SUBTYPE_VEC_ARITH:
          return "vec_arith";
-      case UOP_SUBTYPE_VEC_MEMACC:
-         return "vec_memacc";
+      case UOP_SUBTYPE_VEC_LOAD:
+         return "vec_load";
+      case UOP_SUBTYPE_VEC_STORE:
+         return "vec_store";
       default:
          LOG_ASSERT_ERROR(false, "Unknown UopType %u", uop_subtype);
          return "unknown";

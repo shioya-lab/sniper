@@ -104,6 +104,13 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "uops_x87", &m_uops_x87);
    registerStatsMetric("rob_timer", core->getId(), "uops_pause", &m_uops_pause);
 
+   for(int i = 0; i < MicroOp::UOP_SUBTYPE_SIZE; ++i) {
+      m_inst_type_count[i] = 0;
+      registerStatsMetric("rob_timer", core->getId(), String("inst_") + MicroOp::getSubtypeString(MicroOp::uop_subtype_t(i)), &m_inst_type_count[i]);
+   }
+   m_inst_total = 0;
+   registerStatsMetric("rob_timer", core->getId(), "inst_total", &m_inst_total);
+
    m_numSerializationInsns = 0;
    m_totalSerializationLatency = 0;
 
@@ -520,6 +527,12 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       m_uop_type_count[(*it)->getMicroOp()->getSubtype()]++;
       m_uops_total++;
+
+      if ((*it)->isFirst()) {
+         m_inst_type_count[(*it)->getMicroOp()->getSubtype()]++;
+         m_inst_total++;
+      }
+
       if ((*it)->getMicroOp()->isX87()) m_uops_x87++;
       if ((*it)->getMicroOp()->isPause()) m_uops_pause++;
 
