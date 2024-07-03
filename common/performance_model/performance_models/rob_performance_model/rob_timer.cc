@@ -1531,8 +1531,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
           inst->getDisassembly().find("add            zero, zero, zero") != std::string::npos) {
       }
 
-      if (enable_rob_timer_log &&
-          cycle_activated &&
+      if (cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos &&
           m_konata_count < m_konata_count_max) {
 
