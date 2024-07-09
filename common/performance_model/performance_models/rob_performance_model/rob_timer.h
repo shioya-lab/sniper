@@ -230,12 +230,55 @@ private:
       FloatRegister = 1,
       VectorRegister = 2
    };
+   bool m_gather_always_reserve_allocation; // Gather命令は常に予約に回すオプション
 
    UInt64 m_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
    UInt64 m_max_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
    UInt64 m_maxusage_phy_registers[3];
    std::list<UInt64> m_dispatch_fifo;
    bool m_vec_wfifo_registers[32];
+   UInt64 m_wfifo_inserted;   // WFIFOに挿入された回数
+   UInt64 m_wfifo_overflow;   // WFIFOがオーバーフローした回数
+
+   // 統計情報 : W-FIFOにどれくらいどの命令が入ったか
+   std::unordered_map<UInt64, std::pair<UInt64, String>> m_wfifo_stats;  // first: PC, second: <Count, assembly>
+   inline void UpdateWFIFOStats(DynamicMicroOp *uop) {
+      // Update stats
+      auto wfifo_it = m_wfifo_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
+      if (wfifo_it == m_wfifo_stats.end()) {
+         m_wfifo_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(),
+                                             std::make_pair(1, uop->getMicroOp()->getInstruction()->getDisassembly()))); // Not found
+      } else {
+         (wfifo_it->second).first++; // Found
+      }
+   }
+
+   // 統計情報 : ベクトルメモリアクセスのキャッシュ・ヒット・ミス頻度
+
+   class dcache_stats_t {
+     public:
+      UInt64 hitwhere[HitWhere::NUM_HITWHERES];
+      String assembly;
+      dcache_stats_t() {
+         for (int h = HitWhere::WHERE_FIRST ; h < HitWhere::NUM_HITWHERES ; h++) {
+            hitwhere[h] = 0;
+         }
+      }
+   } ;
+   std::unordered_map<UInt64, dcache_stats_t*> m_vec_dcache_stats;  // <PC, <<Hit, Miss>, assembly>>
+   inline void UpdateVecDCacheStats(DynamicMicroOp *uop, int hitwhere) {
+      // Update stats
+      auto vec_dcache_it = m_vec_dcache_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
+      if (vec_dcache_it == m_vec_dcache_stats.end()) {
+         dcache_stats_t *s = new dcache_stats_t();
+         s->hitwhere[hitwhere] = 1;
+         s->assembly = uop->getMicroOp()->getInstruction()->getDisassembly();
+         m_vec_dcache_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(), s)); // Not found
+      } else {
+         // Found
+         (vec_dcache_it->second)->hitwhere[hitwhere]++;
+      }
+   }
 
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
 

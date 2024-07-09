@@ -2,6 +2,7 @@
 #include "simulator.h"
 #include "config.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 
 const IntPtr PAGE_SIZE = 4096;
@@ -75,7 +76,7 @@ std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, uint64_t uop_
     }
 
     if (m_enable_log) {
-      fprintf(stderr, "   %s: VecPrefetcher::Vector current_address pc = %08lx, base_addr = %08lx, last_addr = %08lx, stride = %08lx, entry index = %ld, confidence = %d\n",
+      fprintf(stderr, "   %s: VecPrefetcher::Vector. pc = %08lx, base_addr = %08lx, last_addr = %08lx, stride = %08lx, entry index = %ld, confidence = %d\n",
               configName.c_str(),
               pc, entry->base_addr, entry->last_addr, entry->stride, i, entry->confidence
               );
@@ -83,20 +84,31 @@ std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, uint64_t uop_
 
     if (entry->base_addr + entry->stride == current_address) {
       if (m_enable_log) {
-        fprintf(stderr, "   %s: VecPrefetcher::Vector hits entry_index=%ld, base_addr=%08lx, stride=%08lx, vec_size=%d\n",
-                configName.c_str(), i, entry->base_addr, entry->stride,  entry->vec_size);
+        fprintf(stderr, "   %s: VecPrefetcher::Vector. pc = %08lx, hits entry_index=%ld, base_addr=%08lx, stride=%08lx, vec_size=%d\n",
+                configName.c_str(), pc, i, entry->base_addr, entry->stride,  entry->vec_size);
       }
       if (entry->can_prefetch()) {
-        if (m_enable_log) { fprintf(stderr, "   %s: VecPrefetcher::Vector canprefetch = 1\n", configName.c_str()); }
+        if (m_enable_log) { fprintf(stderr, "   %s: VecPrefetcher::Vector. pc = %08lx, canprefetch = 1\n",
+                                    configName.c_str(), pc); }
         for (unsigned d = 0; d < entry->m_degree; d++) {
-          if (m_enable_log) { fprintf(stderr, "   %s: VecPrefetcher::Vector degree = %d\n", configName.c_str(), entry->m_degree); }
+          if (m_enable_log) { fprintf(stderr, "   %s: VecPrefetcher::Vector. pc = %08lx, degree = %d\n",
+                                      configName.c_str(), pc, entry->m_degree); }
           for (unsigned vd = 0; vd < entry->vec_degree(); vd++) {
-            if (m_enable_log) { fprintf(stderr, "   %s: VecPrefetcher::Vector vec_degree = %d\n", configName.c_str(), entry->vec_degree()); }
-            IntPtr prefetch = current_address + entry->stride * (d + 1) + vd * m_cache_block_size;
-            addresses.push_back(prefetch);
-            if (m_enable_log) {
-              fprintf(stderr, "   %s: VecPrefetcher::Vector push_address entry index = %ld, prefetch addr = %08lx (degree = %d, vec_size = %d)\n",
-                      configName.c_str(), i, prefetch, entry->vec_degree(), entry->vec_size);
+            if (m_enable_log) { fprintf(stderr, "   %s: VecPrefetcher::Vector. pc = %08lx, vec_degree = %d\n",
+                                        configName.c_str(), pc, entry->vec_degree()); }
+            IntPtr prefetch_addr = current_address + entry->stride * (d + 1) + vd * m_cache_block_size;
+            prefetch_addr = prefetch_addr & ~(m_cache_block_size-1);
+            if (std::find(addresses.begin(), addresses.end(), prefetch_addr) == addresses.end()) {
+               addresses.push_back(prefetch_addr);
+               if (m_enable_log) {
+                  fprintf(stderr, "   %s: VecPrefetcher::Vector. pc = %08lx, push_address entry index = %ld, prefetch addr = %08lx (degree = %d, vec_size = %d)\n",
+                          configName.c_str(), pc, i, prefetch_addr, entry->vec_degree(), entry->vec_size);
+               }
+            } else {
+               if (m_enable_log) {
+                  fprintf(stderr, "   %s: VecPrefetcher::Vector. pc = %08lx, prefetch address already existed. filtered, prefetch addr = %08lx\n",
+                          configName.c_str(), pc, prefetch_addr);
+               }
             }
           }
         }

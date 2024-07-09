@@ -225,10 +225,10 @@ struct MicroOp
    bool isVector() const { return this->is_vector; }
    bool canVecSquash() const { return this->can_vec_squash; }
 
-   bool isVecMem()    const { return  this->is_vector && (this->isLoad() || this->isStore()); }
-   bool isVecLoad()   const { return  this->is_vector && this->isLoad(); }
-   bool isVecStore()  const { return  this->is_vector && this->isStore(); }
-   bool isScalarMem() const { return !this->is_vector && (this->isLoad() || this->isStore()); }
+   bool isVecMem()    const { return  this->isVector() && (this->isLoad() || this->isStore()); }
+   bool isVecLoad()   const { return  this->isVector() && this->isLoad(); }
+   bool isVecStore()  const { return  this->isVector() && this->isStore(); }
+   bool isScalarMem() const { return !this->isVector() && (this->isLoad() || this->isStore()); }
 
    void setDebugInfo(String debugInfo);
    String toString() const;
