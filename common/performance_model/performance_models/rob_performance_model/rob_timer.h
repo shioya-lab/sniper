@@ -78,6 +78,7 @@ private:
    bool m_roi_started; // due to record roi_start time
    bool m_enable_o3;
    bool m_enable_kanata;
+   uint64_t m_first_kanata_sequence_number;
    SubsecondTime m_last_kanata_time;
 
    FILE *m_o3_fp;

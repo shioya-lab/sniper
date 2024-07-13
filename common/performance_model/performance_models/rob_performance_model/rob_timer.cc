@@ -1455,6 +1455,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
             m_o3_fp = fopen("o3_trace.out", "w");
          }
          m_enable_kanata = Sim()->getCfg()->getBoolArray("log/enable_kanata_log", m_core->getId());
+         if (m_enable_kanata) {
+            m_first_kanata_sequence_number = entry->uop->getSequenceNumber();
+         }
 
          std::cout << "KonataStart " << std::dec << SubsecondTime::divideRounded(now, now.getPeriod()) << " "
                    << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
@@ -1752,7 +1755,9 @@ void RobTimer::startKanataStage(RobEntry& entry, const char* stage)
 
    if (!entry.kanata_registered) {
       entry.kanata_registered = true;
-      fprintf(m_kanata_fp, "I\t%ld\t%d\t%d\n", uop.getSequenceNumber(), 0, 0);
+      fprintf(m_kanata_fp, "I\t%" PRIu64 "\t%" PRIu64 "\t%d\n",
+              uop.getSequenceNumber() - m_first_kanata_sequence_number,
+              uop.getSequenceNumber(), m_core->getId());
       fprintf(m_kanata_fp, "L\t%ld\t%d\t%08lx:%s\n", uop.getSequenceNumber(), 0,
               uop.getMicroOp()->getInstruction()->getAddress(),
               uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
