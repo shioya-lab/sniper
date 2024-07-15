@@ -1400,6 +1400,16 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
 	case rv_op_vor_vv            :
 	case rv_op_vxor_vv           :
 	case rv_op_vrgather_vv       :
+	case rv_op_vadd_vvm          :
+	case rv_op_vsub_vvm          :
+	case rv_op_vminu_vvm         :
+	case rv_op_vmin_vvm          :
+	case rv_op_vmaxu_vvm         :
+	case rv_op_vmax_vvm          :
+	case rv_op_vand_vvm          :
+	case rv_op_vor_vvm           :
+	case rv_op_vxor_vvm          :
+	case rv_op_vrgather_vvm      :
 	case rv_op_vadc_vv           :
 	case rv_op_vmadc_vv          :
 	case rv_op_vsbc_vv           :
@@ -1513,14 +1523,14 @@ bool RISCVDecoder::is_vector (decoder_opcode opcd, const DecodedInst* ins)
 	case rv_op_vnsra_vi          :
 	case rv_op_vnclipu_vi        :
 	case rv_op_vnclip_vi         :
-	case rv_op_vredsum_vv        :
-	case rv_op_vredand_vv        :
-	case rv_op_vredor_vv         :
-	case rv_op_vredxor_vv        :
-	case rv_op_vredminu_vv       :
-	case rv_op_vredmin_vv        :
-	case rv_op_vredmaxu_vv       :
-	case rv_op_vredmax_vv        :
+	case rv_op_vredsum_vs        :
+	case rv_op_vredand_vs        :
+	case rv_op_vredor_vs         :
+	case rv_op_vredxor_vs        :
+	case rv_op_vredminu_vs       :
+	case rv_op_vredmin_vs        :
+	case rv_op_vredmaxu_vs       :
+	case rv_op_vredmax_vs        :
 	case rv_op_vaaddu_vv         :
 	case rv_op_vaadd_vv          :
 	case rv_op_vasubu_vv         :
@@ -1857,6 +1867,7 @@ void RISCVDecodedInst::set_disassembly()
       case '\t': while (args.length() < 15) args += " "; break;
       case 'A': if (dec.aq) args += ".aq"; break;
       case 'R': if (dec.rl) args += ".rl"; break;
+      case 'z': args += "v0.t"; break;
       default:
         break;
     }
