@@ -213,7 +213,7 @@ private:
    RobEntry *findEntryBySequenceNumber(UInt64 sequenceNumber);
    SubsecondTime* findCpiComponent();
    void countOutstandingMemop(SubsecondTime time);
-   void printRob();
+   void printRob(bool is_only_vector = false);
 
    void execute(uint64_t& instructionsExecuted, SubsecondTime& latency);
    SubsecondTime doDispatch(SubsecondTime **cpiComponent);
@@ -254,7 +254,6 @@ private:
    }
 
    // 統計情報 : ベクトルメモリアクセスのキャッシュ・ヒット・ミス頻度
-
    class dcache_stats_t {
      public:
       UInt64 hitwhere[HitWhere::NUM_HITWHERES];
@@ -280,6 +279,20 @@ private:
       }
    }
 
+   // 統計情報 : プリロードがどれくらい発行されたか
+   std::unordered_map<UInt64, std::pair<UInt64, String>> m_preload_stats;  // first: PC, second: <Count, assembly>
+   inline void UpdatePreloadStats(DynamicMicroOp *uop) {
+      // Update stats
+      auto preload_it = m_preload_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
+      if (preload_it == m_preload_stats.end()) {
+         m_preload_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(),
+                                               std::make_pair(1, uop->getMicroOp()->getInstruction()->getDisassembly()))); // Not found
+      } else {
+         (preload_it->second).first++; // Found
+      }
+   }
+
+
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
 
    bool UpdateNormalBindPhyRegAllocation(uint64_t rob_idx);
@@ -298,6 +311,10 @@ private:
    uint64_t m_preload_count;
 
    ComponentTime m_last_committed_time;
+
+   const String m_app;
+
+   bool m_show_rob;
 
 public:
 
@@ -339,6 +356,60 @@ public:
 
       // std::cout << "Set VL = " << vl << ", vsize = " << std::dec << vsize << ", " << "vlmul = " << vlmul << '\n';
       return 0;
+   }
+
+   bool isForceReserved(DynamicMicroOp *uop) {
+      bool is_avoid_wfifo = true;
+      if (m_app == "bfs") {
+         is_avoid_wfifo = \
+               (uop->getMicroOp()->getInstruction()->getAddress() >= 0x142e0 &&
+                uop->getMicroOp()->getInstruction()->getAddress() <= 0x142f8) ||
+
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14948) || // VLE64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14950) || // VSLL.vi
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14954) || // VLUXEI64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14958) || // vmslt.vx	v9, v9, zero
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14970) || // vle64.v	v10, (t3)
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14994) || // VMV1R v0, v9
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x149ac) || // VLE64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x149b0) || // VSLL.vi
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x149b4) || // VLUXEI64.v
+               false;
+      } else if (m_app == "cc") {
+         is_avoid_wfifo =                                               \
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x1406c) || // VLE64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14070) || // VSLL.vi
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14074) || // VLUXEI64.v
+
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14078) || // VLE64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x1407c) || // VSLL.vi
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14080) || // VLUXEI64.v
+
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x140c0) || // VLUXEI64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x140e0) || // VLUXEI64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14100) || // VLUXEI64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14108) || // VLUXEI64.v
+               false;
+      } else if (m_app == "pr") {
+         is_avoid_wfifo =                                               \
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x143ac) || // VLE64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x143b0) || // VSLL.vi
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x143b4) || // VLUXEI64.v
+               false;
+      } else if (m_app == "sssp") {
+         is_avoid_wfifo =                                               \
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142e0) || // VLE64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142ec) || // VSLL.vi
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142f0) || // VLUXEI64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14298) || // VLE64.v
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142a4) || // VSLL.vi
+               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142a8) || // VLUXEI64.v
+               false;
+      } else {
+         is_avoid_wfifo = uop->getMicroOp()->isVecLoad() &&
+               uop->getMicroOp()->canVecSquash();   // VLE
+      }
+      return !is_avoid_wfifo;
    }
 
 };

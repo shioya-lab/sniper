@@ -424,16 +424,86 @@ bool RISCVDecoder::mem_base_upate(const DecodedInst *inst, unsigned int mem_idx)
 
 bool RISCVDecoder::has_index_reg(const DecodedInst *inst, unsigned int mem_idx)
 {
-  // riscv::decode *dec = ((RISCVDecodedInst *) ist)->get_rv8_dec();
-  return false;
+  	riscv::decode *dec = ((RISCVDecodedInst *) inst)->get_rv8_dec();
+	switch(dec->op) {
+        case rv_op_vluxei8_v :
+        case rv_op_vloxei8_v :
+        case rv_op_vsuxei8_v :
+        case rv_op_vsoxei8_v :
+        case rv_op_vluxei8_vm:
+        case rv_op_vloxei8_vm:
+        case rv_op_vsuxei8_vm:
+        case rv_op_vsoxei8_vm: 
+        case rv_op_vluxei16_v :
+        case rv_op_vloxei16_v :
+        case rv_op_vsuxei16_v :
+        case rv_op_vsoxei16_v :
+        case rv_op_vluxei16_vm:
+        case rv_op_vloxei16_vm:
+        case rv_op_vsuxei16_vm:
+        case rv_op_vsoxei16_vm: 
+        case rv_op_vluxei32_v :
+        case rv_op_vloxei32_v :
+        case rv_op_vsuxei32_v :
+        case rv_op_vsoxei32_v :
+        case rv_op_vluxei32_vm:
+        case rv_op_vloxei32_vm:
+        case rv_op_vsuxei32_vm:
+        case rv_op_vsoxei32_vm: 
+        case rv_op_vluxei64_v :
+        case rv_op_vloxei64_v :
+        case rv_op_vsuxei64_v :
+        case rv_op_vsoxei64_v :
+        case rv_op_vluxei64_vm:
+        case rv_op_vloxei64_vm:
+        case rv_op_vsuxei64_vm:
+        case rv_op_vsoxei64_vm: return true; 
+		default : return false;
+	}
+
+  	return false;
 }
 
 
 /// Get the index register of the memory operand pointed by mem_idx
 Decoder::decoder_reg RISCVDecoder::mem_index_reg (const DecodedInst * inst, unsigned int mem_idx)
 {
-  // no index reg
-  return 1;
+  	riscv::decode *dec = ((RISCVDecodedInst *) inst)->get_rv8_dec();
+	switch(dec->op) {
+        case rv_op_vluxei8_v :
+        case rv_op_vloxei8_v :
+        case rv_op_vsuxei8_v :
+        case rv_op_vsoxei8_v :
+        case rv_op_vluxei8_vm:
+        case rv_op_vloxei8_vm:
+        case rv_op_vsuxei8_vm:
+        case rv_op_vsoxei8_vm: 
+        case rv_op_vluxei16_v :
+        case rv_op_vloxei16_v :
+        case rv_op_vsuxei16_v :
+        case rv_op_vsoxei16_v :
+        case rv_op_vluxei16_vm:
+        case rv_op_vloxei16_vm:
+        case rv_op_vsuxei16_vm:
+        case rv_op_vsoxei16_vm: 
+        case rv_op_vluxei32_v :
+        case rv_op_vloxei32_v :
+        case rv_op_vsuxei32_v :
+        case rv_op_vsoxei32_v :
+        case rv_op_vluxei32_vm:
+        case rv_op_vloxei32_vm:
+        case rv_op_vsuxei32_vm:
+        case rv_op_vsoxei32_vm: 
+        case rv_op_vluxei64_v :
+        case rv_op_vloxei64_v :
+        case rv_op_vsuxei64_v :
+        case rv_op_vsoxei64_v :
+        case rv_op_vluxei64_vm:
+        case rv_op_vloxei64_vm:
+        case rv_op_vsuxei64_vm:
+        case rv_op_vsoxei64_vm: return dec->rs2; 
+		default : return 0;
+	}
 }
 
 /// Check if the operand mem_idx from instruction inst is read from memory

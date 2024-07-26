@@ -89,6 +89,7 @@ RobTimer::RobTimer(
       , m_vec_reserved_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/reserved_allocation", core->getId()))
       , m_gather_always_reserve_allocation (Sim()->getCfg()->getBoolArray("research_option/gather_always_reserve_allocation", core->getId()))
       , m_last_committed_time(core->getDvfsDomain())
+      , m_app(Sim()->getCfg()->getString("general/app"))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -298,8 +299,11 @@ RobTimer::~RobTimer()
                                  std::make_pair(it->first, (it->second).second)));
    }
    std::sort(v.begin(), v.end());
+   // Counting up all WFIFO usage:
+   UInt64 wfifo_total = 0;
+   for (auto it = v.begin(); it != v.end(); it++) { wfifo_total += it->first; }
    std::cout << "-----------\n";
-   std::cout << "WFIFO usage\n";
+   std::cout << "WFIFO usage (" << wfifo_total << ")\n";
    std::cout << "-----------\n";
    for (auto it = v.begin(); it != v.end(); it++) {
       std::cout << std::hex << (it->second).first << ", " << std::dec << it->first << " : " << (it->second).second << '\n';
@@ -314,14 +318,33 @@ RobTimer::~RobTimer()
       std::cout << name << ", ";
    }
    std::cout << '\n';
-   // std::sort(m_vec_dcache_stats.begin(), m_vec_dcache_stats.end());
    for (auto it = m_vec_dcache_stats.begin(); it != m_vec_dcache_stats.end(); it++) {
       std::cout << std::hex << it->first << ", ";
+
+      // Calculate L1/L2 hit rate
+      UInt64 hit_count = 0, whole_count = 0;
+      for (int h = HitWhere::WHERE_FIRST ; h < HitWhere::NUM_HITWHERES ; h++) {
+         whole_count += (it->second)->hitwhere[h];
+         if (h != HitWhere::DRAM) {
+            hit_count += (it->second)->hitwhere[h];
+         }
+      }
+      std::cout << std::fixed << std::setprecision(3) << (static_cast<double>(hit_count)/whole_count) << ", ";
+
       for (int h = HitWhere::WHERE_FIRST ; h < HitWhere::NUM_HITWHERES ; h++) {
          std::cout << std::dec << (it->second)->hitwhere[h] << ", ";
       }
       std::cout << " : " << (it->second)->assembly << '\n';
    }
+
+
+   std::cout << "-------------------\n";
+   std::cout << "Preload usage\n";
+   std::cout << "-------------------\n";
+   for (auto it = m_preload_stats.begin(); it != m_preload_stats.end(); it++) {
+      std::cout << std::hex << it->first << ", " << std::dec << (it->second).first << " : " << (it->second).second << '\n';
+   }
+
 }
 
 void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
@@ -447,6 +470,22 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
             uint64_t addressProducer = this->registerDependencies->peekProducer(reg, lowestValidSequenceNumber);
             if (addressProducer != INVALID_SEQNR)
             {
+               RobEntry *prodEntry = this->findEntryBySequenceNumber(addressProducer);
+               if (prodEntry->done != SubsecondTime::MaxTime())
+                  entry->addressReadyMax = std::max(entry->addressReadyMax, prodEntry->done);
+               else
+                  entry->addAddressProducer(addressProducer);
+            }
+         }
+         if (entry->getNumAddressProducers() == 0)
+            entry->addressReady = entry->addressReadyMax;
+      }
+
+      if (entry->uop->getMicroOp()->isVecMem()) { // Vector命令のためにAddressReadyを追加しておく
+         for(unsigned int i = 0; i < entry->uop->getMicroOp()->getAddressRegistersLength(); ++i) {
+            dl::Decoder::decoder_reg reg = entry->uop->getMicroOp()->getAddressRegister(i);
+            uint64_t addressProducer = this->registerDependencies->peekProducer(reg, lowestValidSequenceNumber);
+            if (addressProducer != INVALID_SEQNR) {
                RobEntry *prodEntry = this->findEntryBySequenceNumber(addressProducer);
                if (prodEntry->done != SubsecondTime::MaxTime())
                   entry->addressReadyMax = std::max(entry->addressReadyMax, prodEntry->done);
@@ -783,7 +822,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                    uop->getMicroOp()->getInstruction()->getAddress(),
                    uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
            if (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) {
-            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t\nAccess=%08lx\n", entry->global_sequence_id, 1,
+              fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAccess=%08lx\n", entry->global_sequence_id, 1,
                     uop->getAddress().address);
            }
            for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
@@ -794,7 +833,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                  if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
                     continue;
                  }
-                 fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
+                 // fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
               }
            }
            if (entry->uop->hasCommitDependency()) {
@@ -802,6 +841,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
            } else {
               fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
            }
+           fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tVecPhyregs=%ld\n", entry->global_sequence_id, 2, m_phy_registers[2] - 32);
            m_kanata_generated_in_this_region = true;
            // fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", uop->getSequenceNumber(), 0, "F");
          }
@@ -909,14 +949,14 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       uop.setDCacheHitWhere(res.hit_where);
 
       // if (uop.getMicroOp()->getInstruction()->getAddress() == 0x149b8) {
-      if (uop.getMicroOp()->getInstruction()->getAddress() == 0x1020c) {
-         printf("%ld, 0x%08lx access %08lx %s, result = %s\n",
-                uop.getSequenceNumber(),
-                uop.getMicroOp()->getInstruction()->getAddress(),
-                uop.getAddress().address,
-                uop.getMicroOp()->getInstruction()->getDisassembly().c_str(),
-                HitWhereString(uop.getDCacheHitWhere()));
-      }
+      // if (uop.getMicroOp()->getInstruction()->getAddress() == 0x1020c) {
+      //    printf("%ld, 0x%08lx access %08lx %s, result = %s\n",
+      //           uop.getSequenceNumber(),
+      //           uop.getMicroOp()->getInstruction()->getAddress(),
+      //           uop.getAddress().address,
+      //           uop.getMicroOp()->getInstruction()->getDisassembly().c_str(),
+      //           HitWhereString(uop.getDCacheHitWhere()));
+      // }
    }
 
 
@@ -973,8 +1013,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    entry->done = cycle_done;
 
    if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
-     fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "X");
-     m_kanata_generated_in_this_region = true;
+      fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Wf");
+      if (uop.isPreloadDone()) {
+         fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
+      }
+      fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
+      fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "X");
+      m_kanata_generated_in_this_region = true;
    }
 
    next_event = std::min(next_event, entry->done);
@@ -1082,6 +1127,8 @@ SubsecondTime RobTimer::doIssue()
    bool vector_someone_wait_issue = false;
    bool scalar_someone_wait_issue = false;
 
+   m_show_rob = false;
+
    for(uint64_t i = 0; i < m_num_in_rob; ++i)
    {
       RobEntry *entry = &rob.at(i);
@@ -1154,6 +1201,7 @@ SubsecondTime RobTimer::doIssue()
       if (uop->hasCommitDependency()) {
          LOG_ASSERT_ERROR (m_dispatch_fifo.size() > 0, "Uop=%ld has commit dependency, but fifo is empty", uop->getSequenceNumber());
          if (canIssue &&
+             uop->hasCommitDependency() &&
              uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED &&
              uop->getSequenceNumber() == m_dispatch_fifo.front()) {
             uop->removeCommitDependency();
@@ -1382,19 +1430,31 @@ SubsecondTime RobTimer::doIssue()
           m_vec_preload &&
           uop->getMicroOp()->isVecMem() && /* uop->getMicroOp()->isLoad() && */
           !uop->isPreloadDone()) {
-         // dependencyのチェック：ちょっと詳細にチェックしないといけない
-         // 1. 依存先の命令が同じPCでIDが1つ違い -> 同じベクトル命令グループのため，この依存は無視してよい
-         bool real_dependency = false;
-         for (uint32_t j = 0; j < entry->uop->getDependenciesLength(); j++) {
-            RobEntry *dep_entry = findEntryBySequenceNumber(entry->uop->getDependency(j));
-            if (dep_entry->uop->getMicroOp()->getInstruction()->getAddress() == uop->getMicroOp()->getInstruction()->getAddress() &&
-                dep_entry->uop->getSequenceNumber() + 1 == uop->getSequenceNumber()) {
-               // This is pseudo (Vector group in-order dependency)
-            } else {
-               real_dependency = true;
-            }
-         }
-         if (!real_dependency && m_rob_contention->tryPreload()) {
+         // // dependencyのチェック：ちょっと詳細にチェックしないといけない
+         // // 1. 依存先の命令が同じPCでIDが1つ違い -> 同じベクトル命令グループのため，この依存は無視してよい
+         // bool real_dependency = false;
+         // for (uint32_t j = 0; j < entry->uop->getDependenciesLength(); j++) {
+         //    RobEntry *dep_entry = findEntryBySequenceNumber(entry->uop->getDependency(j));
+         //    if (dep_entry->uop->getMicroOp()->getInstruction()->getAddress() == uop->getMicroOp()->getInstruction()->getAddress() &&
+         //        dep_entry->uop->getSequenceNumber() + 1 == uop->getSequenceNumber()) {
+         //       // This is pseudo (Vector group in-order dependency)
+         //    } else {
+         //       real_dependency = true;
+         //    }
+         // }
+
+         // for(unsigned int ad = 0; ad < uop->getMicroOp()->getAddressRegistersLength(); ++ad)
+         // {
+         //    uint64_t addressProducer = uop->getMicroOp()->getAddressRegister(ad);
+         //    RobEntry *prodEntry = addressProducer >= this->rob.front().uop->getSequenceNumber()
+         //                        ? this->findEntryBySequenceNumber(addressProducer) : NULL;
+         //    if (prodEntry && prodEntry->done == SubsecondTime::MaxTime()) {
+         //       // An address producer has not yet been issued: address remains not ready
+         //       real_dependency = true;
+         //    }
+         // }
+
+         if (/* entry->addressReady > now */entry->uop->getDependenciesLength() == 0 && m_rob_contention->tryPreload()) {
             // Pipeline available
             preloadInstruction (i);
             done_preload = true;
@@ -1641,7 +1701,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       }
 
       if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
-        fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
+        fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
         fprintf(m_core->getKanataFp(), "R\t%ld\t%ld\t%d\n", entry->global_sequence_id, entry->uop->getSequenceNumber(), 0);
         m_kanata_generated_in_this_region = true;
       }
@@ -1680,7 +1740,8 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          // VSQ資源が解決されれば，m_dispatch_fifo内の先頭SQハザードをRESOLVEDに変更する
          for (auto &f : m_dispatch_fifo) {
             RobEntry *waiting_entry = this->findEntryBySequenceNumber(f);
-            if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::SQ) {
+            if (waiting_entry->uop->hasCommitDependency() &&
+                waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::SQ) {
                waiting_entry->uop->setCommitDependency(DynamicMicroOp::wfifo_t::RESOLVED);
                vec_store_queue -= 1;
                break;
@@ -1711,23 +1772,31 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
          --m_phy_registers[reg_index];
          LOG_ASSERT_ERROR(m_phy_registers[reg_index] >= 32, "register usage become less than 32.");
-
-         if (reg_index == 2) {
-            fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, RELEAS,   %3ld, WFIFO_size=%ld\n",
-                     entry->uop->getSequenceNumber(),
-                     entry->uop->getMicroOp()->getInstruction()->getAddress(),
-                     entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
-                     m_phy_registers[2],
-                     m_dispatch_fifo.size());
-         }
+         // if (reg_index == 2) {
+         //    fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, RELEAS,   %3ld, WFIFO_size=%ld\n",
+         //             entry->uop->getSequenceNumber(),
+         //             entry->uop->getMicroOp()->getInstruction()->getAddress(),
+         //             entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
+         //             m_phy_registers[2],
+         //             m_dispatch_fifo.size());
+         // }
 
          if (reg_index == 2) {
             // 物理レジスタの資源が解決されれば，m_dispatch_fifo内の先頭SQハザードをRESOLVEDに変更する
             for (auto &f : m_dispatch_fifo) {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(f);
-               if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
+               RobEntry *waiting_entry = findEntryBySequenceNumber(f);
+               if (waiting_entry->uop->hasCommitDependency() &&
+                   waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
                   waiting_entry->uop->setCommitDependency(DynamicMicroOp::wfifo_t::RESOLVED);
                   m_phy_registers[reg_index]++;
+
+                  if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
+                     fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n",
+                             waiting_entry->global_sequence_id,
+                             entry->global_sequence_id,
+                             0);
+                  }
+
                   break;
                }
             }
@@ -1811,6 +1880,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
            m_kanata_generated_in_this_region = true;
          } else {
            fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", e->global_sequence_id, 0, "X");
+           fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", e->global_sequence_id, 0, "Cm");
            m_kanata_generated_in_this_region = true;
          }
           m_konata_count++;
@@ -1818,7 +1888,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
      }
    }
 
-   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
+   if ((enable_rob_timer_log || m_show_rob) && now.getCycleCount() >= rob_start_cycle) {
       #ifdef ASSERT_SKIP
          if (! will_skip)
          {
@@ -1892,7 +1962,7 @@ void RobTimer::countOutstandingMemop(SubsecondTime time)
       m_outstandingLoadsAll[total >= MAX_OUTSTANDING ? MAX_OUTSTANDING-1 : total] += time;
 }
 
-void RobTimer::printRob()
+void RobTimer::printRob(bool is_only_vector)
 {
    std::cout<<"** ROB state @ "<<SubsecondTime::divideRounded(now, now.getPeriod())<<"  size("<<m_num_in_rob<<") total("<<rob.size()<<")"<<std::endl;
    if (frontend_stalled_until > now)
@@ -1928,17 +1998,43 @@ void RobTimer::printRob()
 
    size_t vecstore_count = 0;
 
+   UInt64 vecreg_count = 0;
+   UInt64 vecreg_alloc_count = 0;
+
    for(unsigned int i = 0; i < rob.size(); ++i)
    {
-      std::cout<<"   ["<<std::setw(3)<<i<<"]  ";
       RobEntry *e = &rob.at(i);
 
+      if (is_only_vector && !e->uop->getMicroOp()->isVector()) {
+         continue;
+      }
+
+      std::cout<<"   ["<<std::setw(3)<<i<<"]  ";
+
       std::ostringstream state;
-      if (e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
+
+      dl::Decoder *dec = Sim()->getDecoder();
+      if (e->uop->getMicroOp()->isVector() &&
+          e->uop->isFirst() &&
+          e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+          dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))
+      ) {
+         state << std::setw(3) << (++vecreg_count) << ' ';
+         if (!e->uop->hasCommitDependency() &&
+             i < m_num_in_rob) {
+            state << std::setw(3) << (++vecreg_alloc_count) << ' ';
+         } else {
+            state << "    ";
+         }
+      } else {
+         state << "        ";
+      }
+
+      if (e->uop->hasCommitDependency() && e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
          state << "WFIFO(PR) ";
-      } else if (e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED) {
+      } else if (e->uop->hasCommitDependency() && e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED) {
          state << "WFIFO(  ) ";
-      } else if (e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::SQ) {
+      } else if (e->uop->hasCommitDependency() && e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::SQ) {
          state << "WFIFO(SQ) ";
       } else if (i >= m_num_in_rob) {
          state << "PREROB    ";
@@ -1965,13 +2061,14 @@ void RobTimer::printRob()
       else
       {
          state<<"DEPS ";
-         for(uint32_t j = 0; j < e->uop->getDependenciesLength(); j++)
+         for(uint32_t j = 0; j < std::min(e->uop->getDependenciesLength(), 2U); j++) {
             state << std::dec << e->uop->getDependency(j) << " ";
-         // state << std::dec << "|";
-         // for(uint32_t j = 0; j < e->uop->getRegDependenciesLength(); j++)
-         //    state << std::dec << e->uop->getRegDependency(j) << " ";
+         }
+         if (e->uop->getDependenciesLength() > 2) {
+            state << "...";
+         }
       }
-      std::cout<<std::left<<std::setw(30)<<state.str()<<"   ";
+      std::cout<<std::left<<std::setw(48)<<state.str()<<"   ";
       std::cout<<std::right<<std::setw(10)<<e->uop->getSequenceNumber()<<"  ";
       if (e->uop->getMicroOp()->isLoad())
          std::cout<<"LOAD      ";
@@ -2011,6 +2108,7 @@ void RobTimer::printRob()
       std::cout<<std::endl;
 
       if (i < m_num_in_rob &&
+          e->uop->hasCommitDependency() &&
           e->uop->getCommitDependency() != DynamicMicroOp::wfifo_t::SQ &&
           e->uop->getMicroOp()->isVecStore()) {
          // fprintf (stderr, "inflight Vector Store %ld\n", e->uop->getSequenceNumber());
@@ -2018,9 +2116,9 @@ void RobTimer::printRob()
       }
    }
 
-   LOG_ASSERT_ERROR(vec_store_queue_max - vec_store_queue == vecstore_count,
-                    "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
-                    vec_store_queue, vecstore_count);
+   // LOG_ASSERT_ERROR(vec_store_queue_max - vec_store_queue == vecstore_count,
+   //                  "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
+   //                  vec_store_queue, vecstore_count);
 }
 
 
@@ -2080,6 +2178,7 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
          }
 
          m_preload_count ++;
+         UpdatePreloadStats (&uop);
       } else {
          ROB_DEBUG_PRINTF ("  TRY %ld Failure. Merge access failed\n", uop.getSequenceNumber());
       }
@@ -2153,23 +2252,23 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
          m_wfifo_inserted ++;
          uop->setCommitDependency (DynamicMicroOp::wfifo_t::RESOLVED);
 
-         fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, RESOLVED, %3ld, WFIFO_size=%ld\n",
-                  uop->getSequenceNumber(),
-                  uop->getMicroOp()->getInstruction()->getAddress(),
-                  uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
-                  m_phy_registers[2],
-                  m_dispatch_fifo.size());
+         // fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, RESOLVED, %3ld, WFIFO_size=%ld\n",
+         //          uop->getSequenceNumber(),
+         //          uop->getMicroOp()->getInstruction()->getAddress(),
+         //          uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
+         //          m_phy_registers[2],
+         //          m_dispatch_fifo.size());
 
          last_wfifo_sequencenumber = uop->getSequenceNumber();
          return true;
       }
 
-      fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, RESOLVED, %3ld, WFIFO_size=%ld\n",
-               uop->getSequenceNumber(),
-               uop->getMicroOp()->getInstruction()->getAddress(),
-               uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
-               m_phy_registers[2],
-               m_dispatch_fifo.size());
+      // fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, RESOLVED, %3ld, WFIFO_size=%ld\n",
+      //          uop->getSequenceNumber(),
+      //          uop->getMicroOp()->getInstruction()->getAddress(),
+      //          uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
+      //          m_phy_registers[2],
+      //          m_dispatch_fifo.size());
 
       return true;
    }
@@ -2196,13 +2295,18 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
 
       // ソースレジスタのベクトルが待ち状態であれば、同様にWFIFOに入れる：
       if (reg_index == 2) {
-         for(unsigned int i = 0; i < uop->getMicroOp()->getSourceRegistersLength(); ++i) {
-            dl::Decoder::decoder_reg sourceRegister = uop->getMicroOp()->getSourceRegister(i);
-            // W-FIFOに，ソースオペランドを書き込むレジスタが存在している場合は，同様にW-FIFOに入れる
-            for (auto &f : m_dispatch_fifo) {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(f);
-               if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG &&
-                   waiting_entry->uop->getMicroOp()->getDestinationRegister(0) == sourceRegister) {
+         // for(unsigned int i = 0; i < uop->getMicroOp()->getSourceRegistersLength(); ++i) {
+         //    dl::Decoder::decoder_reg sourceRegister = uop->getMicroOp()->getSourceRegister(i);
+         //    // W-FIFOに，ソースオペランドを書き込むレジスタが存在している場合は，同様にW-FIFOに入れる
+         //    for (auto &f : m_dispatch_fifo) {
+         //       RobEntry *waiting_entry = this->findEntryBySequenceNumber(f);
+         for(size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx)
+         {
+            RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
+            {
+               if (waiting_entry->uop->hasCommitDependency() &&
+                   waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG /* &&
+                   waiting_entry->uop->getMicroOp()->getDestinationRegister(0) == sourceRegister */) {
                   if (m_dispatch_fifo.size() < WFIFO_SIZE) {
                      if (m_dispatch_fifo.size() > 0) {
                         LOG_ASSERT_ERROR(m_dispatch_fifo.back() <= uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
@@ -2217,11 +2321,14 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
                         // Set Vector Register Dependent waiting list
                         m_vec_wfifo_registers[dest_reg - 64] = true;
 
-                        fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, PHYREG(S), WFIFO_size=%ld\n",
-                                 uop->getSequenceNumber(),
-                                 uop->getMicroOp()->getInstruction()->getAddress(),
-                                 uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
-                                 m_dispatch_fifo.size());
+                        // fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, PHYREG(S), WFIFO_size=%ld  // depends %ld, reg=%d\n",
+                        //          uop->getSequenceNumber(),
+                        //          uop->getMicroOp()->getInstruction()->getAddress(),
+                        //          uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
+                        //          m_dispatch_fifo.size(),
+                        //          waiting_entry->uop->getSequenceNumber(),
+                        //          waiting_entry->uop->getMicroOp()->getDestinationRegister(0)
+                        // );
 
                      }
                      uop->setCommitDependency (DynamicMicroOp::wfifo_t::PHYREG);
@@ -2242,13 +2349,37 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       // When Vector Load, allocate as normal
       if (reg_index == 2) {
          bool alloc_success;
-         if (m_gather_always_reserve_allocation &&
-             uop->getMicroOp()->isVecLoad() &&
-             !uop->getMicroOp()->canVecSquash() &&
-             m_phy_registers[2] > 32 // Vec Regs が 32 以上 : 何かしらインフライトなベクトルレジスタが存在していること
-         ) {
-            // Gather は常に予約するモード
-            alloc_success = false;
+         // if (m_gather_always_reserve_allocation &&
+         //     uop->getMicroOp()->isVecLoad() &&
+         //     !uop->getMicroOp()->canVecSquash() &&
+         //     m_phy_registers[2] > 32 // Vec Regs が 32 以上 : 何かしらインフライトなベクトルレジスタが存在していること
+         //     // m_phy_registers[2] > 32 + (m_max_phy_registers[2] - 32) / 2
+         // ) {
+         //    // Gather は常に予約するモード
+         //    alloc_success = false;
+         if (m_gather_always_reserve_allocation) {
+            if (isForceReserved(uop) &&
+                /* m_phy_registers[2] > (32 + (m_max_phy_registers[2] - 32) / 2) */
+                m_phy_registers[2] > 32
+            ) {
+               alloc_success = false;
+            } else {
+               alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
+               // if ((uop->getMicroOp()->getInstruction()->getAddress() == 0x14948) || // VLE64.v
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x14950) || // VSLL.vi
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x14954) || // VLUXEI64.v
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x14958) || // vmslt.vx	v9, v9, zero
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x14970) || // vle64.v	v10, (t3)
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x14994) || // VMV1R v0, v9
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x149ac) || // VLE64.v
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x149b0) || // VSLL.vi
+               //     (uop->getMicroOp()->getInstruction()->getAddress() == 0x149b4) || // VLUXEI64.v
+               //     false
+               // ) {
+               //    printRob(true);
+               //    LOG_ASSERT_ERROR(alloc_success, "Force allocation mode, failure.");
+               // }
+            }
          } else {
             alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
          }
@@ -2256,12 +2387,12 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
          if (!m_vec_reserved_allocation) {
             return alloc_success;
          } else if (alloc_success) {
-            fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, NOTALLOC, %3ld, WFIFO_size=%ld\n",
-                     uop->getSequenceNumber(),
-                     uop->getMicroOp()->getInstruction()->getAddress(),
-                     uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
-                     m_phy_registers[2],
-                     m_dispatch_fifo.size());
+            // fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, NOTALLOC, %3ld, WFIFO_size=%ld\n",
+            //          uop->getSequenceNumber(),
+            //          uop->getMicroOp()->getInstruction()->getAddress(),
+            //          uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
+            //          m_phy_registers[2],
+            //          m_dispatch_fifo.size());
             return true;
          }
       }
@@ -2280,12 +2411,12 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
          // Set Vector Register Dependent waiting list
          m_vec_wfifo_registers[dest_reg - 64] = true;
 
-         fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, PHYREG,   %3ld, WFIFO_size=%ld\n",
-                  uop->getSequenceNumber(),
-                  uop->getMicroOp()->getInstruction()->getAddress(),
-                  uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
-                  m_phy_registers[2],
-                  m_dispatch_fifo.size());
+         // fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, PHYREG,   %3ld, WFIFO_size=%ld\n",
+         //          uop->getSequenceNumber(),
+         //          uop->getMicroOp()->getInstruction()->getAddress(),
+         //          uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
+         //          m_phy_registers[2],
+         //          m_dispatch_fifo.size());
 
          entry->phy_reg_index = 0;
          return true;
@@ -2299,7 +2430,8 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
          // W-FIFOに，ソースオペランドを書き込むレジスタが存在している場合は，同様にW-FIFOに入れる
          for (auto &f : m_dispatch_fifo) {
             RobEntry *waiting_entry = this->findEntryBySequenceNumber(f);
-            if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG &&
+            if (waiting_entry->uop->hasCommitDependency() &&
+                waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG &&
                 waiting_entry->uop->getMicroOp()->getDestinationRegister(0) == sourceRegister) {
                if (m_dispatch_fifo.size() < WFIFO_SIZE) {
                   if (m_dispatch_fifo.size() > 0) {
@@ -2311,11 +2443,11 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
                      last_wfifo_sequencenumber = uop->getSequenceNumber();
                      UpdateWFIFOStats(uop);
 
-                     fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, SQ,            WFIFO_size=%ld\n",
-                              uop->getSequenceNumber(),
-                              uop->getMicroOp()->getInstruction()->getAddress(),
-                              uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
-                              m_dispatch_fifo.size());
+                     // fprintf (stderr, "WFIFO: uop=%ld, pc=%08lx, %-40s, SQ,            WFIFO_size=%ld\n",
+                     //          uop->getSequenceNumber(),
+                     //          uop->getMicroOp()->getInstruction()->getAddress(),
+                     //          uop->getMicroOp()->getInstruction()->getDisassembly().c_str(),
+                     //          m_dispatch_fifo.size());
 
                   }
                   uop->setCommitDependency (DynamicMicroOp::wfifo_t::RESOLVED);
@@ -2390,7 +2522,8 @@ void RobTimer::releaseWFIFO ()
 {
    if (m_dispatch_fifo.size() > 0) {
       RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
-      if (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED) {
+      if (waiting_entry->uop->hasCommitDependency() &&
+          waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED) {
          waiting_entry->uop->removeCommitDependency();
          m_dispatch_fifo.pop_front();
       }
