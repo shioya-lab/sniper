@@ -405,6 +405,8 @@ public:
                (uop->getMicroOp()->getInstruction()->getAddress() == 0x142a4) || // VSLL.vi
                (uop->getMicroOp()->getInstruction()->getAddress() == 0x142a8) || // VLUXEI64.v
                false;
+      } else if (m_app == "00") {
+         is_avoid_wfifo = (uop->getMicroOp()->getInstruction()->getAddress() == 0x10692);
       } else {
          is_avoid_wfifo = uop->getMicroOp()->isVecLoad() &&
                uop->getMicroOp()->canVecSquash();   // VLE

@@ -971,7 +971,8 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    }
 
    uint64_t additional_latency = uop.getVectorIssueMax() - 1;
-   if (!uop.getMicroOp()->canVecSquash()) {
+   if (uop.getMicroOp()->isVecMem() &&
+       !uop.getMicroOp()->canVecSquash()) {
      // Gather / Scatter
      additional_latency = 0;
    }
@@ -1409,13 +1410,13 @@ SubsecondTime RobTimer::doIssue()
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-         if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-            std::cout << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
-                ", index = " << uop->getSequenceNumber() <<
-                ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
-                ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
-                "\n";
-         }
+         // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
+         //    std::cout << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
+         //        ", index = " << uop->getSequenceNumber() <<
+         //        ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
+         //        ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
+         //        "\n";
+         // }
          if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
             fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
          }
@@ -1467,8 +1468,8 @@ SubsecondTime RobTimer::doIssue()
          //         "\n";
          //   }
          }
-      } else {
-         ROB_DEBUG_PRINTF ("seqId=%ld : Preload condition failed, regDependenciesLength = %d\n", uop->getSequenceNumber(), entry->uop->getRegDependenciesLength());
+      // } else {
+      //    ROB_DEBUG_PRINTF ("seqId=%ld : Preload condition failed, regDependenciesLength = %d\n", uop->getSequenceNumber(), entry->uop->getRegDependenciesLength());
       }
 
       if (canIssue && !done_preload) {
@@ -2520,13 +2521,21 @@ bool RobTimer::ReserveVSTQ (uint64_t rob_idx)
 
 void RobTimer::releaseWFIFO ()
 {
+   ROB_DEBUG_PRINTF ("RobTimer::releaseWFIFO() called ");
    if (m_dispatch_fifo.size() > 0) {
       RobEntry *waiting_entry = this->findEntryBySequenceNumber(m_dispatch_fifo.front());
       if (waiting_entry->uop->hasCommitDependency() &&
           waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED) {
          waiting_entry->uop->removeCommitDependency();
          m_dispatch_fifo.pop_front();
+         fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", waiting_entry->global_sequence_id, 0, "Wf");
+         fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", waiting_entry->global_sequence_id, 0, "Ds");
+         ROB_DEBUG_PRINTF ("succeeded\n");
+      } else {
+         ROB_DEBUG_PRINTF ("failed\n");
       }
+   } else {
+      ROB_DEBUG_PRINTF ("none\n");
    }
 
    return;
