@@ -15,6 +15,8 @@
 #include <deque>
 #include <list>
 
+#define ROB_DEBUG_PRINTF(...) { if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) { fprintf(stderr, __VA_ARGS__); }}
+
 class RobTimer
 {
 private:
@@ -233,8 +235,11 @@ private:
    bool m_gather_always_reserve_allocation; // Gather命令は常に予約に回すオプション
 
    UInt64 m_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
+   UInt64 m_res_reserv_registers;  // 資源予約リスト内の命令の数
    UInt64 m_max_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
    UInt64 m_maxusage_phy_registers[3];
+   UInt64 m_total_vec_phy_registers;
+   UInt64 m_total_vec_phy_count;
    std::list<UInt64> m_dispatch_fifo;
    bool m_vec_wfifo_registers[32];
    UInt64 m_wfifo_inserted;   // WFIFOに挿入された回数
@@ -358,60 +363,91 @@ public:
       return 0;
    }
 
-   bool isForceReserved(DynamicMicroOp *uop) {
-      bool is_avoid_wfifo = true;
+   bool isPriorityResourceInst (DynamicMicroOp *uop) {
+      bool is_priority_inst = false;
+      UInt64 inst_address = uop->getMicroOp()->getInstruction()->getAddress();
+
       if (m_app == "bfs") {
-         is_avoid_wfifo = \
-               (uop->getMicroOp()->getInstruction()->getAddress() >= 0x142e0 &&
-                uop->getMicroOp()->getInstruction()->getAddress() <= 0x142f8) ||
-
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14948) || // VLE64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14950) || // VSLL.vi
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14954) || // VLUXEI64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14958) || // vmslt.vx	v9, v9, zero
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14970) || // vle64.v	v10, (t3)
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14994) || // VMV1R v0, v9
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x149ac) || // VLE64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x149b0) || // VSLL.vi
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x149b4) || // VLUXEI64.v
-               false;
+         switch (inst_address) {
+            case 0x142e0 : // vl1re64.v	v8, (t2)
+            case 0x142e4 : // vl1re64.v	v9, (t1)
+            case 0x14948 : // vle64.v	v8, (a7)
+            case 0x14950 : // vsll.vi	v8, v8, 3
+            case 0x14954 : // vluxei64.v	v9, (a7), v8
+               // case 0x14958 : // vmslt.vx	v9, v9, zero
+            case 0x14970 : // vle64.v	v10, (t3)
+               // case 0x14974 : // vmv.v.i	v11, 0
+               // case 0x14994 : // vmv1r.v	v0, v9
+            case 0x149a4 : // vle64.v	v13, (t0)
+            case 0x149a8 : // vsll.vi	v14, v13, 3
+            case 0x149ac : // vluxei64.v	v14, (a2), v14
+               is_priority_inst = true;
+               break;
+         }
       } else if (m_app == "cc") {
-         is_avoid_wfifo =                                               \
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x1406c) || // VLE64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14070) || // VSLL.vi
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14074) || // VLUXEI64.v
+         switch (inst_address) {
+            case 0x13c9c:  // vle64.v	v8, (a5)
+            case 0x13ca0:  // vsll.vi	v9, v8, 3
+            case 0x13ca4:  // vluxei64.v	v9, (a6), v9
 
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14078) || // VLE64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x1407c) || // VSLL.vi
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14080) || // VLUXEI64.v
+            case 0x13d14: // vle64.v	v8, (a5)
+            case 0x13d1c: // vsll.vi	v11, v8, 3
+            case 0x13d20: // vluxei64.v	v12, (t0), v11
 
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x140c0) || // VLUXEI64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x140e0) || // VLUXEI64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14100) || // VLUXEI64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14108) || // VLUXEI64.v
-               false;
+            case 0x13f6c: // vle64.v	v8, (s0)
+            case 0x13f70: // vsll.vi	v8, v8, 3
+            case 0x13f74: // vluxei64.v	v11, (t6), v8
+
+            case 0x1406c: // vle64.v	v8, (a3)
+            case 0x14070: // vsll.vi	v8, v8, 3
+            case 0x14074: // vluxei64.v	v9, (a0), v8
+
+            case 0x14078: // vle64.v	v8, (a5)
+            case 0x1407c: // vsll.vi	v8, v8, 3
+            case 0x14080: // vluxei64.v	v10, (a0), v8
+               is_priority_inst = true;
+         }
       } else if (m_app == "pr") {
-         is_avoid_wfifo =                                               \
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x143ac) || // VLE64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x143b0) || // VSLL.vi
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x143b4) || // VLUXEI64.v
-               false;
+         switch (inst_address) {
+            case 0x143ac: // vle64.v	v11, (a7)
+            case 0x143b0: // vsll.vi	v11, v11, 3
+            case 0x143b4: // vluxei64.v	v11, (a2), v11
+               is_priority_inst = true;
+         }
       } else if (m_app == "sssp") {
-         is_avoid_wfifo =                                               \
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142e0) || // VLE64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142ec) || // VSLL.vi
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142f0) || // VLUXEI64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x14298) || // VLE64.v
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142a4) || // VSLL.vi
-               (uop->getMicroOp()->getInstruction()->getAddress() == 0x142a8) || // VLUXEI64.v
-               false;
+         switch (inst_address) {
+            case 0x142e0: // vle64.v	v10, (a4)
+            case 0x142ec: // vsll.vi	v10, v10, 3
+            case 0x142f0: // vluxei64.v	v10, (t0), v10
+
+            case 0x14298: // vle64.v	v8, (a6)
+            case 0x142a4: // vsll.vi	v8, v8, 3
+            case 0x142a8: // vluxei64.v	v9, (a1), v8
+               is_priority_inst = true;
+         }
       } else if (m_app == "00") {
-         is_avoid_wfifo = (uop->getMicroOp()->getInstruction()->getAddress() == 0x10692);
+         is_priority_inst = (inst_address == 0x10692);
+      } else if (m_app == "01") {
+         is_priority_inst = (inst_address == 0x106a2);
+      } else if (m_app == "02") { // spmv
+         switch (inst_address) {
+            case 0x103f6 : // vle64.v	v24, (t3)
+               // case 0x103fa : // vle64.v	v8, (t1)
+            case 0x103fe : // vsll.vi	v24, v24, 3
+            case 0x10404 : // vluxei64.v	v24, (a3), v24
+               ROB_DEBUG_PRINTF("spmv instruction %08lx is priority instruction\n", inst_address);
+               is_priority_inst = true;
+               break;
+            default :
+               ROB_DEBUG_PRINTF("spmv instruction %08lx is NOT priority instruction\n", inst_address);
+               is_priority_inst = false;
+               break;
+         }
       } else {
-         is_avoid_wfifo = uop->getMicroOp()->isVecLoad() &&
+         is_priority_inst = uop->getMicroOp()->isVecLoad() &&
                uop->getMicroOp()->canVecSquash();   // VLE
       }
-      return !is_avoid_wfifo;
+      return is_priority_inst;
    }
 
 };
