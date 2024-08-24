@@ -2032,7 +2032,7 @@ void RobTimer::printRob(bool is_only_vector)
 
       dl::Decoder *dec = Sim()->getDecoder();
       if (e->uop->getMicroOp()->isVector() &&
-          e->uop->isFirst() &&
+          e->uop->isLast() &&
           e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
           dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))
       ) {

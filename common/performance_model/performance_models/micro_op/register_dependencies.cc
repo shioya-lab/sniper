@@ -41,26 +41,26 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
    // v24 is associated with (0) and (1)
    // producer[v24] = (0) and producerLength[v24] = 1;
    // --> consumer should depends on producer[v24] and producer[v24]+1
-   // if (microOp.getMicroOp()->isVector() &&
-   //     !microOp.getMicroOp()->canVecSquash()) {
-   //    for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
-   //    {
-   //       uint32_t destinationRegister = microOp.getMicroOp()->getDestinationRegister(i);
-   //       LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
-   //       if (microOp.isFirst()) {
-   //          producerLength[destinationRegister] = 0;
-   //       } else {
-   //          producerLength[destinationRegister]++;
-   //       }
-   //    }
-   // } else {
-   //    for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
-   //    {
-   //       uint32_t destinationRegister = microOp.getMicroOp()->getDestinationRegister(i);
-   //       LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
-   //       producerLength[destinationRegister] = 0;
-   //    }
-   // }
+   if (microOp.getMicroOp()->isVector() &&
+       !microOp.getMicroOp()->canVecSquash()) {
+      for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
+      {
+         uint32_t destinationRegister = microOp.getMicroOp()->getDestinationRegister(i);
+         LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
+         if (microOp.isFirst()) {
+            producerLength[destinationRegister] = 0;
+         } else {
+            producerLength[destinationRegister]++;
+         }
+      }
+   } else {
+      for(uint32_t i = 0; i < microOp.getMicroOp()->getDestinationRegistersLength(); i++)
+      {
+         uint32_t destinationRegister = microOp.getMicroOp()->getDestinationRegister(i);
+         LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
+         producerLength[destinationRegister] = 0;
+      }
+   }
 
    // Intermediate Vector Instruction doent' update producer register
    // VLUXEI case
@@ -73,7 +73,7 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
    //
    if (microOp.getMicroOp()->isVector() &&
        !microOp.getMicroOp()->canVecSquash() &&
-       !microOp.isLast()) {
+       !microOp.isFirst()) {
       // Not UnitStride, Gather/Scatter instructions are Issued in same time, then prevent Intermeditae Update
       return;
    }
