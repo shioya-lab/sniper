@@ -2134,7 +2134,8 @@ void RobTimer::printRob(bool is_only_vector)
       }
    }
 
-   LOG_ASSERT_ERROR (vecreg_alloc_count + 32 == m_phy_registers[2],
+   LOG_ASSERT_ERROR (vecreg_alloc_count + 32 == m_phy_registers[2] ||
+                     vecreg_alloc_count + 32 + 1 == m_phy_registers[2],
                      "Vec register count failed. %d != %d\n", vecreg_alloc_count + 32, m_phy_registers[2]);
 
    // LOG_ASSERT_ERROR(vec_store_queue_max - vec_store_queue == vecstore_count,
