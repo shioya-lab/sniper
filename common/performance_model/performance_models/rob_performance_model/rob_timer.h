@@ -371,6 +371,11 @@ public:
          switch (inst_address) {
             case 0x142e0 : // vl1re64.v	v8, (t2)
             case 0x142e4 : // vl1re64.v	v9, (t1)
+
+            case 0x14484 : // vl1re64.v	v12, (s9)
+            case 0x14488 : // vsll.vi	v12, v12, 3
+            case 0x1448c : // vluxei64.v	v13, (t6), v12
+
             case 0x14948 : // vle64.v	v8, (a7)
             case 0x14950 : // vsll.vi	v8, v8, 3
             case 0x14954 : // vluxei64.v	v9, (a7), v8
