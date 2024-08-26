@@ -238,6 +238,7 @@ private:
    UInt64 m_res_reserv_registers;  // 資源予約リスト内の命令の数
    UInt64 m_max_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
    UInt64 m_maxusage_phy_registers[3];
+   UInt64 m_nonpri_max_vec_phy_registers;
    UInt64 m_total_vec_phy_registers;
    UInt64 m_total_vec_phy_count;
    std::list<UInt64> m_dispatch_fifo;

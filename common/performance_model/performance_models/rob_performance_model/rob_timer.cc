@@ -256,6 +256,9 @@ RobTimer::RobTimer(
    m_max_phy_registers[0] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/int_physical_registers"  );
    m_max_phy_registers[1] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/float_physical_registers");
    m_max_phy_registers[2] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_physical_registers"  );
+
+   m_nonpri_max_vec_phy_registers = Sim()->getCfg()->getInt("perf_model/core/rob_timer/nonpri_max_vec_phy_registers");
+
    m_maxusage_phy_registers[0] = 32;
    m_maxusage_phy_registers[1] = 32;
    m_maxusage_phy_registers[2] = 32;
@@ -925,6 +928,23 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       std::cout <<"ISSUE    "<< "(" << entry->uop->getSequenceNumber() << ") " <<
                entry->uop->getMicroOp()->toShortString()<<"   latency="<<uop.getExecLatency()<<std::endl;
    }
+
+   // // Temporary debug:
+   // static UInt64 debug_nonpri_inst_count = 0;
+   // static bool debug_nopri_record_start = false;
+   // if (uop.getMicroOp()->getInstruction()->getAddress() == 0x14948) {
+   //    debug_nopri_record_start = true;
+   // }
+   // if (debug_nopri_record_start &&
+   //     uop.getMicroOp()->isVector() &&
+   //     !isPriorityResourceInst(&uop) &&
+   //     (++debug_nonpri_inst_count) < 10000) {
+   //    printf ("%10ld : %ld : NonPriorityVec Issued %08lx %s\n",
+   //            now.getCycleCount(),
+   //            uop.getSequenceNumber(),
+   //            uop.getMicroOp()->getInstruction()->getAddress(),
+   //            uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
+   // }
 
    if ((uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())
        && uop.getDCacheHitWhere() == HitWhere::UNKNOWN) {
@@ -1786,7 +1806,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                          waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
                         waiting_entry->uop->setCommitDependency(DynamicMicroOp::wfifo_t::RESOLVED);
                         m_res_reserv_registers ++;
-                        ROB_DEBUG_PRINTF ("Register pass from %ld to %ld\n", entry->uop->getSequenceNumber(), f);
+                        // printf ("Register pass from %ld to %ld\n", entry->uop->getSequenceNumber(), f);
 
                         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
                            fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n",
@@ -2386,8 +2406,7 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
                //            uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
                // }
                return alloc_success;
-            } else if (m_res_reserv_registers < m_max_phy_registers[2] / 8) {
-            // } else if (m_res_reserv_registers < 4) {
+            } else if (m_res_reserv_registers < m_nonpri_max_vec_phy_registers) {
                // 非優先命令：資源予約リストが空
                alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
                if (alloc_success) {
