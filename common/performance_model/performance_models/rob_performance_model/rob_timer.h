@@ -302,6 +302,13 @@ private:
    void setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber);
 
    bool UpdateNormalBindPhyRegAllocation(uint64_t rob_idx);
+
+   bool m_1st_issue_in_cycle;
+
+   UInt64 m_last_wfifo_sequencenumber;
+   bool InsertWFIFO (DynamicMicroOp *uop, DynamicMicroOp::wfifo_t reason);
+   bool InsertPhyRegWFIFO (DynamicMicroOp *uop, dl::Decoder::decoder_reg dest_reg);
+   bool AllocNonpriVecRegisters (uint64_t rob_idx, DynamicMicroOp *uop, dl::Decoder::decoder_reg dest_reg);
    bool UpdateReservedBindPhyRegAllocation(uint64_t rob_idx);
    bool UpdateLateBindPhyRegAllocation(uint64_t rob_idx);
    void preloadInstruction (uint64_t idx);
@@ -364,7 +371,168 @@ public:
       return 0;
    }
 
+   UInt64 m_prod_pc_vregs[32];
+   void UpdateProdRegister (DynamicMicroOp &uop) {
+      if (uop.getMicroOp()->isVector() &&
+          uop.getMicroOp()->getDestinationRegistersLength() != 0 && uop.isLast()) {
+         dl::Decoder *dec = Sim()->getDecoder();
+         if (dec->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0))) {
+            dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+            UInt64 pc = uop.getMicroOp()->getInstruction()->getAddress();
+            m_prod_pc_vregs[dest_reg - 64] = pc;
+         }
+      }
+   }
+
+   void PropagatePriInsts (DynamicMicroOp &uop) {
+      // fprintf (stderr, "PropagatePriInsts start:\n");
+      for(unsigned int i = 0; i < uop.getMicroOp()->getSourceRegistersLength(); ++i) {
+         dl::Decoder::decoder_reg sourceRegister = uop.getMicroOp()->getSourceRegister(i);
+         // fprintf (stderr, "  source %d\n", sourceRegister);
+         dl::Decoder *dec = Sim()->getDecoder();
+         if (dec->is_reg_vector(sourceRegister)) {
+            // fprintf (stderr, "    AddPriInsts %08lx\n", m_prod_pc_vregs[sourceRegister - 64]);
+            AddPriInsts (m_prod_pc_vregs[sourceRegister - 64]);
+         }
+      }
+   }
+
+   bool isPriInst (DynamicMicroOp &uop) {
+      UInt64 pc = uop.getMicroOp()->getInstruction()->getAddress();
+      return std::find (pri_insts.begin(), pri_insts.end(), pc) != pri_insts.end();
+   }
+
+   // Todo: Gather命令のオペランドを生成する命令は、さらに優先命令として陽に宣言する
+   // 0. どの命令PCがどのレジスタを書き込むのかをテーブルとして持っておく
+   // 1. ある優先命令が実行されたとき、そのテーブルを参照してどの命令がそのオペランドを生成するかを知る
+   // 2. その命令を優先命令化する
+
+   std::unordered_map<UInt64, std::pair<UInt64, UInt64>> m_mem_stats;  // first: PC, second: <Inst Count, Latency Total>
+
+   void UpdateMemStats (UInt64 pc, UInt64 latency) {
+      auto ino_it = m_mem_stats.find(pc);
+      if (ino_it == m_mem_stats.end()) {
+         // Not found
+         m_mem_stats.insert(std::make_pair(pc, std::make_pair(1, latency)));
+         ROB_DEBUG_PRINTF ("Updated Mem Status: PC=%08lx, Latency=%ld\n", pc, latency);
+      } else {
+         (ino_it->second).first++;
+         (ino_it->second).second += latency;
+         ROB_DEBUG_PRINTF ("Updated Mem Status: PC=%08lx, Num=%ld, Average=%f\n",
+                  ino_it->first, ino_it->second.first, static_cast<float>(ino_it->second.second) / ino_it->second.first);
+      }
+   }
+
+   UInt64 findShortLatencyInsts () {
+
+      float max_latency = 0.0;
+      UInt64 max_pc = 0;
+
+      for (auto mem: m_mem_stats) {
+         if (std::find (nonpri_insts.begin(), nonpri_insts.end(), mem.first) != nonpri_insts.end()) {
+            continue;
+         }
+
+         float latency = static_cast<float>(mem.second.second) / mem.second.first;
+         if (latency > 10) {
+            continue;
+         }
+         if (max_latency > latency || max_latency == 0.0) {
+            max_latency = latency;
+            max_pc = mem.first;
+         }
+      }
+
+      if (max_pc != 0) {
+         fprintf (stderr, "%ld : findShortLatencyInsts : PC=%08lx, Latency = %f\n", now.getCycleCount(), max_pc, max_latency);
+      }
+
+      return max_pc;
+   }
+
+
+   std::unordered_map<UInt64, std::pair<UInt64, UInt64>> m_ino_stats;  // first: PC, second: <Whole Count, Inorder Count>
+   std::vector <UInt64> nonpri_insts;
+   std::vector <UInt64> pri_insts;
+
+   void UpdateInorderStats (UInt64 pc, bool executed_inorder) {
+      auto ino_it = m_ino_stats.find(pc);
+      if (ino_it == m_ino_stats.end()) {
+         // Not found
+         m_ino_stats.insert(std::make_pair(pc, std::make_pair(static_cast<UInt64>(executed_inorder), 1)));
+         ROB_DEBUG_PRINTF ("Updated: PC=%08lx, new\n", pc);
+      } else {
+         if (executed_inorder) {
+            (ino_it->second).first++;
+         }
+         (ino_it->second).second++;
+         ROB_DEBUG_PRINTF ("Updated: PC=%08lx, InOrder=%ld, Total=%ld\n", ino_it->first, ino_it->second.first, ino_it->second.second);
+      }
+
+      // // Dump All Lists
+      // for (auto ino: m_ino_stats) {
+      //    ROB_DEBUG_PRINTF ("List: PC=%08lx, InOrder=%ld, Total=%ld\n", ino.first, ino.second.first, ino.second.second);
+      // }
+   }
+
+   // findNonPriInsts:
+   // Lookup most in-ordered issued instruction
+   UInt64 findNonPriInsts () {
+      float max_ino_rate = 0.0;
+      UInt64 max_pc = 0;
+      for (auto ino: m_ino_stats) {
+         if (std::find (nonpri_insts.begin(), nonpri_insts.end(), ino.first) != nonpri_insts.end()) {
+            continue;
+         }
+         float rate = static_cast<float>(ino.second.first) / ino.second.second;
+         if (max_ino_rate < rate) {
+            max_ino_rate = rate;
+            max_pc = ino.first;
+         }
+      }
+
+      if (max_pc != 0) {
+         fprintf (stderr, "Lack of physical registers: findInorder PC=%08lx, Rate = %f\n", max_pc, max_ino_rate);
+      }
+      //
+
+      // LOG_ASSERT_ERROR(max_pc != 0, "Valid PC should be selected.");
+      return max_pc;
+   }
+
+   void AddNonPriInsts (UInt64 pc) {
+      // すでにPriInstに入っているものはNonPriには入れない
+      if (std::find (pri_insts.begin(), pri_insts.end(), pc) != pri_insts.end()) {
+         return;
+      }
+      if (std::find (nonpri_insts.begin(), nonpri_insts.end(), pc) == nonpri_insts.end()) {
+         nonpri_insts.push_back (pc);
+         ROB_DEBUG_PRINTF ("AddNonPriInsts PC=%08lx\n", pc);
+      }
+
+      return;
+   }
+
+
+   void AddPriInsts (UInt64 pc) {
+      if (std::find (pri_insts.begin(), pri_insts.end(), pc) == pri_insts.end()) {
+         pri_insts.push_back (pc);
+         fprintf (stderr, "AddPriInsts PC=%08lx\n", pc);
+      }
+
+      // ROB_DEBUG_PRINTF ("AddPriInsts PC=%08lx\n", pc);
+
+      return;
+   }
+
+
    bool isPriorityResourceInst (DynamicMicroOp *uop) {
+      UInt64 pc = uop->getMicroOp()->getInstruction()->getAddress();
+      bool is_pri = std::find(nonpri_insts.begin(), nonpri_insts.end(), pc) == nonpri_insts.end();
+
+      return is_pri;
+
+      // Not used
       bool is_priority_inst = false;
       UInt64 inst_address = uop->getMicroOp()->getInstruction()->getAddress();
 

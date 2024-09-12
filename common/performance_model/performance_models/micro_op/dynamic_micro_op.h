@@ -95,6 +95,8 @@ class DynamicMicroOp
       uint64_t initial_intraInstructionDependencies;
       uint64_t initial_dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
 
+      bool priority_inst;
+
    public:
 
       DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, ComponentPeriod period);
@@ -138,6 +140,9 @@ class DynamicMicroOp
    void removeCommitDependency() { m_wfifo_wait_reason = wfifo_t::NONE; }
    bool hasCommitDependency() { return m_wfifo_wait_reason != wfifo_t::NONE; }
    wfifo_t getCommitDependency() { return m_wfifo_wait_reason; }
+
+      void setPriorityInst (bool is_priority) { this->priority_inst = is_priority; }
+      bool isPriorityInst () { return this->priority_inst; }
 
       uint32_t getIntraInstrDependenciesLength() const { return this->intraInstructionDependencies; }
       void setIntraInstrDependenciesLength(uint32_t deps) { intraInstructionDependencies = deps;}
