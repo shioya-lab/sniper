@@ -881,7 +881,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          ROB_DEBUG_PRINTF ("DISPATCH %s\n", entry->uop->getMicroOp()->toShortString().c_str());
 
-         if (uop.getMicroOp()->isVecLoad() &&
+         if (m_vec_reserved_allocation &&
+             m_gather_always_reserve_allocation &&
+             uop.getMicroOp()->isVecLoad() &&
              !uop.getMicroOp()->canVecSquash()) { // Gather
             AddPriInsts(uop.getMicroOp()->getInstruction()->getAddress());
          }
@@ -2458,7 +2460,13 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
             }
          } else {
             // 優先度無し予約
-            return UpdateNormalBindPhyRegAllocation(rob_idx);
+            // m_vec_reserved_allocation == true
+            alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
+            if (!alloc_success) {
+               // 予約に失敗すると、WFIFOに入れる
+               InsertPhyRegWFIFO (uop, dest_reg);
+            }
+            return true;
          }
       }
    } else {
