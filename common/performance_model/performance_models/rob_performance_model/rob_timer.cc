@@ -287,6 +287,8 @@ RobTimer::RobTimer(
 
    registerStatsMetric ("rob_timer", core->getId(), "preload_count", &m_preload_count);
    m_preload_count = 0;
+
+   m_lowpri_inst_find_mode = false;
 }
 
 RobTimer::~RobTimer()
@@ -357,6 +359,14 @@ RobTimer::~RobTimer()
       std::cout << " : " << (it->second)->assembly << '\n';
    }
 
+   std::cout << "-------------------\n";
+   std::cout << "Memory Latency Statitics\n";
+   std::cout << "-------------------\n";
+   for (auto mem: m_mem_stats) {
+      float latency = static_cast<float>(mem.second.second) / mem.second.first;
+      fprintf (stderr, "PC=%08lx : Count=%0ld, Latency=%f\n", mem.first,
+               mem.second.first, latency);
+   }
 
    std::cout << "-------------------\n";
    std::cout << "Preload usage\n";
@@ -798,6 +808,53 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
+         // 長いレイテンシの命令に依存する命令を探すモード中
+         // if (m_lowpri_inst_find_mode) {
+         //    // fprintf (stderr, "%ld :   Find instruction Mode (%d) %08lx\n",
+         //    //          now.getCycleCount(), uop.getDependenciesLength(), uop.getMicroOp()->getInstruction()->getAddress());
+         for(size_t idx = 0; idx < uop.getDependenciesLength(); ++idx) {
+            RobEntry *depend_entry = this->findEntryBySequenceNumber(uop.getDependency(idx));
+            UInt64 depend_pc_address = depend_entry->uop->getMicroOp()->getInstruction()->getAddress();
+
+            // 陽に優先命令に依存する命令は、非優先命令となる
+            if (isPriInst(depend_pc_address)) {
+               uop.setPriorityInst (false);
+               break;
+            }
+            // fprintf (stderr, "%ld :   Find instruction wait_pc_address = %08lx\n",
+            //          now.getCycleCount(), wait_pc_address);
+            // if (m_long_latency_pc == wait_pc_address) {
+            //    AddNonPriInsts (uop.getMicroOp()->getInstruction()->getAddress());
+            //    fprintf (stderr, "%ld : Find instruction Mode, %08lx -> %08lx. Set %08lx as non-priority instruction\n",
+            //             now.getCycleCount(),
+            //             m_long_latency_pc,
+            //             uop.getMicroOp()->getInstruction()->getAddress(),
+            //             uop.getMicroOp()->getInstruction()->getAddress());
+            //    uop.setPriorityInst (false);
+            //    m_lowpri_inst_find_mode = false;
+            //    break;
+            // }
+         }
+         if (now.getCycleCount() > m_lowpri_inst_find_mode_start + 5000) {
+            // Timeout
+            m_lowpri_inst_find_mode = false;
+         }
+         // }
+         // メモリの統計をチェックして、レイテンシが短くなったものはPriInstsから除去する
+         for (auto mem: m_mem_stats) {
+            UInt64 pc = mem.first;
+            float latency = static_cast<float>(mem.second.second) / mem.second.first;
+            if (latency <= 200) {
+               if (isPriInst (pc)) {
+                  pri_insts.erase(std::remove(pri_insts.begin(), pri_insts.end(), pc),
+                                  pri_insts.end());
+                  fprintf (stderr, "%ld : Unprioritize instruction = %08lx\n",
+                           now.getCycleCount(), pc);
+               }
+            }
+         }
+
+         // 物理レジスタの確保試行
          if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
             cpiFrontEnd = &m_cpiVPhyRegFull;
             break;
@@ -881,16 +938,16 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          ROB_DEBUG_PRINTF ("DISPATCH %s\n", entry->uop->getMicroOp()->toShortString().c_str());
 
-         if (m_vec_reserved_allocation &&
-             m_gather_always_reserve_allocation &&
-             uop.getMicroOp()->isVecLoad() &&
-             !uop.getMicroOp()->canVecSquash()) { // Gather
-            AddPriInsts(uop.getMicroOp()->getInstruction()->getAddress());
-         }
-         if (isPriInst (uop)) {
-            PropagatePriInsts (uop);
-         }
-         UpdateProdRegister (uop);
+         // if (m_vec_reserved_allocation &&
+         //     m_gather_always_reserve_allocation &&
+         //     uop.getMicroOp()->isVecLoad() &&
+         //     !uop.getMicroOp()->canVecSquash()) { // Gather
+         //    AddPriInsts(uop.getMicroOp()->getInstruction()->getAddress());
+         // }
+         // if (isPriInst (uop)) {
+         //    PropagatePriInsts (uop);
+         // }
+         // UpdateProdRegister (uop);
 
          #ifdef ASSERT_SKIP
             LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
@@ -1947,6 +2004,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
      }
    }
 
+   // checkRob();
    if ((enable_rob_timer_log || m_show_rob) && now.getCycleCount() >= rob_start_cycle) {
       #ifdef ASSERT_SKIP
          if (! will_skip)
@@ -2200,6 +2258,52 @@ void RobTimer::printRob(bool is_only_vector)
 }
 
 
+void RobTimer::checkRob()
+{
+   static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
+   LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value.");
+
+   size_t vecstore_count = 0;
+
+   UInt64 vecreg_alloc_count = 0;
+
+   for(unsigned int i = 0; i < rob.size(); ++i)
+   {
+      RobEntry *e = &rob.at(i);
+
+      dl::Decoder *dec = Sim()->getDecoder();
+      if (e->uop->getMicroOp()->isVector() &&
+          e->uop->isLast() &&
+          e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+          dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))
+      ) {
+         if ((!e->uop->hasCommitDependency() ||
+              e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED) &&
+             i < m_num_in_rob) {
+            ++vecreg_alloc_count;
+         }
+      }
+
+      if (i < m_num_in_rob &&
+          e->uop->getMicroOp()->isVecStore()) {
+         vecstore_count += 1;
+      }
+   }
+
+   if (vecreg_alloc_count + 32 != m_phy_registers[2] &&
+       vecreg_alloc_count + 32 + 1 != m_phy_registers[2]) {
+      printRob();
+      LOG_ASSERT_ERROR (false, "Vec register count failed. %d != %d\n", vecreg_alloc_count + 32, m_phy_registers[2]);
+   }
+
+   if (vec_store_queue_max - vec_store_queue != vecstore_count) {
+      printRob();
+      LOG_ASSERT_ERROR (false, "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
+                        vec_store_queue, vecstore_count);
+   }
+}
+
+
 void RobTimer::setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValidSequenceNumber)
 {
   dl::Decoder *dec = Sim()->getDecoder();
@@ -2312,6 +2416,22 @@ bool RobTimer::UpdateNormalBindPhyRegAllocation(uint64_t rob_idx)
 
 bool RobTimer::InsertWFIFO (DynamicMicroOp *uop, DynamicMicroOp::wfifo_t reason)
 {
+   // if (isPriInst (*uop)) {
+   //    printRob();
+   //    fprintf (stderr, "nonpri insts : ");
+   //    for (auto i: nonpri_insts) {
+   //       fprintf (stderr, "%08lx, ", i);
+   //    }
+   //    fprintf (stderr, "\n");
+   //    fprintf (stderr, "pri insts : ");
+   //    for (auto i: pri_insts) {
+   //       fprintf (stderr, "%08lx, ", i);
+   //    }
+   //    fprintf (stderr, "\n");
+   //    LOG_ASSERT_ERROR (false, "WFIFO must not insert priority instruction : PC = %08lx",
+   //                      uop->getMicroOp()->getInstruction()->getAddress());
+   // }
+
    if (m_dispatch_fifo.size() < WFIFO_SIZE) {
       if (m_dispatch_fifo.size() > 0) {
          LOG_ASSERT_ERROR(m_dispatch_fifo.back() <= uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
@@ -2342,6 +2462,14 @@ bool RobTimer::InsertPhyRegWFIFO (DynamicMicroOp *uop, dl::Decoder::decoder_reg 
 
 bool RobTimer::AllocNonpriVecRegisters (uint64_t rob_idx, DynamicMicroOp *uop, dl::Decoder::decoder_reg dest_reg)
 {
+
+   RobEntry *entry = this->findEntryBySequenceNumber(uop->getSequenceNumber());
+   if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
+      fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tRes Registers = %ld\n",
+              entry->global_sequence_id, 2,
+              m_res_reserv_registers);
+   }
+
    if (m_res_reserv_registers < m_nonpri_max_vec_phy_registers) {
       // 資源予約リストが足りない
       bool alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
@@ -2443,15 +2571,23 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
                // 優先命令
                alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
 
-               if (!alloc_success) {
-                  // 予約に失敗すると、命令のIn-Order化を進める
-                  UInt64 pc;
-                  if ((pc = findNonPriInsts()) != 0) {
-                     AddNonPriInsts (pc);
-                  } else if ((pc = findShortLatencyInsts ()) != 0) {
-                     AddNonPriInsts (pc);
-                  } else {
-                     fprintf (stderr, "%ld : Register Allocation Failure(2): No NonPri candidate\n", now.getCycleCount());
+               if (!alloc_success & !m_lowpri_inst_find_mode) {
+                  // 予約に失敗すると、命令の非優先命令化を進める
+                  fprintf (stderr, "%ld : Register Allocation Failure: Start to find instruction\n", now.getCycleCount());
+
+                  if ((m_long_latency_pc = findLongLatencyInsts ()) != 0) {
+
+                     m_lowpri_inst_find_mode_start = now.getCycleCount();
+                     AddPriInsts(m_long_latency_pc);
+                     m_lowpri_inst_find_mode = true;
+
+                     // if ((pc = findNonPriInsts()) != 0) {
+                     //    AddNonPriInsts (pc);
+                     // } else if ((pc = findShortLatencyInsts ()) != 0) {
+                     //    AddNonPriInsts (pc);
+                     // } else {
+                     //    fprintf (stderr, "%ld : Register Allocation Failure(2): No NonPri candidate\n", now.getCycleCount());
+                     // }
                   }
                }
                return alloc_success;

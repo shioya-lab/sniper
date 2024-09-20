@@ -216,6 +216,7 @@ private:
    SubsecondTime* findCpiComponent();
    void countOutstandingMemop(SubsecondTime time);
    void printRob(bool is_only_vector = false);
+   void checkRob();
 
    void execute(uint64_t& instructionsExecuted, SubsecondTime& latency);
    SubsecondTime doDispatch(SubsecondTime **cpiComponent);
@@ -245,6 +246,10 @@ private:
    bool m_vec_wfifo_registers[32];
    UInt64 m_wfifo_inserted;   // WFIFOに挿入された回数
    UInt64 m_wfifo_overflow;   // WFIFOがオーバーフローした回数
+
+   bool   m_lowpri_inst_find_mode;       // 最長レイテンシの命令に依存する命令を探すモード
+   UInt64 m_lowpri_inst_find_mode_start; // 探せないときのタイムアウトに使うカウンタ
+   UInt64 m_long_latency_pc;             // 最長レイテンシのPC
 
    // 統計情報 : W-FIFOにどれくらいどの命令が入ったか
    std::unordered_map<UInt64, std::pair<UInt64, String>> m_wfifo_stats;  // first: PC, second: <Count, assembly>
@@ -397,9 +402,13 @@ public:
       }
    }
 
+   bool isPriInst (UInt64 pc) {
+      return std::find (pri_insts.begin(), pri_insts.end(), pc) != pri_insts.end();
+   }
+
    bool isPriInst (DynamicMicroOp &uop) {
       UInt64 pc = uop.getMicroOp()->getInstruction()->getAddress();
-      return std::find (pri_insts.begin(), pri_insts.end(), pc) != pri_insts.end();
+      return isPriInst (pc);
    }
 
    // Todo: Gather命令のオペランドを生成する命令は、さらに優先命令として陽に宣言する
@@ -408,6 +417,7 @@ public:
    // 2. その命令を優先命令化する
 
    std::unordered_map<UInt64, std::pair<UInt64, UInt64>> m_mem_stats;  // first: PC, second: <Inst Count, Latency Total>
+   std::list<UInt64> m_mem_latest_access;  // 直近でアクセスしtあメモリアドレス
 
    void UpdateMemStats (UInt64 pc, UInt64 latency) {
       auto ino_it = m_mem_stats.find(pc);
@@ -421,6 +431,11 @@ public:
          ROB_DEBUG_PRINTF ("Updated Mem Status: PC=%08lx, Num=%ld, Average=%f\n",
                   ino_it->first, ino_it->second.first, static_cast<float>(ino_it->second.second) / ino_it->second.first);
       }
+
+      if (m_mem_latest_access.size() >= 64) {
+         m_mem_latest_access.pop_front();
+      }
+      m_mem_latest_access.push_back(pc);
    }
 
    UInt64 findShortLatencyInsts () {
@@ -448,6 +463,87 @@ public:
       }
 
       return max_pc;
+   }
+
+   // 比較関数 (出現回数でソート)
+   static bool compareByValue(const std::pair<int, int>& a, const std::pair<int, int>& b) {
+      return a.second > b.second; // 大きい順にソート
+   }
+
+   UInt64 findLongLatencyInsts () {
+
+      // float max_latency = 0.0;
+      // UInt64 max_usage = 0;
+      // UInt64 max_pc = 0;
+
+      // 要素をカウントするための std::map を使用
+      std::map<UInt64, UInt64> countMap;
+
+      // リスト内の各要素をカウント
+      for (int pc : m_mem_latest_access) {
+         countMap[pc]++;
+      }
+      // map の内容を vector にコピーして、値（カウント）でソート
+      std::vector<std::pair<UInt64, UInt64>> sortedList(countMap.begin(), countMap.end());
+      // 出現回数に基づいてソート (大きい順)
+      std::sort(sortedList.begin(), sortedList.end(), compareByValue);
+
+      // // 結果を出力
+      // std::cout << "  mem_access_list:" << std::endl;
+      // for (const auto& pair : countMap) {
+      //    std::cout << "    " << std::hex << pair.first << ": " << std::dec << pair.second << std::endl;
+      // }
+
+      for (auto mem: sortedList) {
+         UInt64 pc = mem.first;
+
+         if (std::find (pri_insts.begin(), pri_insts.end(), pc) != pri_insts.end()) {
+            continue;
+         }
+
+         if (pc == 0) { continue; }
+         float latency = static_cast<float>(m_mem_stats[pc].second) / m_mem_stats[pc].first;
+         fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %ld, usage = %ld, recent_list = %ld\n",
+                  pc, m_mem_stats[pc].second, m_mem_stats[pc].first,
+                  countMap[pc]);
+         if (latency > 200) {
+            fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %f, usage = %ld, recent_list = %ld\n",
+                     pc, latency, m_mem_stats[pc].first,
+                     countMap[pc]);
+            return pc;
+         }
+      }
+
+      fprintf (stderr, "  findLongLatencyInsts : There are no best instruction.\n");
+      return 0;
+
+      // for (auto mem: m_mem_stats) {
+      //    if (std::find (pri_insts.begin(), pri_insts.end(), mem.first) != pri_insts.end()) {
+      //       continue;
+      //    }
+      //    // 対象のメモリアクセス命令は直近で使用されている必要がある
+      //    if (std::find(m_mem_latest_access.begin(), m_mem_latest_access.end(), mem.first) == m_mem_latest_access.end()) {
+      //       continue;
+      //    }
+      //
+      //
+      //    float latency = static_cast<float>(mem.second.second) / mem.second.first;
+      //    if (latency <= 4) {
+      //       continue;
+      //    }
+      //    if (max_latency < latency || max_latency == 0.0) {
+      //       max_latency = latency;
+      //       max_usage = mem.second.first;
+      //       max_pc = mem.first;
+      //    }
+      // }
+      //
+      // if (max_pc != 0) {
+      //    fprintf (stderr, "%ld : findLongLatencyInsts : PC=%08lx, Latency = %f, usage = %ld\n",
+      //             now.getCycleCount(), max_pc, max_latency, max_usage);
+      // }
+      //
+      // return max_pc;
    }
 
 
@@ -492,7 +588,7 @@ public:
       }
 
       if (max_pc != 0) {
-         fprintf (stderr, "Lack of physical registers: findInorder PC=%08lx, Rate = %f\n", max_pc, max_ino_rate);
+         fprintf (stderr, "%ld : Lack of physical registers: findInorder PC=%08lx, Rate = %f\n", now.getCycleCount(), max_pc, max_ino_rate);
       }
       //
 
@@ -508,16 +604,20 @@ public:
       if (std::find (nonpri_insts.begin(), nonpri_insts.end(), pc) == nonpri_insts.end()) {
          nonpri_insts.push_back (pc);
          ROB_DEBUG_PRINTF ("AddNonPriInsts PC=%08lx\n", pc);
+         fprintf (stderr, "Add NonPriInsts PC=%08lx\n", pc);
       }
 
       return;
    }
 
+   bool IsNonPriInsts (UInt64 pc) {
+      return std::find (nonpri_insts.begin(), nonpri_insts.end(), pc) != nonpri_insts.end();
+   }
 
    void AddPriInsts (UInt64 pc) {
       if (std::find (pri_insts.begin(), pri_insts.end(), pc) == pri_insts.end()) {
          pri_insts.push_back (pc);
-         fprintf (stderr, "AddPriInsts PC=%08lx\n", pc);
+         fprintf (stderr, "  AddPriInsts PC=%08lx\n", pc);
       }
 
       // ROB_DEBUG_PRINTF ("AddPriInsts PC=%08lx\n", pc);
