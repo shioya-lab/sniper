@@ -1,8 +1,6 @@
-#include "tools.h"
-#include "config.hpp"
-
 #include "riscv_decoder.h"
 #include <iostream>
+#include <vector>
 #include <cstddef>
 #include <stdio.h>
 #include <string.h>
@@ -10,9 +8,9 @@
 #include <cstdarg>
 #include <alloca.h>
 // Instead of linking to the rv8 binaries, compile the data directly into this object
-#include "asm/meta.cc"
-#include "asm/format.cc"
-#include "asm/strings.cc"
+#include "meta.cc"
+#include "format.cc"
+#include "strings.cc"
 
 using namespace riscv;
 
@@ -119,6 +117,86 @@ const char* reg_name_sym[] = {
       nullptr
     };
 
+static const Decoder::GDBFeature gdb_features[] = {
+  {
+    "org.gnu.gdb.riscv.cpu",
+    (const Decoder::GDBReg[]) {
+      {"zero", rv_ireg_zero},
+      {"ra", rv_ireg_ra},
+      {"sp", rv_ireg_sp},
+      {"gp", rv_ireg_gp},
+      {"tp", rv_ireg_tp},
+      {"t0", rv_ireg_t0},
+      {"t1", rv_ireg_t1},
+      {"t2", rv_ireg_t2},
+      {"fp", rv_ireg_s0},
+      {"s1", rv_ireg_s1},
+      {"a0", rv_ireg_a0},
+      {"a1", rv_ireg_a1},
+      {"a2", rv_ireg_a2},
+      {"a3", rv_ireg_a3},
+      {"a4", rv_ireg_a4},
+      {"a5", rv_ireg_a5},
+      {"a6", rv_ireg_a6},
+      {"a7", rv_ireg_a7},
+      {"s2", rv_ireg_s2},
+      {"s3", rv_ireg_s3},
+      {"s4", rv_ireg_s4},
+      {"s5", rv_ireg_s5},
+      {"s6", rv_ireg_s6},
+      {"s7", rv_ireg_s7},
+      {"s8", rv_ireg_s8},
+      {"s9", rv_ireg_s9},
+      {"s10", rv_ireg_s10},
+      {"s11", rv_ireg_s11},
+      {"t3", rv_ireg_t3},
+      {"t4", rv_ireg_t4},
+      {"t5", rv_ireg_t5},
+      {"t6", rv_ireg_t6},
+      {},
+    },
+  },
+  {
+    "org.gnu.gdb.riscv.vector",
+    (const Decoder::GDBReg[]) {
+      {"v0", 64},
+      {"v1", 65},
+      {"v2", 66},
+      {"v3", 67},
+      {"v4", 68},
+      {"v5", 69},
+      {"v6", 70},
+      {"v7", 71},
+      {"v8", 72},
+      {"v9", 73},
+      {"v10", 74},
+      {"v11", 75},
+      {"v12", 76},
+      {"v13", 77},
+      {"v14", 78},
+      {"v15", 79},
+      {"v16", 80},
+      {"v17", 81},
+      {"v18", 82},
+      {"v19", 83},
+      {"v20", 84},
+      {"v21", 85},
+      {"v22", 86},
+      {"v23", 87},
+      {"v24", 88},
+      {"v25", 89},
+      {"v26", 90},
+      {"v27", 91},
+      {"v28", 92},
+      {"v29", 93},
+      {"v30", 94},
+      {"v31", 95},
+      {},
+    },
+  },
+  {}
+};
+
 static bool is_conditional_branch_op(uint16_t op)
 {
   switch (op) {
@@ -156,12 +234,14 @@ static bool is_indirect_branch_op(uint16_t op)
   }
 }
 
-RISCVDecoder::RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax)
+RISCVDecoder::RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax, int vlen)
 {
   this->m_arch = arch;
   this->m_mode = mode;
   this->m_syntax = syntax;
   this->m_isa = DL_ISA_RISCV;
+  this->m_vlen = vlen;
+  this->m_gdb_features = gdb_features;
 }
 
 RISCVDecoder::~RISCVDecoder()
@@ -266,8 +346,7 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
   // static int vec_lmul = 1;
   // static int vec_vsew = 8;
 
-  int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
-  int vlenb = vlen / 8;
+  int vlenb = m_vlen / 8;
 
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
     || format == rv_fmt_frd_offset_rs1 /* flw, fld, flq, c.fld, c.flw, c.fldsp, c.flwsp */

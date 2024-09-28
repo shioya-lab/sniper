@@ -4,14 +4,11 @@
 #include "decoder.h"
 
 #include <cstddef>
-#include <asm/types.h>
-#include <asm/meta.h>
-#include <asm/codec.h>
-#include <asm/switch.h>
-#include <asm/strings.h>
-#include <asm/host-endian.h>
-#include <util/fmt.h>
-#include <util/util.h>
+#include <types.h>
+#include <meta.h>
+#include <codec.h>
+#include <switch.h>
+#include <strings.h>
 
 namespace dl
 {
@@ -121,7 +118,7 @@ extern const char* reg_name_sym[];
 class RISCVDecoder : public Decoder
 {
   public:
-    RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax);
+    RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax, int vlen);
     int reg_set_size = 64;
 
     virtual ~RISCVDecoder();  // dtor
@@ -233,6 +230,8 @@ class RISCVDecoder : public Decoder
     // /// Get the target syntax of the decoder
     // dl_syntax get_syntax();
 
+  private:
+    int m_vlen;
 };
 
 class RISCVDecodedInst : public DecodedInst

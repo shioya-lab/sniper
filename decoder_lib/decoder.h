@@ -3,6 +3,7 @@
 
 #include <string>
 #include <cassert>
+#include <cstdint>
 
 namespace dl
 {
@@ -50,6 +51,16 @@ class Decoder
     typedef unsigned int decoder_reg;
     typedef unsigned int decoder_operand;
     typedef unsigned int decoder_opcode;
+
+    struct GDBReg {
+      const char* name;
+      decoder_reg id;
+    };
+
+    struct GDBFeature {
+      const char* name;
+      const GDBReg* regs;
+    };
 
     static const decoder_operand DL_OPCODE_INVALID = 0;
     static const decoder_reg DL_REG_INVALID = 0;
@@ -169,6 +180,9 @@ class Decoder
     /// Get the target syntax of the decoder
     dl_syntax get_syntax();
 
+    /// Get GDB features of the decoder
+    const GDBFeature* get_gdb_features() { return m_gdb_features; }
+
     ///Get the number of implicit registers that are read by the instruction
     virtual unsigned int num_read_implicit_registers(const DecodedInst* inst) = 0;
     ///Get the idx implicit source register
@@ -182,6 +196,7 @@ class Decoder
     virtual void print_implicit(const DecodedInst* inst) {}
 
   protected:
+    const GDBFeature* m_gdb_features;
     dl_arch m_arch;
     dl_mode m_mode;
     dl_syntax m_syntax;
@@ -268,7 +283,7 @@ class DecoderFactory
 {
   public:
     /// Creates a Decoder object with the specified target architecture, mode and syntax
-    Decoder *CreateDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax);
+    Decoder *CreateDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax, int vlen);
 
     /// Creates an instruction that follows the syntax and targets the architecures of the Decoder d
     DecodedInst *CreateInstruction(Decoder * d, const uint8_t * code, size_t size, uint64_t addr);

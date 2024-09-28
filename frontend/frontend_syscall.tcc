@@ -136,6 +136,7 @@ void FrontendSyscallModelBase <T>::doSyscall
                   case INTEL_IA32:
                   case ARM_AARCH32:
                   case ARM_AARCH64:
+                  case RISCV:
                      tidptr = args[2];
                      break;
                   case INTEL_X86_64:

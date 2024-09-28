@@ -23,7 +23,7 @@
 int main(int argc, const char* argv[])
 {
   dl::DecoderFactory *f = new dl::DecoderFactory;
-  dl::Decoder *d = f->CreateDecoder(dl::DL_ARCH_ARMv8, dl::DL_MODE_64, dl::DL_SYNTAX_DEFAULT);
+  dl::Decoder *d = f->CreateDecoder(dl::DL_ARCH_ARMv8, dl::DL_MODE_64, dl::DL_SYNTAX_DEFAULT, 0);
   
   dl::Decoder::decoder_reg r1 = ARM_REG_CPSR;
   dl::Decoder::decoder_reg r2 = ARM_REG_R5;

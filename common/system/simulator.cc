@@ -86,7 +86,8 @@ void Simulator::createDecoder()
         LOG_PRINT_ERROR("Unknown assembly syntax %s, should be intel, att or xed.", syntax.c_str());
 
       m_factory = new dl::DecoderFactory;
-      m_decoder = m_factory->CreateDecoder(dla, dlm, dls);  // create decoder for [arch, mode, syntax]
+      int vlen = dla == dl::DL_ARCH_RISCV ? getCfg()->getIntArray("general/vlen", 0) : 0;
+      m_decoder = m_factory->CreateDecoder(dla, dlm, dls, vlen);  // create decoder for [arch, mode, syntax]
    }
 }
 
