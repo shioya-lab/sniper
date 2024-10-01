@@ -261,6 +261,7 @@ namespace ParametricDramDirectoryMSI
          #endif
 
          void updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cache_hit, CacheState::cstate_t state, Prefetch::prefetch_type_t isPrefetch);
+         void dumpMshr();
          void cleanupMshr();
          void transition(IntPtr address, Transition::reason_t reason, CacheState::cstate_t old_state, CacheState::cstate_t new_state);
          void updateUncoreStatistics(HitWhere::where_t hit_where, SubsecondTime now);
@@ -531,6 +532,8 @@ namespace ParametricDramDirectoryMSI
                                                 uint64_t uop_idx,
                                                 bool use_prefetch = true);
          void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
+
+        HitWhere::where_t processPrefetchFromCore(Core::lock_signal_t lock_signal, Core::mem_op_t mem_op_type);
 
          // Notify next level cache of so it can update its sharing set
          void notifyPrevLevelInsert(core_id_t core_id, MemComponent::component_t mem_component, IntPtr address);

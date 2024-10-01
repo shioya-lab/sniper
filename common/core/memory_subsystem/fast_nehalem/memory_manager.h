@@ -30,6 +30,14 @@ namespace FastNehalem
             IntPtr tag = address >> CACHE_LINE_BITS;
             return (use_icache ? icache : dcache)->access(mem_op_type, tag);
          }
+         
+         HitWhere::where_t corePrefetchMemoryAccess (
+            MemComponent::component_t mem_component,
+            Core::lock_signal_t lock_signal,
+            Core::mem_op_t mem_op_type)
+         {
+            return HitWhere::UNKNOWN;
+         }
    };
 }
 

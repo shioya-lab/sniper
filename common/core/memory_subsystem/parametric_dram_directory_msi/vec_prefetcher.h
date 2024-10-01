@@ -128,7 +128,7 @@ class VecPrefetcher : public Prefetcher
   std::vector<IntPtr> getScalarNextAddress(IntPtr pc, IntPtr current_address);                                             
 
   const bool m_enable_log;
-
+  UInt64 m_pref_target_log;
 };
 
 #endif // __VEC_PREFETCHER_H

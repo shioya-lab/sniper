@@ -540,6 +540,14 @@ Core::nativeMemOp(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr
    return makeMemoryResult(HitWhere::UNKNOWN,SubsecondTime::Zero());
 }
 
+void Core::doPrefetch (
+   lock_signal_t lock_signal, 
+   mem_op_t mem_op_type)
+{
+   getMemoryManager()->corePrefetchMemoryAccess(MemComponent::L1_DCACHE, lock_signal, mem_op_type);
+}
+
+
 __attribute__((weak)) void
 applicationMemCopy(void *dest, const void *src, size_t n)
 {

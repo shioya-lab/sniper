@@ -416,6 +416,7 @@ public:
    // 1. ある優先命令が実行されたとき、そのテーブルを参照してどの命令がそのオペランドを生成するかを知る
    // 2. その命令を優先命令化する
 
+   FILE *m_mem_access_fp;
    std::unordered_map<UInt64, std::pair<UInt64, UInt64>> m_mem_stats;  // first: PC, second: <Inst Count, Latency Total>
    std::list<UInt64> m_mem_latest_access;  // 直近でアクセスしtあメモリアドレス
 
@@ -506,7 +507,7 @@ public:
          fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %ld, usage = %ld, recent_list = %ld\n",
                   pc, m_mem_stats[pc].second, m_mem_stats[pc].first,
                   countMap[pc]);
-         if (latency > 200) {
+         if (latency > 100) {
             fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %f, usage = %ld, recent_list = %ld\n",
                      pc, latency, m_mem_stats[pc].first,
                      countMap[pc]);

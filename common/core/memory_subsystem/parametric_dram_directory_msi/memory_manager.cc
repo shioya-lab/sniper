@@ -443,6 +443,16 @@ MemoryManager::coreInitiateMemoryAccess(
          modeled == Core::MEM_MODELED_NONE ? false : true, eip, uop_idx, use_prefetch);
 }
 
+HitWhere::where_t
+MemoryManager::corePrefetchMemoryAccess (
+   MemComponent::component_t mem_component,
+   Core::lock_signal_t lock_signal,
+   Core::mem_op_t mem_op_type)
+{
+   return m_cache_cntlrs[mem_component]->processPrefetchFromCore(lock_signal, mem_op_type);
+}
+
+
 void
 MemoryManager::handleMsgFromNetwork(NetPacket& packet)
 {

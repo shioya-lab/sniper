@@ -289,6 +289,11 @@ RobTimer::RobTimer(
    m_preload_count = 0;
 
    m_lowpri_inst_find_mode = false;
+
+   if ((m_mem_access_fp = fopen("mem_access.txt", "w")) == NULL) {
+      perror("mem_access.txt");
+      exit (EXIT_FAILURE);
+   }
 }
 
 RobTimer::~RobTimer()
@@ -379,6 +384,7 @@ RobTimer::~RobTimer()
    std::cout << "Average vec register usage : " << (m_total_vec_phy_registers / m_total_vec_phy_count) << '\n';
    std::cout << "-------------------\n";
 
+   fclose (m_mem_access_fp);
 }
 
 void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
@@ -844,7 +850,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          for (auto mem: m_mem_stats) {
             UInt64 pc = mem.first;
             float latency = static_cast<float>(mem.second.second) / mem.second.first;
-            if (latency <= 200) {
+            if (latency <= 100) {
                if (isPriInst (pc)) {
                   pri_insts.erase(std::remove(pri_insts.begin(), pri_insts.end(), pc),
                                   pri_insts.end());
@@ -1028,7 +1034,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
           uop.getMicroOp()->getInstruction() ? uop.getMicroOp()->getInstruction()->getAddress() : static_cast<uint64_t>(NULL),
           uop.getSequenceNumber(),
           now.getElapsedTime(),
-          true /* use_prefetch*/
+          false  // 通常アクセスでプリフェッチを発生させると、ProcessMemOpFromCoreがループしてLockを取得できない
       );
       uint64_t latency = SubsecondTime::divideRounded(res.latency, now.getPeriod());
       m_previous_latency = latency;
@@ -1044,14 +1050,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       uop.setExecLatency(uop.getExecLatency() + latency); // execlatency already contains bypass latency
       uop.setDCacheHitWhere(res.hit_where);
 
-      // if (uop.getMicroOp()->getInstruction()->getAddress() == 0x149b8) {
-      // if (uop.getMicroOp()->getInstruction()->getAddress() == 0x1020c) {
-      //    printf("%ld, 0x%08lx access %08lx %s, result = %s\n",
-      //           uop.getSequenceNumber(),
-      //           uop.getMicroOp()->getInstruction()->getAddress(),
-      //           uop.getAddress().address,
-      //           uop.getMicroOp()->getInstruction()->getDisassembly().c_str(),
-      //           HitWhereString(uop.getDCacheHitWhere()));
+      // if (uop.getMicroOp()->getInstruction()->getAddress() == 0x149a4) {
+      // fprintf (m_mem_access_fp, "0x%08lx,0x%08lx,%d,%s\n",
+      // fprintf (stderr, "0x%08lx,0x%08lx,%d,%s\n",
+      //          uop.getMicroOp()->getInstruction()->getAddress(),
+      //          uop.getAddress().address,
+      //          uop.getDCacheHitWhere(),
+      //          HitWhereString(uop.getDCacheHitWhere()));
       // }
    }
 
@@ -2039,6 +2044,11 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    {
       will_skip = false;
       skip = now.getPeriod();
+   }
+
+   if (now.getCycleCount() >= rob_start_cycle) {
+      // プリフェッチの可否は毎サイクルチェックする
+      m_core->doPrefetch (Core::NONE, Core::READ_VEC);
    }
 
    #ifdef ASSERT_SKIP
