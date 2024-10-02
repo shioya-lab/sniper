@@ -330,7 +330,7 @@ RobTimer::~RobTimer()
    UInt64 wfifo_total = 0;
    for (auto it = v.begin(); it != v.end(); it++) { wfifo_total += it->first; }
    std::cout << "-----------\n";
-   std::cout << "WFIFO usage (" << wfifo_total << ")\n";
+   std::cout << "WFIFO usage (" << std::dec << wfifo_total << ")\n";
    std::cout << "-----------\n";
    for (auto it = v.begin(); it != v.end(); it++) {
       std::cout << std::hex << (it->second).first << ", " << std::dec << it->first << " : " << (it->second).second << '\n';
