@@ -38,6 +38,8 @@ class StreamPrefetcher : public Prefetcher
             int  count;     // Access count
             bool ascending; // Stream direction
 
+            size_t hist_id;
+
             Stream() {
                 Reset();
             }
@@ -47,6 +49,7 @@ class StreamPrefetcher : public Prefetcher
                 status = SS_INVALID;
                 ascending = true;
                 count = 0;
+                hist_id = 0;
             }
 
             String ToString() const;
@@ -57,21 +60,26 @@ class StreamPrefetcher : public Prefetcher
         const UInt32    shared_cores;
         const String    configName;
 
+        size_t m_hist_id;
+
         InitPhase phase;
         typedef std::vector< Stream *> StreamTable;
 
         StreamTable m_stream_table;
 
         int m_cache_block_size;
-        int m_distance;
+        int m_monitor_window_size;
         int m_degree;
         size_t m_stream_table_size;
         int m_training_window_size;
         int m_training_threshold;
 
-        const bool m_enable_log;
+        UInt64 m_log_current_pc; // MYLOGでの表示用
 
-        uint64_t m_effectiveDistance;        // An effective distance is calculated
+        const bool m_enable_log;
+        const UInt64 m_pref_target_log;
+
+        uint64_t m_effectiveMonitorWindow;   // An effective distance is calculated
                                              // by a 'distance' parameter and a line size.
         uint64_t m_effectiveTrainingWindow;  //
 
@@ -85,6 +93,7 @@ class StreamPrefetcher : public Prefetcher
         bool UpdateTrainingStream(const IntPtr address);
         void AllocateStream(const IntPtr address);
 
+   bool isInEntryRegion (IntPtr current_address);
 };
 
 #endif // __STREAM_PREFETCHER_H

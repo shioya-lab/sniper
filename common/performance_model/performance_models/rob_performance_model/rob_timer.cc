@@ -88,6 +88,7 @@ RobTimer::RobTimer(
       , m_gather_always_reserve_allocation (Sim()->getCfg()->getBoolArray("research_option/gather_always_reserve_allocation", core->getId()))
       , m_last_committed_time(core->getDvfsDomain())
       , m_app(Sim()->getCfg()->getString("general/app"))
+      , m_pref_target_log(strtol(Sim()->getCfg()->getStringArray("log/vec_pref_target_pc", core->getId()).c_str(), NULL, 16))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -1050,14 +1051,17 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       uop.setExecLatency(uop.getExecLatency() + latency); // execlatency already contains bypass latency
       uop.setDCacheHitWhere(res.hit_where);
 
-      // if (uop.getMicroOp()->getInstruction()->getAddress() == 0x149a4) {
-      // fprintf (m_mem_access_fp, "0x%08lx,0x%08lx,%d,%s\n",
-      // fprintf (stderr, "0x%08lx,0x%08lx,%d,%s\n",
-      //          uop.getMicroOp()->getInstruction()->getAddress(),
-      //          uop.getAddress().address,
-      //          uop.getDCacheHitWhere(),
-      //          HitWhereString(uop.getDCacheHitWhere()));
-      // }
+      if (m_pref_target_log == 0 || uop.getMicroOp()->getInstruction()->getAddress() == m_pref_target_log) {
+         static UInt64 last_address = 0;
+         fprintf (stderr, "memory_access : 0x%08lx,0x%08lx,%ld,%d,%s,last=%lx\n",
+                  uop.getMicroOp()->getInstruction()->getAddress(),
+                  uop.getAddress().address,
+                  latency,
+                  uop.getDCacheHitWhere(),
+                  HitWhereString(uop.getDCacheHitWhere()),
+                  uop.getAddress().address - last_address);
+         last_address = uop.getAddress().address;
+      }
    }
 
 
@@ -1739,7 +1743,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          instructionsExecuted++;
 
       if (entry->uop->getSequenceNumber() != 0 && entry->uop->getSequenceNumber() % 10000 == 0) {
-         fprintf (stderr, "inst exec %ld (now = %ld)\n", entry->uop->getSequenceNumber(), now.getCycleCount());
+         fprintf (stderr, "inst exec %ld (now = %ld ns)\n", entry->uop->getSequenceNumber(), now.getElapsedTime().getNS());
       }
       m_last_committed_time = now;
 
@@ -2046,9 +2050,14 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
       skip = now.getPeriod();
    }
 
-   if (now.getCycleCount() >= rob_start_cycle) {
+   if (now.getCycleCount() >= rob_start_cycle /* && !cycle_prefetch_done */) {
+      // fprintf (stderr, "%ld RobTimer::doPrefetch()\n", now.getCycleCount());
       // プリフェッチの可否は毎サイクルチェックする
-      m_core->doPrefetch (Core::NONE, Core::READ_VEC);
+      HitWhere::where_t result = m_core->doPrefetch (now.getElapsedTime(), Core::NONE, Core::READ_VEC);
+      if (result == HitWhere::L1_OWN) {
+         will_skip = false;
+         skip = now.getPeriod();
+      }
    }
 
    #ifdef ASSERT_SKIP
@@ -2583,7 +2592,7 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
 
                if (!alloc_success & !m_lowpri_inst_find_mode) {
                   // 予約に失敗すると、命令の非優先命令化を進める
-                  fprintf (stderr, "%ld : Register Allocation Failure: Start to find instruction\n", now.getCycleCount());
+                  // fprintf (stderr, "%ld : Register Allocation Failure: Start to find instruction\n", now.getCycleCount());
 
                   if ((m_long_latency_pc = findLongLatencyInsts ()) != 0) {
 

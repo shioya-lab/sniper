@@ -445,11 +445,12 @@ MemoryManager::coreInitiateMemoryAccess(
 
 HitWhere::where_t
 MemoryManager::corePrefetchMemoryAccess (
+   SubsecondTime core_time,
    MemComponent::component_t mem_component,
    Core::lock_signal_t lock_signal,
    Core::mem_op_t mem_op_type)
 {
-   return m_cache_cntlrs[mem_component]->processPrefetchFromCore(lock_signal, mem_op_type);
+   return m_cache_cntlrs[mem_component]->processPrefetchFromCore(core_time, lock_signal, mem_op_type);
 }
 
 

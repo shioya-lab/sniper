@@ -91,6 +91,7 @@ namespace ParametricDramDirectoryMSI
                Core::MemModeled modeled, IntPtr eip = 0, uint64_t uop_idx = 0, bool use_prefetch = true);
 
          HitWhere::where_t corePrefetchMemoryAccess (
+            SubsecondTime core_time,
             MemComponent::component_t mem_component,
             Core::lock_signal_t lock_signal,
             Core::mem_op_t mem_op_type);

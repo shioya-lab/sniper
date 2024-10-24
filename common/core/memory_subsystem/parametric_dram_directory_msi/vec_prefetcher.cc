@@ -21,7 +21,7 @@ VecPrefetcher::VecPrefetcher(String configName, core_id_t _core_id, UInt32 _shar
    , m_degree                   (Sim()->getCfg()->getIntArray("perf_model/" + configName + "/prefetcher/vec_pref/degree", core_id))
    , m_cache_block_size         (Sim()->getCfg()->getIntArray("perf_model/" + configName + "/cache_block_size", core_id))
    , m_enable_log               (Sim()->getCfg()->getBoolArray("log/enable_vec_prefetcher_log", core_id))
-   , m_pref_target_log          (Sim()->getCfg()->getIntArray("log/vec_pref_target_pc", core_id))
+   , m_pref_target_log   (strtol(Sim()->getCfg()->getStringArray("log/vec_pref_target_pc", core_id).c_str(), NULL, 16))
 {}
 
 
@@ -85,7 +85,7 @@ std::vector<IntPtr> VecPrefetcher::getVectorNextAddress(IntPtr pc, uint64_t uop_
         for (unsigned d = 0; d < entry->m_degree; d++) {
           PREF_DEBUG_PRINTF("   %s: VecPrefetcher::Vector. pc = %08lx, degree = %d\n", configName.c_str(), pc, entry->m_degree);
           for (unsigned vd = 0; vd < entry->vec_degree(); vd++) {
-            PREF_DEBUG_PRINTF("   %s: VecPrefetcher::Vector. pc = %08lx, vec_degree = %d\n", configName.c_str(), pc, entry->vec_degree()); 
+            PREF_DEBUG_PRINTF("   %s: VecPrefetcher::Vector. pc = %08lx, vec_degree = %d\n", configName.c_str(), pc, entry->vec_degree());
             IntPtr prefetch_addr = current_address + entry->stride * (d + 1) + vd * m_cache_block_size;
             prefetch_addr = prefetch_addr & ~(m_cache_block_size-1);
             if (std::find(addresses.begin(), addresses.end(), prefetch_addr) == addresses.end()) {
@@ -153,7 +153,7 @@ std::vector<IntPtr> VecPrefetcher::getScalarNextAddress(IntPtr pc, IntPtr curren
       PREF_DEBUG_PRINTF("   %s: VecPrefetcher::Scalar hits entry_index=%ld, base_addr=%08lx, stride=%08lx\n",
               configName.c_str(), i, entry->base_addr, entry->stride);
       if (entry->can_prefetch()) {
-        PREF_DEBUG_PRINTF("   %s: VecPrefetcher::Scalar canprefetch = 1\n", configName.c_str()); 
+        PREF_DEBUG_PRINTF("   %s: VecPrefetcher::Scalar canprefetch = 1\n", configName.c_str());
         for (unsigned d = 0; d < entry->m_degree; d++) {
           PREF_DEBUG_PRINTF("   %s: VecPrefetcher::Scalar degree = %d\n", configName.c_str(), entry->m_degree);
           IntPtr prefetch = current_address + entry->stride * (d + 1);

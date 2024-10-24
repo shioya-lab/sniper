@@ -99,7 +99,8 @@ class Core
                                 bool is_fault_mask = false);
       MemoryResult nativeMemOp(lock_signal_t lock_signal, mem_op_t mem_op_type, IntPtr d_addr, char* data_buffer, UInt32 data_size);
 
-      void doPrefetch (
+      HitWhere::where_t doPrefetch (
+         SubsecondTime core_time,
          lock_signal_t lock_signal, 
          mem_op_t mem_op_type);
 

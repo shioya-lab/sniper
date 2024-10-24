@@ -331,6 +331,7 @@ private:
    ComponentTime m_last_committed_time;
 
    const String m_app;
+   const UInt64 m_pref_target_log;
 
    bool m_show_rob;
 
@@ -504,18 +505,18 @@ public:
 
          if (pc == 0) { continue; }
          float latency = static_cast<float>(m_mem_stats[pc].second) / m_mem_stats[pc].first;
-         fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %ld, usage = %ld, recent_list = %ld\n",
-                  pc, m_mem_stats[pc].second, m_mem_stats[pc].first,
-                  countMap[pc]);
+         // fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %ld, usage = %ld, recent_list = %ld\n",
+         //          pc, m_mem_stats[pc].second, m_mem_stats[pc].first,
+         //          countMap[pc]);
          if (latency > 100) {
-            fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %f, usage = %ld, recent_list = %ld\n",
-                     pc, latency, m_mem_stats[pc].first,
-                     countMap[pc]);
+            // fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %f, usage = %ld, recent_list = %ld\n",
+            //          pc, latency, m_mem_stats[pc].first,
+            //          countMap[pc]);
             return pc;
          }
       }
 
-      fprintf (stderr, "  findLongLatencyInsts : There are no best instruction.\n");
+      // fprintf (stderr, "  findLongLatencyInsts : There are no best instruction.\n");
       return 0;
 
       // for (auto mem: m_mem_stats) {

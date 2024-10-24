@@ -41,7 +41,7 @@ class ShmemPerf;
 // Maximum size of the list of addresses to prefetch
 #define PREFETCH_MAX_QUEUE_LENGTH 32
 // Time between prefetches
-#define PREFETCH_INTERVAL SubsecondTime::NS(1)
+#define PREFETCH_INTERVAL SubsecondTime::PS(500)
 // #define PREFETCH_INTERVAL SubsecondTime::PS(100)
 
 namespace ParametricDramDirectoryMSI
@@ -219,8 +219,11 @@ namespace ParametricDramDirectoryMSI
          bool m_prefetch_delay;
          bool m_l1_mshr;
          bool m_enable_log;
+         bool m_enable_pref_log;
          bool m_enable_kanata_log;
          bool m_enable_cache_csv_log;
+
+         SubsecondTime m_last_prefetch_time;
 
          struct {
            UInt64 loads, stores;
@@ -299,8 +302,8 @@ namespace ParametricDramDirectoryMSI
          void trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue,
                               IntPtr access_pc, uint64_t uop_idx);
          void Prefetch(SubsecondTime t_start);
-         void VecPrefetch(SubsecondTime t_start);
-         void doPrefetch(IntPtr prefetch_address, SubsecondTime t_start);
+         bool VecPrefetch(SubsecondTime t_start);
+         void doPrefetch(SubsecondTime t_now, IntPtr prefetch_address, SubsecondTime t_start);
 
          // Cache meta-data operations
          SharedCacheBlockInfo* getCacheBlockInfo(IntPtr address);
@@ -533,7 +536,7 @@ namespace ParametricDramDirectoryMSI
                                                 bool use_prefetch = true);
          void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
 
-        HitWhere::where_t processPrefetchFromCore(Core::lock_signal_t lock_signal, Core::mem_op_t mem_op_type);
+        HitWhere::where_t processPrefetchFromCore(SubsecondTime core_time, Core::lock_signal_t lock_signal, Core::mem_op_t mem_op_type);
 
          // Notify next level cache of so it can update its sharing set
          void notifyPrevLevelInsert(core_id_t core_id, MemComponent::component_t mem_component, IntPtr address);
