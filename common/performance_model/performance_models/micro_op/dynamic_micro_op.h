@@ -95,7 +95,8 @@ class DynamicMicroOp
       uint64_t initial_intraInstructionDependencies;
       uint64_t initial_dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
 
-      bool priority_inst;
+      bool reserve_inst;
+      bool strong_priority_inst;
 
    public:
 
@@ -141,8 +142,16 @@ class DynamicMicroOp
    bool hasCommitDependency() { return m_wfifo_wait_reason != wfifo_t::NONE; }
    wfifo_t getCommitDependency() { return m_wfifo_wait_reason; }
 
-      void setPriorityInst (bool is_priority) { this->priority_inst = is_priority; }
-      bool isPriorityInst () { return this->priority_inst; }
+      void setReserveInst () { this->reserve_inst = true; }
+      bool isReserveInst () { return this->reserve_inst; }
+
+      void setStrongPriorityInst () { this->strong_priority_inst = true; }
+      bool isStrongPriorityInst () { return this->strong_priority_inst; }
+
+      bool isNormalInst () { return !isReserveInst() && !isStrongPriorityInst(); }
+
+      bool isUseNormalRegisterGroup () { return isNormalInst() || isStrongPriorityInst(); }
+      bool isUseReserveRegisterGroup () { return !isUseNormalRegisterGroup(); }
 
       uint32_t getIntraInstrDependenciesLength() const { return this->intraInstructionDependencies; }
       void setIntraInstrDependenciesLength(uint32_t deps) { intraInstructionDependencies = deps;}

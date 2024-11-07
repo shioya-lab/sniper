@@ -50,6 +50,9 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
    this->mergedInstCount = 0;
 
    this->preload_done = false;
+
+   this->strong_priority_inst = false;
+   this->reserve_inst = false;
 }
 
 DynamicMicroOp::~DynamicMicroOp()

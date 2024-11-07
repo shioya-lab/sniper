@@ -841,22 +841,22 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
 
       if (!prefetchList.empty()) {
          MYPREFLOG("Prefetcher List Insertion: ");
-      }
 
-      for(std::vector<IntPtr>::iterator it = prefetchList.begin(); it != prefetchList.end(); ++it)
-      {
-         // Keep at most PREFETCH_MAX_QUEUE_LENGTH entries in the prefetch queue
-         if (m_master->m_prefetch_list.size() > PREFETCH_MAX_QUEUE_LENGTH)
-            break;
-         if (!operationPermissibleinCache(*it, Core::READ)) {
-            if (std::find(m_master->m_prefetch_list.begin(),
-                          m_master->m_prefetch_list.end(), *it) == m_master->m_prefetch_list.end()) { // Not Found
-               MYPREFLOG2("%08lx ", *it);
-               m_master->m_prefetch_list.push_back(*it);
+         for(std::vector<IntPtr>::iterator it = prefetchList.begin(); it != prefetchList.end(); ++it)
+         {
+            // Keep at most PREFETCH_MAX_QUEUE_LENGTH entries in the prefetch queue
+            if (m_master->m_prefetch_list.size() > PREFETCH_MAX_QUEUE_LENGTH)
+               break;
+            if (!operationPermissibleinCache(*it, Core::READ)) {
+               if (std::find(m_master->m_prefetch_list.begin(),
+                           m_master->m_prefetch_list.end(), *it) == m_master->m_prefetch_list.end()) { // Not Found
+                  MYPREFLOG2("%08lx ", *it);
+                  m_master->m_prefetch_list.push_back(*it);
+               }
             }
          }
+         MYPREFLOG2("\n");
       }
-      MYPREFLOG2("\n");
    }
 }
 
@@ -883,6 +883,15 @@ CacheCntlr::VecPrefetch(SubsecondTime t_now)
 
             MYPREFLOG("CacheCntlr::VecPrefetch() address_to_prefetch = %08lx", address_to_prefetch);
             doPrefetch(t_now, address_to_prefetch, m_master->m_prefetch_next);
+
+            // if (m_enable_kanata_log) {
+            //    uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
+            //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
+            //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, address_to_prefetch);
+            //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
+            //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
+            // }
+
          }
 
          // m_master->m_prefetch_next = m_prefetch_delay ? t_now + PREFETCH_INTERVAL : t_now;
@@ -891,6 +900,10 @@ CacheCntlr::VecPrefetch(SubsecondTime t_now)
          MYPREFLOG("CacheCntlr::VecPrefetch::m_master->m_prefetch_next = %ld ns", m_master->m_prefetch_next.getNS());
 
          result = true;
+      } else {
+         if (m_master->m_prefetch_next > t_now) {
+            MYPREFLOG("CacheCntlr::VecPrefetch:: wait next m_prefetch_next = %ld ns", m_master->m_prefetch_next.getNS());
+         }
       }
    }
 
@@ -964,13 +977,13 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
       hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
    }
 
-   // if (m_enable_kanata_log) {
-   //    uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
-   // }
+   if (m_enable_kanata_log) {
+      uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
+   }
 
    // Update Access History
    if (true /* m_roi_started*/) {

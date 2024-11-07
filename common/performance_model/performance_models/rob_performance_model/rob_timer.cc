@@ -498,7 +498,19 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       // fprintf(stderr, "Exited ROB\n");
 
       RobEntry *entry = &this->rob.next();
-      (*it)->setPriorityInst (isPriorityResourceInst(*it));
+      if (m_gather_always_reserve_allocation) {
+         switch (getPriority(*it)) {
+            case inst_priority_t::High :
+               (*it)->setStrongPriorityInst ();
+               break;
+            case inst_priority_t::Reserve :
+               (*it)->setReserveInst ();
+               break;
+            default : // inst_priority_t::Normal
+               break;
+         }
+      }
+
       entry->init(*it, nextSequenceNumber++);
 
       // Add = calculate dependencies, add yourself to list of depenants
@@ -816,50 +828,47 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          }
 
          // 長いレイテンシの命令に依存する命令を探すモード中
-         // if (m_lowpri_inst_find_mode) {
-         //    // fprintf (stderr, "%ld :   Find instruction Mode (%d) %08lx\n",
-         //    //          now.getCycleCount(), uop.getDependenciesLength(), uop.getMicroOp()->getInstruction()->getAddress());
-         for(size_t idx = 0; idx < uop.getDependenciesLength(); ++idx) {
-            RobEntry *depend_entry = this->findEntryBySequenceNumber(uop.getDependency(idx));
-            UInt64 depend_pc_address = depend_entry->uop->getMicroOp()->getInstruction()->getAddress();
-
-            // 陽に優先命令に依存する命令は、非優先命令となる
-            if (isPriInst(depend_pc_address)) {
-               uop.setPriorityInst (false);
-               break;
-            }
-            // fprintf (stderr, "%ld :   Find instruction wait_pc_address = %08lx\n",
-            //          now.getCycleCount(), wait_pc_address);
-            // if (m_long_latency_pc == wait_pc_address) {
-            //    AddNonPriInsts (uop.getMicroOp()->getInstruction()->getAddress());
-            //    fprintf (stderr, "%ld : Find instruction Mode, %08lx -> %08lx. Set %08lx as non-priority instruction\n",
-            //             now.getCycleCount(),
-            //             m_long_latency_pc,
-            //             uop.getMicroOp()->getInstruction()->getAddress(),
-            //             uop.getMicroOp()->getInstruction()->getAddress());
-            //    uop.setPriorityInst (false);
-            //    m_lowpri_inst_find_mode = false;
-            //    break;
-            // }
-         }
-         if (now.getCycleCount() > m_lowpri_inst_find_mode_start + 5000) {
-            // Timeout
-            m_lowpri_inst_find_mode = false;
-         }
+         // for(size_t idx = 0; idx < uop.getDependenciesLength(); ++idx) {
+         //    RobEntry *depend_entry = this->findEntryBySequenceNumber(uop.getDependency(idx));
+         //    UInt64 depend_pc_address = depend_entry->uop->getMicroOp()->getInstruction()->getAddress();
+         //
+         //    // 陽に優先命令に依存する命令は、非優先命令となる
+         //    if (isPriInst(depend_pc_address)) {
+         //       uop.setReserveInst (false);
+         //       break;
+         //    }
+         //    // fprintf (stderr, "%ld :   Find instruction wait_pc_address = %08lx\n",
+         //    //          now.getCycleCount(), wait_pc_address);
+         //    // if (m_long_latency_pc == wait_pc_address) {
+         //    //    AddNonPriInsts (uop.getMicroOp()->getInstruction()->getAddress());
+         //    //    fprintf (stderr, "%ld : Find instruction Mode, %08lx -> %08lx. Set %08lx as non-priority instruction\n",
+         //    //             now.getCycleCount(),
+         //    //             m_long_latency_pc,
+         //    //             uop.getMicroOp()->getInstruction()->getAddress(),
+         //    //             uop.getMicroOp()->getInstruction()->getAddress());
+         //    //    uop.setReserveInst (false);
+         //    //    m_lowpri_inst_find_mode = false;
+         //    //    break;
+         //    // }
+         // }
+         // if (now.getCycleCount() > m_lowpri_inst_find_mode_start + 5000) {
+         //    // Timeout
+         //    m_lowpri_inst_find_mode = false;
+         // }
          // }
          // メモリの統計をチェックして、レイテンシが短くなったものはPriInstsから除去する
-         for (auto mem: m_mem_stats) {
-            UInt64 pc = mem.first;
-            float latency = static_cast<float>(mem.second.second) / mem.second.first;
-            if (latency <= 100) {
-               if (isPriInst (pc)) {
-                  pri_insts.erase(std::remove(pri_insts.begin(), pri_insts.end(), pc),
-                                  pri_insts.end());
-                  fprintf (stderr, "%ld : Unprioritize instruction = %08lx\n",
-                           now.getCycleCount(), pc);
-               }
-            }
-         }
+         // for (auto mem: m_mem_stats) {
+         //    UInt64 pc = mem.first;
+         //    float latency = static_cast<float>(mem.second.second) / mem.second.first;
+         //    if (latency <= 100) {
+         //       if (isPriInst (pc)) {
+         //          pri_insts.erase(std::remove(pri_insts.begin(), pri_insts.end(), pc),
+         //                          pri_insts.end());
+         //          fprintf (stderr, "%ld : Unprioritize instruction = %08lx\n",
+         //                   now.getCycleCount(), pc);
+         //       }
+         //    }
+         // }
 
          // 物理レジスタの確保試行
          if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
@@ -1743,7 +1752,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          instructionsExecuted++;
 
       if (entry->uop->getSequenceNumber() != 0 && entry->uop->getSequenceNumber() % 10000 == 0) {
-         fprintf (stderr, "inst exec %ld (now = %ld ns)\n", entry->uop->getSequenceNumber(), now.getElapsedTime().getNS());
+         fprintf (stderr, "inst exec %ld (now = %ld cycle)\n", entry->uop->getSequenceNumber(), now.getCycleCount());
       }
       m_last_committed_time = now;
 
@@ -1879,24 +1888,23 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          } else if(dec->is_reg_float(entry->uop->getMicroOp()->getDestinationRegister(0))) {
             m_phy_registers[1] --;
          } else if (dec->is_reg_vector(entry->uop->getMicroOp()->getDestinationRegister(0))){
-            if ((m_gather_always_reserve_allocation && entry->uop->isPriorityInst()) ||
-                !m_vec_reserved_allocation) {
-               m_phy_registers[2] --;
-            } else {
-               if (m_gather_always_reserve_allocation) {
-                  LOG_ASSERT_ERROR(m_res_reserv_registers != 0, "m_res_reserv_registers must not zero when decrease\n");
-                  m_res_reserv_registers --;
+            if (m_gather_always_reserve_allocation) {
+               // 優先度付き予約手法の場合
+               if (entry->uop->isUseNormalRegisterGroup()) {
+                  m_phy_registers[2] --;
+                  ROB_DEBUG_PRINTF ("physical register return: %ld\n", m_phy_registers[2]);
                }
+            } else if (m_vec_reserved_allocation) {
+               // 通常の予約手法の場合
                // 非優先命令において，物理レジスタの資源が解放されれれば，m_dispatch_fifo内の先頭ハザードをRESOLVEDに変更する
                if (m_dispatch_fifo.size() != 0) {
                   bool register_passed = false;
                   for (auto &f : m_dispatch_fifo) {
                      RobEntry *waiting_entry = findEntryBySequenceNumber(f);
                      if (waiting_entry->uop->hasCommitDependency() &&
-                         !(m_gather_always_reserve_allocation && waiting_entry->uop->isPriorityInst()) &&
                          waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
                         waiting_entry->uop->setCommitDependency(DynamicMicroOp::wfifo_t::RESOLVED);
-                        m_res_reserv_registers ++;
+                        // m_res_reserv_registers ++;
                         // printf ("Register pass from %ld to %ld\n", entry->uop->getSequenceNumber(), f);
 
                         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
@@ -1916,6 +1924,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                } else {
                   m_phy_registers[2]--;
                }
+            } else {
+               // 予約なしの方法
+               m_phy_registers[2]--;
             }
          } else {
             LOG_ASSERT_ERROR (false, "Unknown register type.");
@@ -2050,14 +2061,11 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
       skip = now.getPeriod();
    }
 
-   if (now.getCycleCount() >= rob_start_cycle /* && !cycle_prefetch_done */) {
-      // fprintf (stderr, "%ld RobTimer::doPrefetch()\n", now.getCycleCount());
-      // プリフェッチの可否は毎サイクルチェックする
-      HitWhere::where_t result = m_core->doPrefetch (now.getElapsedTime(), Core::NONE, Core::READ_VEC);
-      if (result == HitWhere::L1_OWN) {
-         will_skip = false;
-         skip = now.getPeriod();
-      }
+   // プリフェッチの可否は毎サイクルチェックする
+   HitWhere::where_t result = m_core->doPrefetch (now.getElapsedTime(), Core::NONE, Core::READ_VEC);
+   if (result == HitWhere::L1_OWN) {
+      will_skip = false;
+      skip = now.getPeriod();
    }
 
    #ifdef ASSERT_SKIP
@@ -2116,7 +2124,7 @@ void RobTimer::printRob(bool is_only_vector)
    std::cout<<"   Int Regs  : "<< std::dec << m_phy_registers[0] << std::endl;
    std::cout<<"   Float Regs: "<< std::dec << m_phy_registers[1] << std::endl;
    std::cout<<"   Vec Regs  : "<< std::dec << m_phy_registers[2] << std::endl;
-   std::cout<<"   RrcRevList: "<< std::dec << m_res_reserv_registers << std::endl;
+   // std::cout<<"   RrcRevList: "<< std::dec << m_res_reserv_registers << std::endl;
 
    // std::cout<<"   WFIFO entries: "<< m_dispatch_fifo.size() << " ";
    std::cout<<"   WFIFO entries: "<< m_dispatch_fifo.size() << " ";
@@ -2140,6 +2148,7 @@ void RobTimer::printRob(bool is_only_vector)
 
    UInt64 vecreg_count = 0;
    UInt64 vecreg_alloc_count = 0;
+   bool   break_vecreg_alloc_count = false;
 
    for(unsigned int i = 0; i < rob.size(); ++i)
    {
@@ -2154,28 +2163,50 @@ void RobTimer::printRob(bool is_only_vector)
       std::ostringstream state;
 
       dl::Decoder *dec = Sim()->getDecoder();
-      if (e->uop->getMicroOp()->isVector() &&
+      if (i < m_num_in_rob &&
+          e->uop->getMicroOp()->isVector() &&
           e->uop->isLast() &&
           e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
           dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))
       ) {
          state << std::setw(3) << (++vecreg_count) << ' ';
-         if ((!e->uop->hasCommitDependency() ||
-              e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED) &&
-             i < m_num_in_rob) {
-            state << std::setw(3) << (++vecreg_alloc_count) << ' ';
+         if (m_gather_always_reserve_allocation) {
+            if (e->uop->isUseNormalRegisterGroup()) {
+               state << std::setw(3) << (++vecreg_alloc_count) << ' ';
+            } else {
+               state << "    ";
+            }
+         } else if (m_vec_reserved_allocation) {
+            if (!e->uop->hasCommitDependency() ||
+                (!break_vecreg_alloc_count && e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVED)) {
+               state << std::setw(3) << (++vecreg_alloc_count) << ' ';
+            } else {
+               state << "    ";
+            }
          } else {
-            state << "    ";
+            state << std::setw(3) << (++vecreg_alloc_count) << ' ';
          }
       } else {
          state << "        ";
       }
 
+      if (i < m_num_in_rob &&
+          e->uop->getMicroOp()->isVector() &&
+          e->uop->isFirst() &&
+          e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+          dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))) {
+         if (e->uop->hasCommitDependency() && e->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
+            break_vecreg_alloc_count = true;
+         }
+      }
+
       if (i < m_num_in_rob && e->uop->getMicroOp()->isVector()) {
-         if (e->uop->isPriorityInst()) {
+         if (e->uop->isStrongPriorityInst()) {
             state << " P ";
+         } else if (e->uop->isReserveInst()) {
+            state << " R ";
          } else {
-            state << " N ";
+            state << " N ";  // Normal
          }
       } else {
          state << "   ";
@@ -2267,9 +2298,9 @@ void RobTimer::printRob(bool is_only_vector)
       }
    }
 
-   // LOG_ASSERT_ERROR (vecreg_alloc_count + 32 == m_phy_registers[2] ||
-   //                   vecreg_alloc_count + 32 + 1 == m_phy_registers[2],
-   //                   "Vec register count failed. %d != %d\n", vecreg_alloc_count + 32, m_phy_registers[2]);
+   LOG_ASSERT_ERROR (vecreg_alloc_count + 32 == m_phy_registers[2] ||
+                     vecreg_alloc_count + 32 + 1 == m_phy_registers[2],
+                     "Vec register count failed. %d != %d\n", vecreg_alloc_count + 32, m_phy_registers[2]);
 
    // LOG_ASSERT_ERROR(vec_store_queue_max - vec_store_queue == vecstore_count,
    //                  "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
@@ -2365,7 +2396,10 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
          );
 
          // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-         //    std::cout<<"PRELOAD " << uop.getSequenceNumber() << ", " << entry->uop->getMicroOp()->toShortString() << std::endl;
+         fprintf (stderr, "PRELOAD seqid=%ld, addr=%08lx, %s\n",
+                  uop.getSequenceNumber(),
+                  uop.getAddress().address,
+                  uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
          // }
          ROB_DEBUG_PRINTF ("  Early preload : tryIssue succeeded %s, rod_idx = %ld, index = %ld\n",
                            uop.getMicroOp()->toShortString().c_str(),
@@ -2476,7 +2510,13 @@ bool RobTimer::InsertPhyRegWFIFO (DynamicMicroOp *uop, dl::Decoder::decoder_reg 
 {
    m_vec_wfifo_registers[dest_reg - 64] = true;
 
-   return InsertWFIFO (uop, DynamicMicroOp::wfifo_t::PHYREG);
+   if (m_gather_always_reserve_allocation) {
+      return InsertWFIFO (uop, DynamicMicroOp::wfifo_t::RESOLVED);
+   } else if (m_vec_reserved_allocation) {
+      return InsertWFIFO (uop, DynamicMicroOp::wfifo_t::PHYREG);
+   } else {
+      LOG_ASSERT_ERROR(false, "Must not come here\n");
+   }
 }
 
 bool RobTimer::AllocNonpriVecRegisters (uint64_t rob_idx, DynamicMicroOp *uop, dl::Decoder::decoder_reg dest_reg)
@@ -2489,18 +2529,20 @@ bool RobTimer::AllocNonpriVecRegisters (uint64_t rob_idx, DynamicMicroOp *uop, d
               m_res_reserv_registers);
    }
 
-   if (m_res_reserv_registers < m_nonpri_max_vec_phy_registers) {
-      // 資源予約リストが足りない
-      bool alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
-      if (alloc_success) {
-         m_res_reserv_registers ++;
-         ROB_DEBUG_PRINTF("m_res_reserv_registers = %ld\n", m_res_reserv_registers);
-      }
-      return alloc_success;
-   } else {
-      // 資源予約リストが十分
-      return InsertPhyRegWFIFO (uop, dest_reg);
-   }
+   // ROB_DEBUG_PRINTF("m_res_reserv_registers = %ld, m_nonpri_max_vec_phy_registers = %ld\n",
+   //                m_res_reserv_registers, m_nonpri_max_vec_phy_registers);
+   // if (m_res_reserv_registers < m_nonpri_max_vec_phy_registers) {
+   //    // 資源予約リストが足りない
+   //    bool alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
+   //    if (alloc_success) {
+   //       m_res_reserv_registers ++;
+   //       ROB_DEBUG_PRINTF("m_res_reserv_registers = %ld\n", m_res_reserv_registers);
+   //    }
+   //    return alloc_success;
+   // } else {
+   // 資源予約リストが十分
+   return InsertPhyRegWFIFO (uop, dest_reg);
+   // }
 }
 
 
@@ -2522,9 +2564,10 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       return true;
    }
 
+   // Firstが予約に回ると、同じ命令のuOPはすべて予約に回る
    if (!uop->getMicroOp()->isFirst()) {
       if (m_last_wfifo_sequencenumber + 1 == uop->getSequenceNumber()) {
-         uop->setPriorityInst (false);
+         uop->setReserveInst ();
          InsertWFIFO (uop, DynamicMicroOp::wfifo_t::RESOLVED);
       }
       return true;
@@ -2555,21 +2598,56 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
          for(size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx)
          {
             RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-            if (waiting_entry->uop->hasCommitDependency() &&
-                waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG) {
-               if (m_dispatch_fifo.size() < WFIFO_SIZE) {
-                  if (m_dispatch_fifo.size() > 0) {
-                     LOG_ASSERT_ERROR(m_dispatch_fifo.back() <= uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
+            if (m_gather_always_reserve_allocation) {
+               // 優先度付き予約
+
+               if ((waiting_entry->uop->hasCommitDependency() &&
+                    (waiting_entry->uop->isReserveInst())) ||   // 低優先度の命令に依存する命令はWFIFOに入れる
+                   waiting_entry->uop->isStrongPriorityInst() // レイテンシが長いであろう超高優先度命令に依存する命令はWFIFOに入れる
+               ) {
+                  if (m_dispatch_fifo.size() < WFIFO_SIZE) {
+                     if (m_dispatch_fifo.size() > 0) {
+                        LOG_ASSERT_ERROR(m_dispatch_fifo.back() <= uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
+                     }
+                     if (m_dispatch_fifo.back() != uop->getSequenceNumber()) {
+                        uop->setReserveInst ();
+                        InsertPhyRegWFIFO (uop, dest_reg);
+                     }
+                     if (waiting_entry->uop->isStrongPriorityInst()) {
+                        uop->setCommitDependency (DynamicMicroOp::wfifo_t::RESOLVED);
+                     } else {
+                        uop->setCommitDependency (DynamicMicroOp::wfifo_t::RESOLVED);
+                     }
+                     return true;
+                  } else {
+                     m_wfifo_overflow++;
+                     return false;
                   }
-                  if (m_dispatch_fifo.back() != uop->getSequenceNumber()) {
-                     uop->setPriorityInst (false);
-                     InsertPhyRegWFIFO (uop, dest_reg);
+               }
+
+            } else if (m_vec_reserved_allocation) {
+               // 優先度無し予約
+
+               if (waiting_entry->uop->hasCommitDependency() &&
+                   (waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG)
+               ) {
+                  if (m_dispatch_fifo.size() < WFIFO_SIZE) {
+                     if (m_dispatch_fifo.size() > 0) {
+                        LOG_ASSERT_ERROR(m_dispatch_fifo.back() <= uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
+                     }
+                     if (m_dispatch_fifo.back() != uop->getSequenceNumber()) {
+                        InsertPhyRegWFIFO (uop, dest_reg);
+                     }
+                     if (waiting_entry->uop->isStrongPriorityInst()) {
+                        uop->setCommitDependency (DynamicMicroOp::wfifo_t::RESOLVED);
+                     } else {
+                        uop->setCommitDependency (DynamicMicroOp::wfifo_t::PHYREG);
+                     }
+                     return true;
+                  } else {
+                     m_wfifo_overflow++;
+                     return false;
                   }
-                  uop->setCommitDependency (DynamicMicroOp::wfifo_t::PHYREG);
-                  return true;
-               } else {
-                  m_wfifo_overflow++;
-                  return false;
                }
             }
          }
@@ -2582,46 +2660,48 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
       // When Vector Load, allocate as normal
       if (reg_index == 2) {
          bool alloc_success;
-         if (!m_vec_reserved_allocation) {
-            // 予約なし
-            return UpdateNormalBindPhyRegAllocation(rob_idx);
-         } else if (m_gather_always_reserve_allocation) {
-            if (uop->isPriorityInst()) {
-               // 優先命令
+         if (m_gather_always_reserve_allocation) {
+            // 優先度付き予約
+            if (uop->isUseNormalRegisterGroup()) {
+               // 通常のレジスタグループから割り当てを行う命令
                alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
 
-               if (!alloc_success & !m_lowpri_inst_find_mode) {
-                  // 予約に失敗すると、命令の非優先命令化を進める
-                  // fprintf (stderr, "%ld : Register Allocation Failure: Start to find instruction\n", now.getCycleCount());
+               // if (!alloc_success & !m_lowpri_inst_find_mode) {
+               //    // 予約に失敗すると、命令の非優先命令化を進める
+               //    // fprintf (stderr, "%ld : Register Allocation Failure: Start to find instruction\n", now.getCycleCount());
 
-                  if ((m_long_latency_pc = findLongLatencyInsts ()) != 0) {
+               //    if ((m_long_latency_pc = findLongLatencyInsts ()) != 0) {
 
-                     m_lowpri_inst_find_mode_start = now.getCycleCount();
-                     AddPriInsts(m_long_latency_pc);
-                     m_lowpri_inst_find_mode = true;
+               //       m_lowpri_inst_find_mode_start = now.getCycleCount();
+               //       AddPriInsts(m_long_latency_pc);
+               //       m_lowpri_inst_find_mode = true;
 
-                     // if ((pc = findNonPriInsts()) != 0) {
-                     //    AddNonPriInsts (pc);
-                     // } else if ((pc = findShortLatencyInsts ()) != 0) {
-                     //    AddNonPriInsts (pc);
-                     // } else {
-                     //    fprintf (stderr, "%ld : Register Allocation Failure(2): No NonPri candidate\n", now.getCycleCount());
-                     // }
-                  }
-               }
+               //       // if ((pc = findNonPriInsts()) != 0) {
+               //       //    AddNonPriInsts (pc);
+               //       // } else if ((pc = findShortLatencyInsts ()) != 0) {
+               //       //    AddNonPriInsts (pc);
+               //       // } else {
+               //       //    fprintf (stderr, "%ld : Register Allocation Failure(2): No NonPri candidate\n", now.getCycleCount());
+               //       // }
+               //    }
+               // }
                return alloc_success;
             } else {
                return AllocNonpriVecRegisters (rob_idx, uop, dest_reg);
             }
-         } else {
+         } else if (m_vec_reserved_allocation) {
             // 優先度無し予約
             // m_vec_reserved_allocation == true
             alloc_success = UpdateNormalBindPhyRegAllocation(rob_idx);
             if (!alloc_success) {
                // 予約に失敗すると、WFIFOに入れる
+               uop->setCommitDependency (DynamicMicroOp::wfifo_t::PHYREG);
                InsertPhyRegWFIFO (uop, dest_reg);
             }
             return true;
+         } else {
+            // 予約なし
+            return UpdateNormalBindPhyRegAllocation(rob_idx);
          }
       }
    } else {
@@ -2632,9 +2712,10 @@ bool RobTimer::UpdateReservedBindPhyRegAllocation(uint64_t rob_idx)
          for (auto &f : m_dispatch_fifo) {
             RobEntry *waiting_entry = this->findEntryBySequenceNumber(f);
             if (waiting_entry->uop->hasCommitDependency() &&
-                waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::PHYREG &&
+                /* waiting_entry->uop->getCommitDependency() == DynamicMicroOp::wfifo_t::RESOLVE && */
+                waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() > 0 &&
                 waiting_entry->uop->getMicroOp()->getDestinationRegister(0) == sourceRegister) {
-               uop->setPriorityInst (false);
+               uop->setReserveInst ();
                InsertWFIFO (uop, DynamicMicroOp::wfifo_t::RESOLVED);
                insert_wfifo_finished = true;
                break;

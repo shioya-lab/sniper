@@ -627,103 +627,124 @@ public:
       return;
    }
 
+   typedef enum {
+      Normal = 0,
+      Reserve = 1,
+      High    = 2
+   } inst_priority_t;
 
-   bool isPriorityResourceInst (DynamicMicroOp *uop) {
-      UInt64 pc = uop->getMicroOp()->getInstruction()->getAddress();
-      bool is_pri = std::find(nonpri_insts.begin(), nonpri_insts.end(), pc) == nonpri_insts.end();
-
-      return is_pri;
+   inst_priority_t getPriority (DynamicMicroOp *uop) {
+      // return true;
+      //
+      // UInt64 pc = uop->getMicroOp()->getInstruction()->getAddress();
+      // bool is_pri = std::find(nonpri_insts.begin(), nonpri_insts.end(), pc) == nonpri_insts.end();
+      //
+      // return is_pri;
 
       // Not used
-      bool is_priority_inst = false;
+      bool is_strong_priority_inst = false;
       UInt64 inst_address = uop->getMicroOp()->getInstruction()->getAddress();
+
+      static uint32_t neighbors_counter = 0;
 
       if (m_app == "bfs") {
          switch (inst_address) {
-            case 0x142e0 : // vl1re64.v	v8, (t2)
-            case 0x142e4 : // vl1re64.v	v9, (t1)
-
-            case 0x14484 : // vl1re64.v	v12, (s9)
-            case 0x14488 : // vsll.vi	v12, v12, 3
-            case 0x1448c : // vluxei64.v	v13, (t6), v12
-
-            case 0x14948 : // vle64.v	v8, (a7)
-            case 0x14950 : // vsll.vi	v8, v8, 3
-            case 0x14954 : // vluxei64.v	v9, (a7), v8
-               // case 0x14958 : // vmslt.vx	v9, v9, zero
-            case 0x14970 : // vle64.v	v10, (t3)
-               // case 0x14974 : // vmv.v.i	v11, 0
-               // case 0x14994 : // vmv1r.v	v0, v9
+            // case 0x142e0 : // vl1re64.v	v8, (t2)
+            // case 0x142e4 : // vl1re64.v	v9, (t1)
+            //
+            // case 0x14484 : // vl1re64.v	v12, (s9)
+            // case 0x14488 : // vsll.vi	v12, v12, 3
+            // case 0x1448c : // vluxei64.v	v13, (t6), v12
+            //
+            // case 0x14948 : // vle64.v	v8, (a7)
+            // case 0x14950 : // vsll.vi	v8, v8, 3
+            // case 0x14954 : // vluxei64.v	v9, (a7), v8
+            // case 0x14958 : // vmslt.vx	v9, v9, zero
+            // case 0x14970 : // vle64.v	v10, (t3)
+            // case 0x14974 : // vmv.v.i	v11, 0
+            // case 0x14994 : // vmv1r.v	v0, v9
             case 0x149a4 : // vle64.v	v13, (t0)
-            case 0x149a8 : // vsll.vi	v14, v13, 3
-            case 0x149ac : // vluxei64.v	v14, (a2), v14
-               is_priority_inst = true;
+            // case 0x149a8 : // vsll.vi	v14, v13, 3
+            // case 0x149ac : // vluxei64.v	v14, (a2), v14
+               is_strong_priority_inst = neighbors_counter < 2;
+               neighbors_counter++;
+               fprintf (stderr, "isStrongPriorityInst : neighbors_counter = %d\n", neighbors_counter);
+               return is_strong_priority_inst ? inst_priority_t::High : inst_priority_t::Reserve;
+               break;
+            case 0x148f0:
+               neighbors_counter = 0;
+               fprintf (stderr, "isStrongPriorityInst : neighbors_counter = 0\n");
                break;
          }
-      } else if (m_app == "cc") {
-         switch (inst_address) {
-            case 0x13c9c:  // vle64.v	v8, (a5)
-            case 0x13ca0:  // vsll.vi	v9, v8, 3
-            case 0x13ca4:  // vluxei64.v	v9, (a6), v9
-
-            case 0x13d14: // vle64.v	v8, (a5)
-            case 0x13d1c: // vsll.vi	v11, v8, 3
-            case 0x13d20: // vluxei64.v	v12, (t0), v11
-
-            case 0x13f6c: // vle64.v	v8, (s0)
-            case 0x13f70: // vsll.vi	v8, v8, 3
-            case 0x13f74: // vluxei64.v	v11, (t6), v8
-
-            case 0x1406c: // vle64.v	v8, (a3)
-            case 0x14070: // vsll.vi	v8, v8, 3
-            case 0x14074: // vluxei64.v	v9, (a0), v8
-
-            case 0x14078: // vle64.v	v8, (a5)
-            case 0x1407c: // vsll.vi	v8, v8, 3
-            case 0x14080: // vluxei64.v	v10, (a0), v8
-               is_priority_inst = true;
-         }
-      } else if (m_app == "pr") {
-         switch (inst_address) {
-            case 0x143ac: // vle64.v	v11, (a7)
-            case 0x143b0: // vsll.vi	v11, v11, 3
-            case 0x143b4: // vluxei64.v	v11, (a2), v11
-               is_priority_inst = true;
-         }
-      } else if (m_app == "sssp") {
-         switch (inst_address) {
-            case 0x142e0: // vle64.v	v10, (a4)
-            case 0x142ec: // vsll.vi	v10, v10, 3
-            case 0x142f0: // vluxei64.v	v10, (t0), v10
-
-            case 0x14298: // vle64.v	v8, (a6)
-            case 0x142a4: // vsll.vi	v8, v8, 3
-            case 0x142a8: // vluxei64.v	v9, (a1), v8
-               is_priority_inst = true;
-         }
-      } else if (m_app == "00") {
-         is_priority_inst = (inst_address == 0x10692);
-      } else if (m_app == "01") {
-         is_priority_inst = (inst_address == 0x106a2);
-      } else if (m_app == "02") { // spmv
-         switch (inst_address) {
-            case 0x103f6 : // vle64.v	v24, (t3)
-               // case 0x103fa : // vle64.v	v8, (t1)
-            case 0x103fe : // vsll.vi	v24, v24, 3
-            case 0x10404 : // vluxei64.v	v24, (a3), v24
-               ROB_DEBUG_PRINTF("spmv instruction %08lx is priority instruction\n", inst_address);
-               is_priority_inst = true;
-               break;
-            default :
-               ROB_DEBUG_PRINTF("spmv instruction %08lx is NOT priority instruction\n", inst_address);
-               is_priority_inst = false;
-               break;
-         }
+         return inst_priority_t::Normal;
       } else {
-         is_priority_inst = uop->getMicroOp()->isVecLoad() &&
-               uop->getMicroOp()->canVecSquash();   // VLE
+         return inst_priority_t::Normal;
       }
-      return is_priority_inst;
+
+      // } else if (m_app == "cc") {
+      //    switch (inst_address) {
+      //       case 0x13c9c:  // vle64.v	v8, (a5)
+      //       case 0x13ca0:  // vsll.vi	v9, v8, 3
+      //       case 0x13ca4:  // vluxei64.v	v9, (a6), v9
+
+      //       case 0x13d14: // vle64.v	v8, (a5)
+      //       case 0x13d1c: // vsll.vi	v11, v8, 3
+      //       case 0x13d20: // vluxei64.v	v12, (t0), v11
+
+      //       case 0x13f6c: // vle64.v	v8, (s0)
+      //       case 0x13f70: // vsll.vi	v8, v8, 3
+      //       case 0x13f74: // vluxei64.v	v11, (t6), v8
+
+      //       case 0x1406c: // vle64.v	v8, (a3)
+      //       case 0x14070: // vsll.vi	v8, v8, 3
+      //       case 0x14074: // vluxei64.v	v9, (a0), v8
+
+      //       case 0x14078: // vle64.v	v8, (a5)
+      //       case 0x1407c: // vsll.vi	v8, v8, 3
+      //       case 0x14080: // vluxei64.v	v10, (a0), v8
+      //          is_priority_inst = true;
+      //    }
+      // } else if (m_app == "pr") {
+      //    switch (inst_address) {
+      //       case 0x143ac: // vle64.v	v11, (a7)
+      //       case 0x143b0: // vsll.vi	v11, v11, 3
+      //       case 0x143b4: // vluxei64.v	v11, (a2), v11
+      //          is_priority_inst = true;
+      //    }
+      // } else if (m_app == "sssp") {
+      //    switch (inst_address) {
+      //       case 0x142e0: // vle64.v	v10, (a4)
+      //       case 0x142ec: // vsll.vi	v10, v10, 3
+      //       case 0x142f0: // vluxei64.v	v10, (t0), v10
+
+      //       case 0x14298: // vle64.v	v8, (a6)
+      //       case 0x142a4: // vsll.vi	v8, v8, 3
+      //       case 0x142a8: // vluxei64.v	v9, (a1), v8
+      //          is_priority_inst = true;
+      //    }
+      // } else if (m_app == "00") {
+      //    is_priority_inst = (inst_address == 0x10692);
+      // } else if (m_app == "01") {
+      //    is_priority_inst = (inst_address == 0x106a2);
+      // } else if (m_app == "02") { // spmv
+      //    switch (inst_address) {
+      //       case 0x103f6 : // vle64.v	v24, (t3)
+      //          // case 0x103fa : // vle64.v	v8, (t1)
+      //       case 0x103fe : // vsll.vi	v24, v24, 3
+      //       case 0x10404 : // vluxei64.v	v24, (a3), v24
+      //          ROB_DEBUG_PRINTF("spmv instruction %08lx is priority instruction\n", inst_address);
+      //          is_priority_inst = true;
+      //          break;
+      //       default :
+      //          ROB_DEBUG_PRINTF("spmv instruction %08lx is NOT priority instruction\n", inst_address);
+      //          is_priority_inst = false;
+      //          break;
+      //    }
+      // } else {
+      //    is_priority_inst = uop->getMicroOp()->isVecLoad() &&
+      //          uop->getMicroOp()->canVecSquash();   // VLE
+      // }
+      // return is_priority_inst;
    }
 
 };
