@@ -819,9 +819,10 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
    }
    else prefetcherTrained = false;
 
-   MYLOG ("CacheCntlr::trainPrefetcher() prefetchList size = %ld", prefetchList.size());
+   MYPREFLOG ("CacheCntlr::trainPrefetcher() prefetchList size = %ld", prefetchList.size());
 
-   bool do_vec_prefetch = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC;
+   // bool do_vec_prefetch = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC;
+   bool do_vec_prefetch = true;
    bool l1d_pref_keep = false;
    if (m_mem_component == MemComponent::L1_DCACHE) {
      l1d_pref_keep = !Sim()->getCfg()->getBoolArray("perf_model/" + m_configName + "/pref_load", 0);
@@ -840,7 +841,7 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
       // MYLOG("  trainPrefetcher::m_master->m_prefetch_next = %ld ns", m_master->m_prefetch_next.getNS());
 
       if (!prefetchList.empty()) {
-         MYPREFLOG("Prefetcher List Insertion: ");
+         MYPREFLOG2("Prefetcher List Insertion: ");
 
          for(std::vector<IntPtr>::iterator it = prefetchList.begin(); it != prefetchList.end(); ++it)
          {

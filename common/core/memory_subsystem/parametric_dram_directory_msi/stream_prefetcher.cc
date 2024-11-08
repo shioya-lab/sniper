@@ -82,7 +82,7 @@ StreamPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_t
 
         LOG_ASSERT_ERROR (m_degree >= 3, "m_degree must larger than 2");
 
-        IntPtr prefetch = stream->addr + (stream->ascending ? m_effectiveMonitorWindow : -m_effectiveMonitorWindow);
+        IntPtr prefetch = stream->addr + (stream->ascending ? stream->MonitorWindow : -stream->MonitorWindow);
         for (int i = 0; i < m_degree; i++) {
            MYLOG("pushing address %08lx", MaskLineOffset(prefetch));
            addresses.push_back(MaskLineOffset(prefetch));
@@ -96,7 +96,7 @@ StreamPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_t
        }
 
        if (!streamTableHit && !isInEntryRegion (current_address)) {
-          AllocateStream(current_address);
+          AllocateStream(current_address, mem_op_type);
        }
     }
 
@@ -118,13 +118,13 @@ std::pair<bool, size_t> StreamPrefetcher::UpdateMonitorStream(IntPtr current_add
         Stream* stream = m_stream_table[i];
 
         MYLOG ("UpdateMonitorStream: target_address = %08lx, stream_table[%ld] status=%d, orig=0x%08lx, start=0x%08lx, ascending=%d, count=%d hist_id=%ld window=0x%lx",
-               miss_block_address, i, static_cast<int>(stream->status), stream->orig, stream->addr, stream->ascending, stream->count, stream->hist_id, m_effectiveMonitorWindow);
+               miss_block_address, i, static_cast<int>(stream->status), stream->orig, stream->addr, stream->ascending, stream->count, stream->hist_id, stream->MonitorWindow);
 
         if (stream->status != SS_MONITOR)
             continue;
 
         // Check a missed address is in a prefetch window.
-        if (!is_in_window( miss_block_address, stream->addr, m_effectiveMonitorWindow, stream->ascending)) {
+        if (!is_in_window( miss_block_address, stream->addr, stream->MonitorWindow, stream->ascending)) {
             continue;
         }
 
@@ -163,7 +163,7 @@ bool StreamPrefetcher::UpdateTrainingStream (IntPtr current_address)
         if (stream->status != SS_TRAINING)
             continue;
 
-        IntPtr window = m_effectiveTrainingWindow;
+        IntPtr window = stream->TrainingWindow;
         const IntPtr& start = stream->orig;
 
         // Check a missed address is in a training window.
@@ -246,13 +246,15 @@ bool StreamPrefetcher::isInEntryRegion (IntPtr current_address)
 }
 
 // Allocate a new entry in the stream table.
-void StreamPrefetcher::AllocateStream (IntPtr current_address)
+void StreamPrefetcher::AllocateStream (IntPtr current_address, Core::mem_op_t mem_op_type)
 {
     IntPtr miss_block_address = MaskLineOffset(current_address);
 
     Stream *stream = new Stream;
     stream->addr = miss_block_address;
     stream->orig = miss_block_address;
+    stream->MonitorWindow  = mem_op_type == Core::mem_op_t::READ_VEC || mem_op_type == Core::mem_op_t::WRITE_VEC ? m_effectiveMonitorWindow  : 0x100;
+    stream->TrainingWindow = mem_op_type == Core::mem_op_t::READ_VEC || mem_op_type == Core::mem_op_t::WRITE_VEC ? m_effectiveTrainingWindow : 0x100;
     stream->status = SS_TRAINING;
     stream->count = 0;
 

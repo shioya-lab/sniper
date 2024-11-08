@@ -34,6 +34,10 @@ class StreamPrefetcher : public Prefetcher
 
             IntPtr orig;      // An first accessed address of a stream
             IntPtr addr;      // A current 'start' address of a stream
+            IntPtr MonitorWindow;   // An effective distance is calculated
+                                    // by a 'distance' parameter and a line size.
+            IntPtr TrainingWindow;  //
+
 
             int  count;     // Access count
             bool ascending; // Stream direction
@@ -74,14 +78,13 @@ class StreamPrefetcher : public Prefetcher
         int m_training_window_size;
         int m_training_threshold;
 
+        UInt64 m_effectiveMonitorWindow;
+        UInt64 m_effectiveTrainingWindow;
+
         UInt64 m_log_current_pc; // MYLOGでの表示用
 
         const bool m_enable_log;
         const UInt64 m_pref_target_log;
-
-        uint64_t m_effectiveMonitorWindow;   // An effective distance is calculated
-                                             // by a 'distance' parameter and a line size.
-        uint64_t m_effectiveTrainingWindow;  //
 
         bool is_in_window( IntPtr addr, IntPtr start, IntPtr windowSize, bool ascending );
 
@@ -91,7 +94,7 @@ class StreamPrefetcher : public Prefetcher
 
         std::pair<bool, size_t> UpdateMonitorStream (const IntPtr address);
         bool UpdateTrainingStream(const IntPtr address);
-        void AllocateStream(const IntPtr address);
+        void AllocateStream(const IntPtr address, Core::mem_op_t mem_op_type);
 
    bool isInEntryRegion (IntPtr current_address);
 };
