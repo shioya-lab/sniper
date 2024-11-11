@@ -69,6 +69,8 @@ RobTimer::RobTimer(
       , store_queue("rob_timer.store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()))
       , vec_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_loads"))
       , vec_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"))
+      , scalar_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_loads"))
+      , scalar_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_stores"))
       , nextSequenceNumber(0)
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
@@ -130,12 +132,29 @@ RobTimer::RobTimer(
    m_cpiBase = SubsecondTime::Zero();
    m_cpiBranchPredictor = SubsecondTime::Zero();
    m_cpiSerialization = SubsecondTime::Zero();
+   m_cpiALURSFull = SubsecondTime::Zero();
+   m_cpiFPURSFull = SubsecondTime::Zero();
+   m_cpiLSURSFull = SubsecondTime::Zero();
+   m_cpiVECRSFull = SubsecondTime::Zero();
+   m_cpiVPhyRegFull = SubsecondTime::Zero();
+
+   m_cpiLDQFull  = SubsecondTime::Zero();
+   m_cpiSTQFull  = SubsecondTime::Zero();
+   m_cpiVLDQFull = SubsecondTime::Zero();
+   m_cpiVSTQFull = SubsecondTime::Zero();
 
    registerStatsMetric("rob_timer", core->getId(), "cpiBase", &m_cpiBase);
    registerStatsMetric("rob_timer", core->getId(), "cpiBranchPredictor", &m_cpiBranchPredictor);
    registerStatsMetric("rob_timer", core->getId(), "cpiSerialization", &m_cpiSerialization);
-   registerStatsMetric("rob_timer", core->getId(), "cpiRSFull", &m_cpiRSFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiALURSFull", &m_cpiALURSFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiFPURSFull", &m_cpiFPURSFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiLSURSFull", &m_cpiLSURSFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiVECRSFull", &m_cpiVECRSFull);
    registerStatsMetric("rob_timer", core->getId(), "cpiVPhyRegFull", &m_cpiVPhyRegFull);
+
+   registerStatsMetric("rob_timer", core->getId(), "cpiLDQFull",  &m_cpiLDQFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiSTQFull",  &m_cpiSTQFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiVLDQFull", &m_cpiVLDQFull);
    registerStatsMetric("rob_timer", core->getId(), "cpiVSTQFull", &m_cpiVSTQFull);
 
    m_cpiInstructionCache.resize(HitWhere::NUM_HITWHERES, SubsecondTime::Zero());
@@ -227,10 +246,10 @@ RobTimer::RobTimer(
    m_fpu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/fpu_window_size", core->getId());
    m_vec_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/vec_window_size", core->getId());
 
-   m_alu_num_in_rob = 0;
-   m_lsu_num_in_rob = 0;
-   m_fpu_num_in_rob = 0;
-   m_vec_num_in_rob = 0;
+   m_alu_num_in_rs = 0;
+   m_lsu_num_in_rs = 0;
+   m_fpu_num_in_rs = 0;
+   m_vec_num_in_rs = 0;
 
    m_latest_vecmem_commit_time = SubsecondTime::Zero();
 
@@ -747,38 +766,6 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          RobEntry *entry = &rob.at(m_num_in_rob);
          DynamicMicroOp &uop = *entry->uop;
 
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
-            m_fpu_num_in_rob > m_fpu_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : FPU Instruction Window Overflow\n", uop.getSequenceNumber());
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
-              m_alu_num_in_rob > m_alu_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : ALU Instruction Window Overflow\n", uop.getSequenceNumber());
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
-             m_lsu_num_in_rob > m_lsu_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
-             m_vec_num_in_rob > m_vec_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
-            break;
-         }
-
-         // VLDQ full
-         if (uop.getMicroOp()->isVecLoad() && vec_load_queue == 0) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n", uop.getSequenceNumber());
-            break;
-         }
-
          // if (uop.getMicroOp()->isVecStore() && vec_store_queue == 0) {
          //    if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
          //       fprintf(stderr, "Vector Store Queue overflow\n");
@@ -821,11 +808,11 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
            missed_icache = now;
          }
 
-         if (m_rs_entries_used == rsEntries)
-         {
-            cpiFrontEnd = &m_cpiRSFull;
-            break;
-         }
+         // if (m_rs_entries_used == rsEntries)
+         // {
+         //    cpiFrontEnd = &m_cpiRSFull;
+         //    break;
+         // }
 
          // 長いレイテンシの命令に依存する命令を探すモード中
          // for(size_t idx = 0; idx < uop.getDependenciesLength(); ++idx) {
@@ -870,6 +857,55 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          //    }
          // }
 
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
+            m_fpu_num_in_rs > m_fpu_window_size) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : FPU Instruction Window Overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiFPURSFull;
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
+              m_alu_num_in_rs > m_alu_window_size) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : ALU Instruction Window Overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiALURSFull;
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
+             m_lsu_num_in_rs > m_lsu_window_size) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiLSURSFull;
+            break;
+         }
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
+             m_vec_num_in_rs > m_vec_window_size) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiVECRSFull;
+            break;
+         }
+
+         // VLDQ full
+         if (uop.getMicroOp()->isVecLoad() && vec_load_queue == 0) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiVLDQFull;
+            break;
+         }
+         // Scalar LDQ full
+         if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad() && scalar_load_queue == 0) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Load Queue overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiLDQFull;
+            break;
+         }
+         // Scalar STQ full
+         if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isStore() && scalar_store_queue == 0) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Store Queue overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiSTQFull;
+            break;
+         }
+
          // 物理レジスタの確保試行
          if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
             cpiFrontEnd = &m_cpiVPhyRegFull;
@@ -888,24 +924,30 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.getMicroOp()->isVecLoad()) {
             --vec_load_queue;
          }
+         if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad()) {
+            --scalar_load_queue;
+         }
+         if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isStore()) {
+            --scalar_store_queue;
+         }
 
          switch (uop.getMicroOp()->getSubtype()) {
             case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
             case MicroOp::UOP_SUBTYPE_FP_MULDIV :
-               m_fpu_num_in_rob++;
+               m_fpu_num_in_rs++;
                break;
             case MicroOp::UOP_SUBTYPE_LOAD :
             case MicroOp::UOP_SUBTYPE_STORE :
             case MicroOp::UOP_SUBTYPE_VEC_LOAD :
             case MicroOp::UOP_SUBTYPE_VEC_STORE :
-               m_lsu_num_in_rob ++;
+               m_lsu_num_in_rs ++;
                break;
             case MicroOp::UOP_SUBTYPE_GENERIC :
             case MicroOp::UOP_SUBTYPE_BRANCH :
-               m_alu_num_in_rob++;
+               m_alu_num_in_rs++;
                break;
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
-               m_vec_num_in_rob++;
+               m_vec_num_in_rs++;
                break;
             default :
                LOG_ASSERT_ERROR(false, "Not expected to this point");
@@ -990,7 +1032,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
    // Find CPI component corresponding to the first executing instruction
    SubsecondTime *cpiRobHead = findCpiComponent();
-
+   
    if (cpiFrontEnd)
    {
       // Front-end is stalled
@@ -1140,6 +1182,28 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    next_event = std::min(next_event, entry->done);
 
    --m_rs_entries_used;
+
+   switch (entry->uop->getMicroOp()->getSubtype()) {
+      case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
+      case MicroOp::UOP_SUBTYPE_FP_MULDIV :
+         m_fpu_num_in_rs--;
+         break;
+      case MicroOp::UOP_SUBTYPE_LOAD :
+      case MicroOp::UOP_SUBTYPE_STORE :
+      case MicroOp::UOP_SUBTYPE_VEC_LOAD :
+      case MicroOp::UOP_SUBTYPE_VEC_STORE :
+         m_lsu_num_in_rs--;
+         break;
+      case MicroOp::UOP_SUBTYPE_GENERIC :
+      case MicroOp::UOP_SUBTYPE_BRANCH :
+         m_alu_num_in_rs--;
+         break;
+      case MicroOp::UOP_SUBTYPE_VEC_ARITH :
+         m_vec_num_in_rs--;
+         break;
+      default :
+         LOG_ASSERT_ERROR(false, "Not expected to this point");
+   }
 
    for(size_t idx = 0; idx < entry->getNumDependants(); ++idx)
    {
@@ -1830,28 +1894,12 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         m_kanata_generated_in_this_region = true;
       }
 
-      switch (entry->uop->getMicroOp()->getSubtype()) {
-         case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
-         case MicroOp::UOP_SUBTYPE_FP_MULDIV :
-            m_fpu_num_in_rob--;
-            break;
-         case MicroOp::UOP_SUBTYPE_LOAD :
-         case MicroOp::UOP_SUBTYPE_STORE :
-         case MicroOp::UOP_SUBTYPE_VEC_LOAD :
-         case MicroOp::UOP_SUBTYPE_VEC_STORE :
-            m_lsu_num_in_rob--;
-            break;
-         case MicroOp::UOP_SUBTYPE_GENERIC :
-         case MicroOp::UOP_SUBTYPE_BRANCH :
-            m_alu_num_in_rob--;
-            break;
-         case MicroOp::UOP_SUBTYPE_VEC_ARITH :
-           m_vec_num_in_rob--;
-            break;
-         default :
-           LOG_ASSERT_ERROR(false, "Not expected to this point");
+      if (!entry->uop->getMicroOp()->isVector() && entry->uop->getMicroOp()->isLoad()) {
+         scalar_load_queue++;
       }
-
+      if (!entry->uop->getMicroOp()->isVector() && entry->uop->getMicroOp()->isStore()) {
+         scalar_store_queue++;
+      }
       if (entry->uop->getMicroOp()->isVecLoad()) {
          vec_load_queue++;
       }

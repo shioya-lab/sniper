@@ -106,6 +106,8 @@ private:
    ContentionModel store_queue;
    UInt64 vec_load_queue;
    UInt64 vec_store_queue;
+   UInt64 scalar_load_queue;
+   UInt64 scalar_store_queue;
 
    uint64_t nextSequenceNumber;
    bool will_skip;
@@ -155,10 +157,10 @@ private:
    uint64_t m_VtoS_RdRequests;
    uint64_t m_VtoS_WrRequests;
 
-   uint64_t m_alu_num_in_rob;
-   uint64_t m_lsu_num_in_rob;
-   uint64_t m_fpu_num_in_rob;
-   uint64_t m_vec_num_in_rob;
+   uint64_t m_alu_num_in_rs;
+   uint64_t m_lsu_num_in_rs;
+   uint64_t m_fpu_num_in_rs;
+   uint64_t m_vec_num_in_rs;
 
    uint64_t m_alu_window_size;
    uint64_t m_lsu_window_size;
@@ -196,8 +198,15 @@ private:
    SubsecondTime m_cpiBase;
    SubsecondTime m_cpiBranchPredictor;
    SubsecondTime m_cpiSerialization;
-   SubsecondTime m_cpiRSFull;
+   SubsecondTime m_cpiALURSFull;
+   SubsecondTime m_cpiFPURSFull;
+   SubsecondTime m_cpiLSURSFull;
+   SubsecondTime m_cpiVECRSFull;
    SubsecondTime m_cpiVPhyRegFull;
+
+   SubsecondTime m_cpiLDQFull;
+   SubsecondTime m_cpiSTQFull;
+   SubsecondTime m_cpiVLDQFull;
    SubsecondTime m_cpiVSTQFull;
 
    std::vector<SubsecondTime> m_cpiInstructionCache;
