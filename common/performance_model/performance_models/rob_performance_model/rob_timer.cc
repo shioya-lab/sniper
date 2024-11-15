@@ -27,6 +27,8 @@
 // Define to not skip any cycles, but assert that the skip logic is working fine
 //#define ASSERT_SKIP
 
+#define TO_STRING(VariableName) # VariableName
+
 RobTimer::RobTimer(
          Core *core, PerformanceModel *_perf, const CoreModel *core_model,
          int misprediction_penalty,
@@ -174,6 +176,12 @@ RobTimer::RobTimer(
          String name = "cpiDataCache" + String(HitWhereString((HitWhere::where_t)h));
          registerStatsMetric("rob_timer", core->getId(), name, &(m_cpiDataCache[h]));
       }
+   }
+
+   for (size_t i = 0; i < frontstall_t::FrontStall_Max; i++){
+      m_frontstall[i] = SubsecondTime::Zero();
+      String name = "frontStall" + FrontStallString(frontstall_t(i));
+      registerStatsMetric("rob_timer", core->getId(), name, &(m_frontstall[i]));
    }
 
    m_outstandingLongLatencyCycles = SubsecondTime::Zero();
@@ -502,19 +510,19 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          continue;
       }
 
-      // 緊急措置：robがfullであれば、fullでなくなるまで待つ。
-      while (rob.full())
-      {
-         // fprintf(stderr, "Waiting ROB is not full ...\n");
-         uint64_t instructionsExecuted;
-         SubsecondTime latency;
-         execute(instructionsExecuted, latency);
-         totalInsnExec += instructionsExecuted;
-         totalLat += latency;
-         // if (latency == SubsecondTime::Zero())
-         //    break;
-      }
-      // fprintf(stderr, "Exited ROB\n");
+      // // 緊急措置：robがfullであれば、fullでなくなるまで待つ。
+      // while (rob.full())
+      // {
+      //    // fprintf(stderr, "Waiting ROB is not full ...\n");
+      //    uint64_t instructionsExecuted;
+      //    SubsecondTime latency;
+      //    execute(instructionsExecuted, latency);
+      //    totalInsnExec += instructionsExecuted;
+      //    totalLat += latency;
+      //    // if (latency == SubsecondTime::Zero())
+      //    //    break;
+      // }
+      // // fprintf(stderr, "Exited ROB\n");
 
       RobEntry *entry = &this->rob.next();
       if (m_gather_always_reserve_allocation) {
@@ -758,7 +766,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
    if (frontend_stalled_until <= now)
    {
+      m_frontstall_idx = frontstall_t::None;
+
       uint32_t instrs_dispatched = 0, uops_dispatched = 0;
+
+      if (m_num_in_rob == windowSize) {
+         m_frontstall_idx = frontstall_t::RobFull;
+      }
 
       while(m_num_in_rob < windowSize)
       {
@@ -862,6 +876,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             m_fpu_num_in_rs > m_fpu_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : FPU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiFPURSFull;
+            m_frontstall_idx = frontstall_t::FPURsFull;
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
@@ -869,6 +884,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
               m_alu_num_in_rs > m_alu_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : ALU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiALURSFull;
+            m_frontstall_idx = frontstall_t::ALURsFull;
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
@@ -878,12 +894,14 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
              m_lsu_num_in_rs > m_lsu_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiLSURSFull;
+            m_frontstall_idx = frontstall_t::LSURsFull;
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
              m_vec_num_in_rs > m_vec_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiVECRSFull;
+            m_frontstall_idx = frontstall_t::VECRsFull;
             break;
          }
 
@@ -891,28 +909,43 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.getMicroOp()->isVecLoad() && vec_load_queue == 0) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiVLDQFull;
+            m_frontstall_idx = frontstall_t::VLDQFull;
             break;
          }
          // Scalar LDQ full
          if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad() && scalar_load_queue == 0) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Load Queue overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiLDQFull;
+            m_frontstall_idx = frontstall_t::LDQFull;
             break;
          }
          // Scalar STQ full
          if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isStore() && scalar_store_queue == 0) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Store Queue overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiSTQFull;
+            m_frontstall_idx = frontstall_t::STQFull;
             break;
          }
 
          // 物理レジスタの確保試行
          if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
             cpiFrontEnd = &m_cpiVPhyRegFull;
+            dl::Decoder *dec = Sim()->getDecoder();
+            dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+            if (dec->is_reg_int(dest_reg)) {
+               m_frontstall_idx = frontstall_t::IPhyRegFull;
+            } else if(dec->is_reg_float(dest_reg)) {
+               m_frontstall_idx = frontstall_t::FPhyRegFull;
+            } else if (dec->is_reg_vector(dest_reg)){
+               m_frontstall_idx = frontstall_t::VPhyRegFull;
+            } else {
+               LOG_ASSERT_ERROR (false, "Unknown register type.");
+            }
             break;
          }
          if (!ReserveVSTQ (m_num_in_rob)) {
             cpiFrontEnd = &m_cpiVSTQFull;
+            m_frontstall_idx = frontstall_t::VSTQFull;
             break;
          }
 
@@ -1032,7 +1065,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
    // Find CPI component corresponding to the first executing instruction
    SubsecondTime *cpiRobHead = findCpiComponent();
-   
+
    if (cpiFrontEnd)
    {
       // Front-end is stalled
@@ -2133,6 +2166,8 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
 
    LOG_ASSERT_ERROR(cpiComponent != NULL, "We expected cpiComponent to be set by doDispatch, but it wasn't");
    *cpiComponent += latency;
+
+   m_frontstall[m_frontstall_idx] += latency;
 }
 
 void RobTimer::countOutstandingMemop(SubsecondTime time)

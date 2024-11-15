@@ -209,6 +209,46 @@ private:
    SubsecondTime m_cpiVLDQFull;
    SubsecondTime m_cpiVSTQFull;
 
+   typedef enum {
+      None,
+      ALURsFull,
+      FPURsFull,
+      LSURsFull,
+      VECRsFull,
+      LDQFull,
+      STQFull,
+      VLDQFull,
+      VSTQFull,
+      IPhyRegFull,
+      FPhyRegFull,
+      VPhyRegFull,
+      RobFull,
+      FrontStall_Max
+   } frontstall_t;
+
+   String FrontStallString (frontstall_t idx) {
+      switch(idx)
+      {
+         case frontstall_t::None:          return "None";
+         case frontstall_t::ALURsFull:     return "ALURsFull";
+         case frontstall_t::FPURsFull:     return "FPURsFull";
+         case frontstall_t::LSURsFull:     return "LSURsFull";
+         case frontstall_t::VECRsFull:     return "VECRsFull";
+         case frontstall_t::LDQFull:       return "LDQFull";
+         case frontstall_t::STQFull:       return "STQFull";
+         case frontstall_t::VLDQFull:      return "VLDQFull";
+         case frontstall_t::VSTQFull:      return "VSTQFull";
+         case frontstall_t::IPhyRegFull:   return "IntPhyRegFull";
+         case frontstall_t::FPhyRegFull:   return "FloatPhyRegFull";
+         case frontstall_t::VPhyRegFull:   return "VecPhyRegFull";
+         case frontstall_t::RobFull:       return "RobFull";
+         case frontstall_t::FrontStall_Max:return "FrontStall_Ma";
+         default                        : return "?????";
+      }
+   }
+   frontstall_t m_frontstall_idx;
+   SubsecondTime m_frontstall[FrontStall_Max];
+
    std::vector<SubsecondTime> m_cpiInstructionCache;
    std::vector<SubsecondTime> m_cpiDataCache;
 
