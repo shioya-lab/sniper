@@ -470,6 +470,9 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
        ScopedLock sl(getLock());
        SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
        SubsecondTime t_completed = m_master->m_l1_mshr.getTagCompletionTime(ca_address);
+       // Just check freeslot existed
+       m_master->m_l1_mshr.hasFreeSlot(t_now, ca_address);
+
        if (t_completed != SubsecondTime::MaxTime() && t_completed > t_now)
        {
          if (mem_op_type == Core::WRITE)
@@ -978,13 +981,13 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
       hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
    }
 
-   if (m_enable_kanata_log) {
-      uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
-   }
+   // if (m_enable_kanata_log) {
+   //    uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
+   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
+   // }
 
    // Update Access History
    if (true /* m_roi_started*/) {
