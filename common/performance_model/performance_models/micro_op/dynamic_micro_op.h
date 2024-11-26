@@ -50,15 +50,16 @@ class DynamicMicroOp
 
       /** These dependencies are released only when target instruction is committed. */
   public:
-      enum wfifo_t
+      enum lpiq_t
       {
-         NONE,
-         PHYREG,
          RESOLVED,
+         // NONE,
+         PHYREG,
+         CHAIN,
          SQ
       };
   private:
-      wfifo_t m_wfifo_wait_reason;
+      lpiq_t m_wfifo_wait_reason;
 
       /** The latency of the instruction. */
       uint32_t execLatency;
@@ -137,15 +138,21 @@ class DynamicMicroOp
       uint64_t getRegDependency(uint32_t index) const { return dependencies[index]; }
       uint32_t getRegDependenciesLength() const { return this->regDependenciesLength; }
 
-   void setCommitDependency(wfifo_t reason) { m_wfifo_wait_reason = reason; }
-   void removeCommitDependency() { m_wfifo_wait_reason = wfifo_t::NONE; }
-   bool hasCommitDependency() { return m_wfifo_wait_reason != wfifo_t::NONE; }
-   wfifo_t getCommitDependency() { return m_wfifo_wait_reason; }
+      void setCommitDependency(lpiq_t reason) { m_wfifo_wait_reason = reason; }
+      void removeCommitDependency() { m_wfifo_wait_reason = lpiq_t::RESOLVED; }
+      // bool hasCommitDependency() { return m_wfifo_wait_reason != lpiq_t::RESOLVED; }
+      lpiq_t getCommitDependency() { return m_wfifo_wait_reason; }
 
-      void setReserveInst () { this->reserve_inst = true; }
+      void setReserveInst () {
+         LOG_ASSERT_ERROR(!this->strong_priority_inst, "strong_priority_inst is already set");
+         this->reserve_inst = true;
+      }
       bool isReserveInst () { return this->reserve_inst; }
 
-      void setStrongPriorityInst () { this->strong_priority_inst = true; }
+      void setStrongPriorityInst () {
+         LOG_ASSERT_ERROR(!this->reserve_inst, "reserve_inst is already set");
+         this->strong_priority_inst = true;
+      }
       bool isStrongPriorityInst () { return this->strong_priority_inst; }
 
       bool isNormalInst () { return !isReserveInst() && !isStrongPriorityInst(); }

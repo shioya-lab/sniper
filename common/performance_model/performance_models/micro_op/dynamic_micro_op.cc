@@ -20,7 +20,7 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
    this->microOpTypeOffset = uop->microOpTypeOffset;
    this->squashedCount = 0;
    this->dependenciesLength = 0;
-   this->m_wfifo_wait_reason = wfifo_t::NONE;
+   this->m_wfifo_wait_reason = lpiq_t::RESOLVED;
 
    this->execLatency = m_core_model->getInstructionLatency(uop);
 

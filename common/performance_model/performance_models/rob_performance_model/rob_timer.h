@@ -11,6 +11,7 @@
 #include "hooks_manager.h"
 #include "magic_server.h"
 #include "vector_dependencies.h"
+#include "register_manager.hpp"
 
 #include <deque>
 #include <list>
@@ -264,8 +265,7 @@ private:
    RobEntry *findEntryBySequenceNumber(UInt64 sequenceNumber);
    SubsecondTime* findCpiComponent();
    void countOutstandingMemop(SubsecondTime time);
-   void printRob(bool is_only_vector = false);
-   void checkRob();
+   void printRob(bool is_output=true, bool enable_check=true);
 
    void execute(uint64_t& instructionsExecuted, SubsecondTime& latency);
    SubsecondTime doDispatch(SubsecondTime **cpiComponent);
@@ -277,40 +277,36 @@ private:
    // Physical Register: Freelist
    bool m_vec_late_phyreg_allocation;
    bool m_vec_reserved_allocation;
-   enum RegTypes {
-      IntRegister = 0,
-      FloatRegister = 1,
-      VectorRegister = 2
-   };
-   bool m_gather_always_reserve_allocation; // Gather命令は常に予約に回すオプション
+   bool m_enable_vec_priority_alloc; // Gather命令は常に予約に回すオプション
 
-   UInt64 m_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
-   UInt64 m_res_reserv_registers;  // 資源予約リスト内の命令の数
-   UInt64 m_max_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
-   UInt64 m_maxusage_phy_registers[3];
-   UInt64 m_nonpri_max_vec_phy_registers;
-   UInt64 m_total_vec_phy_registers;
-   UInt64 m_total_vec_phy_count;
-   std::list<UInt64> m_dispatch_fifo;
-   bool m_vec_wfifo_registers[32];
-   UInt64 m_wfifo_inserted;   // WFIFOに挿入された回数
-   UInt64 m_wfifo_overflow;   // WFIFOがオーバーフローした回数
+   std::list<UInt64> m_lpiq_fifo;
+   UInt64 m_lpiq_inserted;   // LPIQに挿入された回数
+   UInt64 m_lpiq_overflow;   // LPIQがオーバーフローした回数
 
    bool   m_lowpri_inst_find_mode;       // 最長レイテンシの命令に依存する命令を探すモード
    UInt64 m_lowpri_inst_find_mode_start; // 探せないときのタイムアウトに使うカウンタ
    UInt64 m_long_latency_pc;             // 最長レイテンシのPC
 
    // 統計情報 : W-FIFOにどれくらいどの命令が入ったか
-   std::unordered_map<UInt64, std::pair<UInt64, String>> m_wfifo_stats;  // first: PC, second: <Count, assembly>
-   inline void UpdateWFIFOStats(DynamicMicroOp *uop) {
+   std::unordered_map<UInt64, std::pair<UInt64, String>> m_lpiq_stats;  // first: PC, second: <Count, assembly>
+   inline void UpdateLPIQStats(DynamicMicroOp *uop) {
       // Update stats
-      auto wfifo_it = m_wfifo_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
-      if (wfifo_it == m_wfifo_stats.end()) {
-         m_wfifo_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(),
+      auto lpiq_it = m_lpiq_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
+      if (lpiq_it == m_lpiq_stats.end()) {
+         m_lpiq_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(),
                                              std::make_pair(1, uop->getMicroOp()->getInstruction()->getDisassembly()))); // Not found
       } else {
-         (wfifo_it->second).first++; // Found
+         (lpiq_it->second).first++; // Found
       }
+   }
+
+   inline bool IsInLPIQ (DynamicMicroOp *uop) {
+      for (auto id: m_lpiq_fifo) {
+         if (id == uop->getSequenceNumber()) {
+            return true;
+         }
+      }
+      return false;
    }
 
    // 統計情報 : ベクトルメモリアクセスのキャッシュ・ヒット・ミス頻度
@@ -359,16 +355,18 @@ private:
 
    bool m_1st_issue_in_cycle;
 
-   UInt64 m_last_wfifo_sequencenumber;
-   bool InsertWFIFO (DynamicMicroOp *uop, DynamicMicroOp::wfifo_t reason);
-   bool InsertPhyRegWFIFO (DynamicMicroOp *uop, dl::Decoder::decoder_reg dest_reg);
+   UInt64 m_last_lpiq_sequencenumber;
+   bool InsertLPIQ (DynamicMicroOp *uop, DynamicMicroOp::lpiq_t reason);
+   bool InsertPhyRegLPIQ (DynamicMicroOp *uop);
    bool AllocNonpriVecRegisters (uint64_t rob_idx, DynamicMicroOp *uop, dl::Decoder::decoder_reg dest_reg);
    bool UpdateReservedBindPhyRegAllocation(uint64_t rob_idx);
    bool UpdateLateBindPhyRegAllocation(uint64_t rob_idx);
    void preloadInstruction (uint64_t idx);
 
+   RegisterManager *m_reg_manager;
+
    bool ReserveVSTQ (uint64_t rob_idx);
-   void releaseWFIFO ();
+   void releaseLPIQ ();
 
    bool UpdateArchRegWAW(uint64_t rob_idx);
 
@@ -716,13 +714,17 @@ public:
             // case 0x149a8 : // vsll.vi	v14, v13, 3
             // case 0x149ac : // vluxei64.v	v14, (a2), v14
                is_strong_priority_inst = neighbors_counter < 2;
-               neighbors_counter++;
-               fprintf (stderr, "isStrongPriorityInst : neighbors_counter = %d\n", neighbors_counter);
+               ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
+                                 uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
+               if (uop->isLast()) {
+                  neighbors_counter++;
+               }
                return is_strong_priority_inst ? inst_priority_t::High : inst_priority_t::Reserve;
                break;
             case 0x148f0:
                neighbors_counter = 0;
-               fprintf (stderr, "isStrongPriorityInst : neighbors_counter = 0\n");
+               ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
+                                 uop->getSequenceNumber());
                break;
          }
          return inst_priority_t::Normal;
