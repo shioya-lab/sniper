@@ -300,14 +300,14 @@ private:
       }
    }
 
-   inline bool IsInLPIQ (DynamicMicroOp *uop) {
-      for (auto id: m_lpiq_fifo) {
-         if (id == uop->getSequenceNumber()) {
-            return true;
-         }
-      }
-      return false;
-   }
+   // inline bool IsInLPIQ (DynamicMicroOp *uop) {
+   //    for (auto id: m_lpiq_fifo) {
+   //       if (id == uop->getSequenceNumber()) {
+   //          return true;
+   //       }
+   //    }
+   //    return false;
+   // }
 
    // 統計情報 : ベクトルメモリアクセスのキャッシュ・ヒット・ミス頻度
    class dcache_stats_t {
@@ -714,8 +714,11 @@ public:
             // case 0x149a8 : // vsll.vi	v14, v13, 3
             // case 0x149ac : // vluxei64.v	v14, (a2), v14
                is_strong_priority_inst = neighbors_counter < 2;
-               ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
-                                 uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
+               // is_strong_priority_inst = true;
+               // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
+               //                   uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
+               fprintf (stderr, "isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
+                        uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
                if (uop->isLast()) {
                   neighbors_counter++;
                }
@@ -723,8 +726,10 @@ public:
                break;
             case 0x148f0:
                neighbors_counter = 0;
-               ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
-                                 uop->getSequenceNumber());
+               // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
+               //                   uop->getSequenceNumber());
+               fprintf (stderr, "isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
+                        uop->getSequenceNumber());
                break;
          }
          return inst_priority_t::Normal;

@@ -99,6 +99,8 @@ class DynamicMicroOp
       bool reserve_inst;
       bool strong_priority_inst;
 
+      bool m_is_in_lpiq;
+
    public:
 
       DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, ComponentPeriod period);
@@ -159,6 +161,10 @@ class DynamicMicroOp
 
       bool isUseNormalRegisterGroup () { return isNormalInst() || isStrongPriorityInst(); }
       bool isUseReserveRegisterGroup () { return !isUseNormalRegisterGroup(); }
+
+      inline void setLPIQ () { this->m_is_in_lpiq = true; }
+      inline void unsetLPIQ () { this->m_is_in_lpiq = false; }
+      inline bool isInLPIQ () { return this->m_is_in_lpiq; }
 
       uint32_t getIntraInstrDependenciesLength() const { return this->intraInstructionDependencies; }
       void setIntraInstrDependenciesLength(uint32_t deps) { intraInstructionDependencies = deps;}
