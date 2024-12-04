@@ -308,22 +308,6 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_roi_dumped  = false;
 
 
-   m_enable_cache_csv_log = Sim()->getCfg()->getBoolArray("log/enable_cache_csv_log", core_id);
-   if (m_enable_cache_csv_log) {
-     if ((m_cache_rd_hit_fp  = fopen((m_configName + "_cache_rd_hit_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-     if ((m_cache_wr_hit_fp  = fopen((m_configName + "_cache_wr_hit_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-     if ((m_cache_rd_miss_fp = fopen((m_configName + "_cache_rd_miss_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-     if ((m_cache_wr_miss_fp = fopen((m_configName + "_cache_wr_miss_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-     if ((m_cache_pr_fp      = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-     if ((m_cache_ev_fp      = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) { perror("fopen"); }
-   } else {
-     m_cache_rd_hit_fp  = NULL;
-     m_cache_wr_hit_fp  = NULL;
-     m_cache_rd_miss_fp = NULL;
-     m_cache_wr_miss_fp = NULL;
-     m_cache_pr_fp      = NULL;
-     m_cache_ev_fp      = NULL;
-   }
 }
 
 CacheCntlr::~CacheCntlr()
@@ -682,40 +666,6 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
    if (Sim()->getConfig()->getCacheEfficiencyCallbacks().notify_access_func)
       Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_access(cache_block_info->getOwner(), mem_op_type, hit_where);
 
-   // Update Access History
-   if (true /* m_roi_started*/) {
-     UInt64 block_address  = ca_address & ~(getCacheBlockSize() - 1);
-     m_cache_access_hist[block_address].push_back(new access_info_t (t_now, cache_hit,
-                                                                     mem_op_type == Core::READ_VEC  ? 'R' :
-                                                                     mem_op_type == Core::WRITE_VEC ? 'W' :
-                                                                     mem_op_type == Core::READ      ? 'r' :
-                                                                     mem_op_type == Core::WRITE     ? 'w' : 'N',
-                                                                     static_cast<bool>((mem_op_type == Core::READ_VEC) || (mem_op_type == Core::WRITE_VEC))));
-     if (m_enable_cache_csv_log) {
-       switch (mem_op_type) {
-         case Core::READ_VEC :
-         case Core::READ     : {
-           if (cache_hit) {
-             fprintf (m_cache_rd_hit_fp,  "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::READ_VEC ? 'R' : 'r');
-           } else {
-             fprintf (m_cache_rd_miss_fp, "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::READ_VEC ? 'R' : 'r');
-           }
-           break;
-         }
-         case Core::WRITE_VEC :
-         case Core::WRITE     : {
-           if (cache_hit) {
-             fprintf (m_cache_wr_hit_fp,  "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::WRITE_VEC ? 'W' : 'w');
-           } else {
-             fprintf (m_cache_wr_miss_fp, "%ld, %ld, %c\n", t_now.getNS(), ca_address + offset, mem_op_type == Core::WRITE_VEC ? 'W' : 'w');
-           }
-           break;
-         }
-         default : break;
-       }
-     }
-   }
-
    MYLOG("returning %s, latency %lu ns\n", HitWhereString(hit_where), total_latency.getNS());
    return hit_where;
 }
@@ -989,14 +939,6 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
    //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
    // }
 
-   // Update Access History
-   if (true /* m_roi_started*/) {
-     UInt64 block_address  = prefetch_address & ~(getCacheBlockSize() - 1);
-     m_cache_access_hist[block_address].push_back(new access_info_t (t_start, hit_where != HitWhere::MISS, 'P', false));
-     if (m_enable_cache_csv_log) {
-       fprintf (m_cache_pr_fp, "%ld, %ld, P\n", t_start.getNS(), prefetch_address);
-     }
-   }
    if (hit_where == HitWhere::MISS)
    {
       /* last level miss, a message has been sent. */
@@ -1721,17 +1663,6 @@ MYLOG("evicting @%lx", evict_address);
             ++stats.evict_warmup;
       }
 
-      // Update Access History
-      if (true /* m_roi_started*/) {
-        UInt64 block_address  = evict_address & ~(getCacheBlockSize() - 1);
-        m_cache_access_hist[block_address].push_back(new access_info_t (getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD),
-                                                                        HitWhere::MISS, 'E', false));
-        SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD);
-        if (m_enable_cache_csv_log) {
-          fprintf (m_cache_ev_fp, "%ld, %ld, E\n", t_now.getNS(), evict_address);
-        }
-      }
-
       /* TODO: this part looks a lot like updateCacheBlock's dirty case, but with the eviction buffer
          instead of an address, and with a message to the directory at the end. Merge? */
 
@@ -1863,11 +1794,6 @@ CacheCntlr::updateCacheBlock(IntPtr address, CacheState::cstate_t new_cstate, Tr
             address, new_cstate, reason == Transition::EVICT ? Transition::BACK_INVAL : reason, NULL, thread_num);
          // writeback_time is for the complete stack, so only model it at the last level, ignore latencies returned by previous ones
          //latency = getMax<SubsecondTime>(latency, res.first);
-         if (m_enable_cache_csv_log) {
-           if (reason == Transition::EVICT) {
-             fprintf (m_cache_ev_fp, "%ld, %ld, E\n", res.first.getNS(), address);
-           }
-         }
          sibling_hit |= res.second;
       }
    }

@@ -376,13 +376,6 @@ namespace ParametricDramDirectoryMSI
        access_info_t (SubsecondTime _cycle, bool _hit, char _rw, bool _vec_access) :
            cycle(_cycle), hit(_hit), rw(_rw), vec_access(_vec_access) {}
      };
-     std::map<uint64_t, std::vector<access_info_t *>> m_cache_access_hist;
-     FILE *m_cache_rd_hit_fp;
-     FILE *m_cache_wr_hit_fp;
-     FILE *m_cache_rd_miss_fp;
-     FILE *m_cache_wr_miss_fp;
-     FILE *m_cache_pr_fp;
-     FILE *m_cache_ev_fp;
 
      static SInt64 hookRoiBegin(UInt64 object, UInt64 argument) {
        ((CacheCntlr*)object)->roiBegin(); return 0;
@@ -393,112 +386,11 @@ namespace ParametricDramDirectoryMSI
      }
 
      void roiBegin() {
-       m_cache_access_hist.erase(m_cache_access_hist.begin(), m_cache_access_hist.end());
-
-       if (m_cache_rd_hit_fp != NULL) {
-         fclose (m_cache_rd_hit_fp);
-         if ((m_cache_rd_hit_fp = fopen((m_configName + "_cache_rd_hit_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
-       if (m_cache_wr_hit_fp != NULL) {
-         fclose (m_cache_wr_hit_fp);
-         if ((m_cache_wr_hit_fp = fopen((m_configName + "_cache_wr_hit_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
-       if (m_cache_rd_miss_fp != NULL) {
-         fclose (m_cache_rd_miss_fp);
-         if ((m_cache_rd_miss_fp = fopen((m_configName + "_cache_rd_miss_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
-       if (m_cache_wr_miss_fp != NULL) {
-         fclose (m_cache_wr_miss_fp);
-         if ((m_cache_wr_miss_fp = fopen((m_configName + "_cache_wr_miss_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
-       if (m_cache_pr_fp != NULL) {
-         fclose (m_cache_pr_fp);
-         if ((m_cache_pr_fp = fopen((m_configName + "_cache_pr_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
-       if (m_cache_ev_fp != NULL) {
-         fclose (m_cache_ev_fp);
-         if ((m_cache_ev_fp = fopen((m_configName + "_cache_ev_log.csv").c_str(), "w")) == NULL) {
-           perror("fopen");
-         }
-       }
      }
 
      void roiEnd() {
        // dump_hist ();
        m_roi_dumped = true;
-     }
-
-     void dump_hist () {
-       uint64_t total_scalar_hit_count  = 0;
-       uint64_t total_scalar_miss_count = 0;
-       uint64_t total_vector_hit_count  = 0;
-       uint64_t total_vector_miss_count = 0;
-
-       printf ("Cache statistics : %s\n", m_configName.c_str());
-
-       for (auto hist: m_cache_access_hist) {
-         uint64_t scalar_hit_count  = 0;
-         uint64_t scalar_miss_count = 0;
-         uint64_t vector_hit_count  = 0;
-         uint64_t vector_miss_count = 0;
-
-         printf("%08lx : %3ld times : ", hist.first, hist.second.size());
-         for (auto l: hist.second) {
-           if (l->rw == 'P' || l->rw == 'E')
-             continue;
-           if (!l->vec_access && l->hit) {
-             total_scalar_hit_count += 1;
-             scalar_hit_count += 1;
-           } else if (!l->vec_access && !l->hit) {
-             total_scalar_miss_count += 1;
-             scalar_miss_count += 1;
-           } else if (l->vec_access && l->hit) {
-             total_vector_hit_count += 1;
-             vector_hit_count += 1;
-           } else if (l->vec_access && !l->hit) {
-             total_vector_miss_count += 1;
-             vector_miss_count += 1;
-           }
-         }
-
-         printf (" H=%3ld,M=%3ld ", scalar_hit_count + vector_hit_count,
-                 scalar_miss_count + vector_miss_count);
-
-         for (auto l: hist.second) {
-           if (l->rw == 'P' || l->rw == 'E') {
-             printf("_");
-           } else {
-             printf("%c", l->vec_access ? 'V' : 'S');
-           }
-         }
-         printf(",");
-         for (auto l: hist.second) {
-           if (l->rw == 'P' || l->rw == 'E') {
-             printf("_");
-           } else {
-             printf("%c", l->hit ? 'H' : 'M');
-           }
-         }
-         printf(",");
-         for (auto l: hist.second) {
-           printf("%c", l->rw);
-         }
-         printf("\n");
-       }
-       printf("-------------------------\n");
-       printf("ScalarHit=%ld, ScalarMiss=%ld, VectorHit=%ld, VectorMiss=%ld\n", total_scalar_hit_count, total_scalar_miss_count, total_vector_hit_count, total_vector_miss_count);
-       printf("ScalarHitRate=%f, VectorHitRate=%f\n", total_scalar_hit_count + total_scalar_miss_count != 0 ? (static_cast<float>(total_scalar_hit_count) / (total_scalar_hit_count + total_scalar_miss_count)) : 0.0,
-              total_vector_hit_count + total_vector_miss_count != 0 ? static_cast<float>(total_vector_hit_count) / (total_vector_hit_count + total_vector_miss_count) : 0.0);
      }
 
       public:
