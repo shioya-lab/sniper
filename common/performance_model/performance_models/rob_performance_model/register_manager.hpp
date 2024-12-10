@@ -40,7 +40,7 @@ class RegisterManager
 
    enum AllocResult_t {
       AllocSuccess = 0,
-      AllocFail    = 1,
+      AllocFull    = 1,
       AllocReserve = 2,
       AllocChain   = 3
    };
@@ -95,7 +95,7 @@ class RegisterManager
 
    AllocResult_t AllocateIntRegister () {
       if (m_phy_registers[IntRegister] >= m_max_phy_registers[IntRegister]) {
-         return AllocFail;
+         return AllocFull;
       }
       m_phy_registers[IntRegister]++;
       m_maxusage_phy_registers[IntRegister] = std::max(m_maxusage_phy_registers[IntRegister], m_phy_registers[IntRegister]);
@@ -105,7 +105,7 @@ class RegisterManager
 
    AllocResult_t AllocateFloatRegister () {
       if (m_phy_registers[FloatRegister] >= m_max_phy_registers[FloatRegister]) {
-         return AllocFail;
+         return AllocFull;
       }
       m_phy_registers[FloatRegister]++;
       m_maxusage_phy_registers[FloatRegister] = std::max(m_maxusage_phy_registers[FloatRegister], m_phy_registers[FloatRegister]);
@@ -139,7 +139,7 @@ class RegisterManager
 
    AllocResult_t AllocateNormalVecRegister (DynamicMicroOp *uop) {
       if (m_phy_registers[VectorRegister] >= m_max_phy_registers[VectorRegister]) {
-         return AllocFail;
+         return AllocFull;
       }
       m_phy_registers[VectorRegister]++;
       m_maxusage_phy_registers[VectorRegister] = std::max(m_maxusage_phy_registers[VectorRegister], m_phy_registers[VectorRegister]);

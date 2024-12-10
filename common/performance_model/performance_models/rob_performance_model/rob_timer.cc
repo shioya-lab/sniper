@@ -958,18 +958,18 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                   InsertPhyRegLPIQ (&uop);
                }
             } else {
-               if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFail) {
+               if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
                   break;
                }
             }
          } else if (m_vec_reserved_allocation) {
             // 物理レジスタの確保試行
-            if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFail) {
+            if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
                break;
             }
          } else {
             // 物理レジスタの確保試行
-            if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFail) {
+            if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
                break;
             }
          }
