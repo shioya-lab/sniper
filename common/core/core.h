@@ -21,6 +21,8 @@ class CheetahManager;
 #include "cpuid.h"
 #include "hit_where.h"
 
+#include <set>
+
 struct MemoryResult {
    HitWhere::where_t hit_where;
    subsecond_time_t latency;
@@ -148,6 +150,7 @@ class Core
       FILE* getO3Fp() { return m_o3_fp; }
       FILE* getKanataFp() {return m_kanata_fp; }
       uint64_t getGlobalSequenceIdAndInc() { return global_sequence_id++; }
+      std::set<std::pair<UInt64, UInt64>> prefetch_arrive_list; // <global_id, cycle>
 
    private:
       core_id_t m_core_id;

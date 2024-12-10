@@ -512,6 +512,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
              (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
               waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
             entry->uop->setReserveInst();
+            ROB_DEBUG_PRINTF ("Set Reserve Priority uop_idx=%ld %s\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
             break;
          }
       }
@@ -697,15 +698,15 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 #endif
       }
 
-      // Deadlock possibility check
-      if (m_last_committed_time.getCycleCount() == 0 ? false :
-          now.getCycleCount() - m_last_committed_time.getCycleCount() >= 100000) {
-         printRob (true, false);
-         fprintf (stderr, "Execution DEADLOCKED?, now=%ld, last=%ld",
-                  now.getCycleCount(),
-                  m_last_committed_time.getCycleCount());
-         exit (EXIT_FAILURE);
-      }
+      // // Deadlock possibility check
+      // if (m_last_committed_time.getCycleCount() == 0 ? false :
+      //     now.getCycleCount() - m_last_committed_time.getCycleCount() >= 100000) {
+      //    printRob (true, false);
+      //    fprintf (stderr, "Execution DEADLOCKED?, now=%ld, last=%ld",
+      //             now.getCycleCount(),
+      //             m_last_committed_time.getCycleCount());
+      //    exit (EXIT_FAILURE);
+      // }
 
    }
 
@@ -777,6 +778,34 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          // Dispatch up to 4 instructions
          if (uops_dispatched == dispatchWidth)
             break;
+
+         if (m_enable_vec_priority_alloc) {
+            if (entry->uop->isStrongPriorityInst() || entry->uop->isReserveInst()) {
+               // 後続の依存している命令にLow Priorityを伝える
+               for(size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
+                  RobEntry *depEntry = entry->getDependant(idx);
+                  depEntry->uop->setReserveInst();
+                  ROB_DEBUG_PRINTF ("Set DependEntry Reserve Priority uop_idx=%ld %s\n",
+                                    depEntry->uop->getSequenceNumber(),
+                                    depEntry->uop->getMicroOp()->toShortString().c_str());
+               }
+            }
+         }
+         //    // 低優先度の命令に依存している or 高優先度の命令に依存している
+         //    for(size_t idx = 0; idx < uop.getDependenciesLength(); ++idx) {
+         //       RobEntry *waiting_entry = this->findEntryBySequenceNumber(uop.getDependency(idx));
+
+         //       bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
+         //             Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
+         //       if (is_waiting_entry_vector_dest_reg &&
+         //           (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
+         //            waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
+         //          ROB_DEBUG_PRINTF ("Set Reserve Priority uop_idx=%ld %s\n", uop.getSequenceNumber(), uop.getMicroOp()->toShortString().c_str());
+         //          uop.setReserveInst();
+         //          break;
+         //       }
+         //    }
+         // }
 
          // This is actually in the decode stage, there's a buffer between decode and dispatch
          // so we shouldn't do this here.
@@ -915,28 +944,8 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          }
 
          if (m_enable_vec_priority_alloc) {
-            // LPIQに格納する条件:
-            bool is_alloc_lpiq = false;
-            // 1. 予約に回る命令であれば、LPIQに格納する
+            // 予約に回る命令であれば、LPIQに格納する
             if (uop.isReserveInst()) {
-               is_alloc_lpiq = true;
-            }
-            // 2. 低優先度の命令に依存している or 高優先度の命令に依存している
-            for(size_t idx = 0; idx < uop.getDependenciesLength(); ++idx) {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(uop.getDependency(idx));
-
-               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-               if (is_waiting_entry_vector_dest_reg &&
-                   (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
-                    waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
-                  is_alloc_lpiq = true;
-                  uop.setReserveInst();
-                  break;
-               }
-            }
-
-            if (is_alloc_lpiq) {
                // LPIQに入れるべき命令の場合
                RegisterManager::AllocResult_t result = m_reg_manager->AllocateRegister (&uop);
                if (uop.getMicroOp()->getDestinationRegistersLength() &&
@@ -1075,7 +1084,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          entry->ready = std::max(entry->ready, (now + 1ul).getElapsedTime());
          next_event = std::min(next_event, entry->ready);
 
-         ROB_DEBUG_PRINTF ("DISPATCH %s\n", entry->uop->getMicroOp()->toShortString().c_str());
+         ROB_DEBUG_PRINTF ("DISPATCH uop_idx=%ld %s", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
+
+         if (m_enable_vec_priority_alloc) {
+            ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" : entry->uop->isStrongPriorityInst() ? "STRONG" : "NORMAL");
+         } else {
+            ROB_DEBUG_PRINTF ("\n");
+         }
 
          // if (m_vec_reserved_allocation &&
          //     m_enable_vec_priority_alloc &&
@@ -2160,6 +2175,23 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    if (result == HitWhere::L1_OWN) {
       will_skip = false;
       skip = now.getPeriod();
+   }
+
+   // プリフェッチのKanata用トレースの出力
+   if (m_enable_kanata) {
+      // fprintf (stderr, "prefetch_arrive_list = %ld\n", m_core->prefetch_arrive_list.size());
+      for (auto it = m_core->prefetch_arrive_list.begin(); it != m_core->prefetch_arrive_list.end();) {
+         UInt64 global_id = it->first;
+         UInt64 cycle     = it->second;
+         // fprintf (m_core->getKanataFp(), "  // %ld %ld\n", now.getElapsedTime().getNS(), cycle);
+         if (now.getElapsedTime().getNS() > cycle) {
+            fprintf (m_core->getKanataFp(), "E\t%ld\t%d\tP\n", global_id, 0);
+            fprintf (m_core->getKanataFp(), "R\t%ld\t%d\tP\n", global_id, 0);
+            it = m_core->prefetch_arrive_list.erase(it);
+         } else {
+            it++;
+         }
+      }
    }
 
    #ifdef ASSERT_SKIP

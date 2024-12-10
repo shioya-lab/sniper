@@ -643,7 +643,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
          stats.loads_where[hit_where]++;
    }
 
-   if (modeled && m_master->m_prefetcher /* && use_prefetch */)
+   if (modeled && m_master->m_prefetcher && access_pc == 0x149a4)
    {
       // IntPtr train_address = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC ? ca_address : ca_address + offset;
       IntPtr train_address = ca_address + offset;
@@ -786,7 +786,7 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
                              (!cache_hit && !l1d_pref_keep) ||
                              (m_prefetch_on_prefetch_hit && prefetch_hit)))
    {
-      // m_master->m_prefetch_list.clear();
+      m_master->m_prefetch_list.clear();
 
       // Just talked to the next-level cache, wait a bit before we start to prefetch if enabled
       if (m_master->m_prefetch_next == SubsecondTime::Zero()) { m_master->m_prefetch_next = t_issue; }
@@ -799,8 +799,8 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
          for(std::vector<IntPtr>::iterator it = prefetchList.begin(); it != prefetchList.end(); ++it)
          {
             // Keep at most PREFETCH_MAX_QUEUE_LENGTH entries in the prefetch queue
-            if (m_master->m_prefetch_list.size() > PREFETCH_MAX_QUEUE_LENGTH)
-               break;
+            // if (m_master->m_prefetch_list.size() > PREFETCH_MAX_QUEUE_LENGTH)
+            //    break;
             if (!operationPermissibleinCache(*it, Core::READ)) {
                if (std::find(m_master->m_prefetch_list.begin(),
                            m_master->m_prefetch_list.end(), *it) == m_master->m_prefetch_list.end()) { // Not Found
@@ -822,7 +822,7 @@ CacheCntlr::VecPrefetch(SubsecondTime t_now)
       // ScopedLock sl(getLock());
       if (m_master->m_prefetch_next <= t_now && !m_master->m_prefetch_list.empty()) {
 
-         MYPREFLOG("CacheCntlr::VecPrefetch::prefetch_list = ");
+         MYPREFLOG2("CacheCntlr::VecPrefetch::prefetch_list = ");
          for (auto a: m_master->m_prefetch_list) {
             MYPREFLOG2("%08lx ", a);
          }
@@ -931,14 +931,6 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
       hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
    }
 
-   // if (m_enable_kanata_log) {
-   //    uint64_t global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
-   //    fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
-   // }
-
    if (hit_where == HitWhere::MISS)
    {
       /* last level miss, a message has been sent. */
@@ -953,6 +945,19 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
          hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, false, false, Prefetch::OWN, t_start, false);
       }
       LOG_ASSERT_ERROR(hit_where != HitWhere::MISS, "Line was not there after prefetch");
+   }
+
+   if (m_enable_kanata_log) {
+      UInt64 global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
+      fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
+      
+      SubsecondTime t_prefetch_end = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
+
+      getMemoryManager()->getCore()->prefetch_arrive_list.insert(std::make_pair(global_id, t_prefetch_end.getNS()));
+
+      // fprintf (getMemoryManager()->getCore()->getKanataFp(), "E\t%ld\t%d\tP\n",              global_id, 0);
    }
 
    getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_before); // Ignore changes to time made by the prefetch call

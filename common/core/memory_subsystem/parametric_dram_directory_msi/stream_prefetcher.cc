@@ -98,6 +98,15 @@ StreamPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_t
        if (!streamTableHit && !isInEntryRegion (current_address)) {
           AllocateStream(current_address, mem_op_type);
        }
+
+       // テーブルにヒットしなかった場合、NextLine Prefetcherを使用する
+       IntPtr prefetch = current_address + m_cache_block_size;
+       for (int i = 0; i < 4; i++) {
+          IntPtr maskline_prefetch = MaskLineOffset(prefetch);
+          MYLOG("nextline: pushing address %08lx", maskline_prefetch);
+          addresses.push_back(maskline_prefetch);
+          prefetch = prefetch + m_cache_block_size;
+       }
     }
 
     return addresses;
