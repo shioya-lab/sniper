@@ -643,7 +643,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
          stats.loads_where[hit_where]++;
    }
 
-   if (modeled && m_master->m_prefetcher && access_pc == 0x149a4)
+   if (modeled && m_master->m_prefetcher)
    {
       // IntPtr train_address = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC ? ca_address : ca_address + offset;
       IntPtr train_address = ca_address + offset;
