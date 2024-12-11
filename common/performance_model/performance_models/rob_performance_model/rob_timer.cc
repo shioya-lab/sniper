@@ -159,6 +159,14 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "cpiVLDQFull", &m_cpiVLDQFull);
    registerStatsMetric("rob_timer", core->getId(), "cpiVSTQFull", &m_cpiVSTQFull);
 
+   m_intRegisterFull    = 0;
+   m_floatRegisterFull  = 0;
+   m_vectorRegisterFull = 0;
+
+   registerStatsMetric("rob_timer", core->getId(), "intRegisterFull",    &m_intRegisterFull);
+   registerStatsMetric("rob_timer", core->getId(), "floatRegisterFull",  &m_floatRegisterFull);
+   registerStatsMetric("rob_timer", core->getId(), "vectorRegisterFull", &m_vectorRegisterFull);
+
    m_cpiInstructionCache.resize(HitWhere::NUM_HITWHERES, SubsecondTime::Zero());
    for (int h = HitWhere::WHERE_FIRST ; h < HitWhere::NUM_HITWHERES ; h++)
    {
@@ -968,17 +976,50 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                }
             } else {
                if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
+                  dl::Decoder *dec = Sim()->getDecoder();
+                  dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+                  if (dec->is_reg_int(dest_reg)) {
+                     m_frontstall_idx = frontstall_t::IPhyRegFull;
+                  } else if(dec->is_reg_float(dest_reg)) {
+                     m_frontstall_idx = frontstall_t::FPhyRegFull;
+                  } else if (dec->is_reg_vector(dest_reg)){
+                     m_frontstall_idx = frontstall_t::VPhyRegFull;
+                  } else {
+                     LOG_ASSERT_ERROR (false, "Unknown register type.");
+                  }
                   break;
                }
             }
          } else if (m_vec_reserved_allocation) {
             // 物理レジスタの確保試行
             if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
+               dl::Decoder *dec = Sim()->getDecoder();
+               dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+               if (dec->is_reg_int(dest_reg)) {
+                  m_frontstall_idx = frontstall_t::IPhyRegFull;
+               } else if(dec->is_reg_float(dest_reg)) {
+                  m_frontstall_idx = frontstall_t::FPhyRegFull;
+               } else if (dec->is_reg_vector(dest_reg)){
+                  m_frontstall_idx = frontstall_t::VPhyRegFull;
+               } else {
+                  LOG_ASSERT_ERROR (false, "Unknown register type.");
+               }
                break;
             }
          } else {
             // 物理レジスタの確保試行
             if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
+               dl::Decoder *dec = Sim()->getDecoder();
+               dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+               if (dec->is_reg_int(dest_reg)) {
+                  m_frontstall_idx = frontstall_t::IPhyRegFull;
+               } else if(dec->is_reg_float(dest_reg)) {
+                  m_frontstall_idx = frontstall_t::FPhyRegFull;
+               } else if (dec->is_reg_vector(dest_reg)){
+                  m_frontstall_idx = frontstall_t::VPhyRegFull;
+               } else {
+                  LOG_ASSERT_ERROR (false, "Unknown register type.");
+               }
                break;
             }
          }
