@@ -210,6 +210,10 @@ private:
    SubsecondTime m_cpiVLDQFull;
    SubsecondTime m_cpiVSTQFull;
 
+   UInt64 m_intRegisterFull;
+   UInt64 m_floatRegisterFull;
+   UInt64 m_vectorRegisterFull;
+
    typedef enum {
       None,
       ALURsFull,
@@ -692,18 +696,23 @@ public:
       bool is_strong_priority_inst = false;
       UInt64 inst_address = uop->getMicroOp()->getInstruction()->getAddress();
 
-      static uint32_t neighbors_counter = 0;
+      static uint32_t neighbors_counter[100] = {0};
+      size_t index = 100;
 
       if (m_app == "bfs") {
          switch (inst_address) {
             // case 0x142e0 : // vl1re64.v	v8, (t2)
             // case 0x142e4 : // vl1re64.v	v9, (t1)
             //
-            // case 0x14484 : // vl1re64.v	v12, (s9)
+            case 0x14484 : // vl1re64.v	v12, (s9)
+               index = 0;
+               break;
             // case 0x14488 : // vsll.vi	v12, v12, 3
             // case 0x1448c : // vluxei64.v	v13, (t6), v12
             //
-            // case 0x14948 : // vle64.v	v8, (a7)
+            case 0x14948 : // vle64.v	v8, (a7)
+               index = 1;
+               break;
             // case 0x14950 : // vsll.vi	v8, v8, 3
             // case 0x14954 : // vluxei64.v	v9, (a7), v8
             // case 0x14958 : // vmslt.vx	v9, v9, zero
@@ -711,26 +720,32 @@ public:
             // case 0x14974 : // vmv.v.i	v11, 0
             // case 0x14994 : // vmv1r.v	v0, v9
             case 0x149a4 : // vle64.v	v13, (t0)
+               index = 2;
+               break;
             // case 0x149a8 : // vsll.vi	v14, v13, 3
             // case 0x149ac : // vluxei64.v	v14, (a2), v14
-               is_strong_priority_inst = neighbors_counter < 2;
-               // is_strong_priority_inst = true;
-               // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
-               //                   uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
-               fprintf (stderr, "isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
-                        uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
-               if (uop->isLast()) {
-                  neighbors_counter++;
-               }
-               return is_strong_priority_inst ? inst_priority_t::High : inst_priority_t::Reserve;
-               break;
             case 0x148f0:
-               neighbors_counter = 0;
+               for (size_t i = 0; i < 100; i++) {
+                  neighbors_counter[i] = 0;
+               }
                // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
                //                   uop->getSequenceNumber());
                fprintf (stderr, "isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
                         uop->getSequenceNumber());
                break;
+         }
+
+         if (index != 100) {
+            is_strong_priority_inst = neighbors_counter[index] < 2;
+            // is_strong_priority_inst = true;
+            // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
+            //                   uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
+            fprintf (stderr, "isStrongPriorityInst uop_idx=%ld %d : neighbors_counter[%ld] = %d\n",
+                     uop->getSequenceNumber(), is_strong_priority_inst, index, neighbors_counter[index]);
+            if (uop->isLast()) {
+               neighbors_counter[index]++;
+            }
+            return is_strong_priority_inst ? inst_priority_t::High : inst_priority_t::Reserve;
          }
          return inst_priority_t::Normal;
       } else {
