@@ -73,7 +73,7 @@ class RegisterManager
       if (vec_phy_rate == 0.0) {
          m_nonpri_max_vec_phy_registers = Sim()->getCfg()->getInt("perf_model/core/rob_timer/nonpri_max_vec_phy_registers");
       } else {
-         m_nonpri_max_vec_phy_registers = m_max_phy_registers[VectorRegister] * vec_phy_rate;
+         m_nonpri_max_vec_phy_registers = (m_max_phy_registers[VectorRegister] - 32) * vec_phy_rate;
       }
       m_enable_rob_timer_log = Sim()->getCfg()->getBoolArray("log/enable_rob_timer_log", core_id);
       m_rob_start_cycle      = Sim()->getCfg()->getIntArray("log/rob_debug_start_cycle", core_id);
