@@ -55,6 +55,8 @@ private:
          SubsecondTime addressReadyMax;
          SubsecondTime issued;
          SubsecondTime done;
+         UInt64        lpiq_inserted;
+         UInt64        lpiq_released;
 
          uint64_t global_sequence_id;
 
@@ -361,7 +363,12 @@ private:
 
    UInt64 m_last_lpiq_sequencenumber;
    bool InsertLPIQ (DynamicMicroOp *uop, DynamicMicroOp::lpiq_t reason);
-   bool InsertPhyRegLPIQ (DynamicMicroOp *uop);
+   bool InsertResRegLPIQ (DynamicMicroOp *uop) {
+      return InsertLPIQ (uop, DynamicMicroOp::lpiq_t::RESREG);
+   }
+   bool InsertTransRegLPIQ (DynamicMicroOp *uop) {
+      return InsertLPIQ (uop, DynamicMicroOp::lpiq_t::TRANSREG);
+   }
    bool AllocNonpriVecRegisters (uint64_t rob_idx, DynamicMicroOp *uop, dl::Decoder::decoder_reg dest_reg);
    bool UpdateReservedBindPhyRegAllocation(uint64_t rob_idx);
    bool UpdateLateBindPhyRegAllocation(uint64_t rob_idx);
@@ -704,15 +711,15 @@ public:
             // case 0x142e0 : // vl1re64.v	v8, (t2)
             // case 0x142e4 : // vl1re64.v	v9, (t1)
             //
-            case 0x14484 : // vl1re64.v	v12, (s9)
-               index = 0;
-               break;
+            // case 0x14484 : // vl1re64.v	v12, (s9)
+            //    index = 0;
+            //    break;
             // case 0x14488 : // vsll.vi	v12, v12, 3
             // case 0x1448c : // vluxei64.v	v13, (t6), v12
             //
-            case 0x14948 : // vle64.v	v8, (a7)
-               index = 1;
-               break;
+            // case 0x14948 : // vle64.v	v8, (a7)
+            //    index = 1;
+            //    break;
             // case 0x14950 : // vsll.vi	v8, v8, 3
             // case 0x14954 : // vluxei64.v	v9, (a7), v8
             // case 0x14958 : // vmslt.vx	v9, v9, zero
@@ -720,103 +727,186 @@ public:
             // case 0x14974 : // vmv.v.i	v11, 0
             // case 0x14994 : // vmv1r.v	v0, v9
             case 0x149a4 : // vle64.v	v13, (t0)
+            case 0x149a8 : // vsll.vi	v14, v13, 3
+            case 0x149ac : // vluxei64.v	v14, (a2), v14
                index = 2;
                break;
-            // case 0x149a8 : // vsll.vi	v14, v13, 3
-            // case 0x149ac : // vluxei64.v	v14, (a2), v14
-            case 0x148f0:
+               // case 0x148f0:
                for (size_t i = 0; i < 100; i++) {
                   neighbors_counter[i] = 0;
                }
                // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
                //                   uop->getSequenceNumber());
-               fprintf (stderr, "isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
-                        uop->getSequenceNumber());
                break;
          }
 
          if (index != 100) {
-            is_strong_priority_inst = neighbors_counter[index] < 2;
+            is_strong_priority_inst = true;
             // is_strong_priority_inst = true;
             // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
             //                   uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
-            fprintf (stderr, "isStrongPriorityInst uop_idx=%ld %d : neighbors_counter[%ld] = %d\n",
-                     uop->getSequenceNumber(), is_strong_priority_inst, index, neighbors_counter[index]);
             if (uop->isLast()) {
                neighbors_counter[index]++;
             }
             return is_strong_priority_inst ? inst_priority_t::High : inst_priority_t::Reserve;
          }
          return inst_priority_t::Normal;
+      } else if (m_app == "cc") {
+         switch (inst_address) {
+            case 0x13c9c:  // vle64.v	v8, (a5)
+            case 0x13ca0:  // vsll.vi	v9, v8, 3
+            case 0x13ca4:  // vluxei64.v	v9, (a6), v9
+
+            case 0x13d14: // vle64.v	v8, (a5)
+            case 0x13d1c: // vsll.vi	v11, v8, 3
+            case 0x13d20: // vluxei64.v	v12, (t0), v11
+
+            case 0x13f6c: // vle64.v	v8, (s0)
+            case 0x13f70: // vsll.vi	v8, v8, 3
+            case 0x13f74: // vluxei64.v	v11, (t6), v8
+
+            case 0x1406c: // vle64.v	v8, (a3)
+            case 0x14070: // vsll.vi	v8, v8, 3
+            case 0x14074: // vluxei64.v	v9, (a0), v8
+
+            case 0x14078: // vle64.v	v8, (a5)
+            case 0x1407c: // vsll.vi	v8, v8, 3
+            case 0x14080: // vluxei64.v	v10, (a0), v8
+               return inst_priority_t::High;
+            default:
+               return inst_priority_t::Normal;
+         }
+      } else if (m_app == "pr") {
+         switch (inst_address) {
+            case 0x143ac: // vle64.v	v11, (a7)
+            case 0x143b0: // vsll.vi	v11, v11, 3
+            case 0x143b4: // vluxei64.v	v11, (a2), v11
+               return inst_priority_t::High;
+            default:
+               return inst_priority_t::Normal;
+         }
+      } else if (m_app == "sssp") {
+         switch (inst_address) {
+            case 0x142e0: // vle64.v	v10, (a4)
+            case 0x142ec: // vsll.vi	v10, v10, 3
+            case 0x142f0: // vluxei64.v	v10, (t0), v10
+
+            case 0x14298: // vle64.v	v8, (a6)
+            case 0x142a4: // vsll.vi	v8, v8, 3
+            case 0x142a8: // vluxei64.v	v9, (a1), v8
+               return inst_priority_t::High;
+         }
+      } else if (m_app == "00") {
+         switch (inst_address) {
+            case 0x10692:
+               return inst_priority_t::High;
+            default:
+               return inst_priority_t::Normal;
+         }
+      } else if (m_app == "01") {
+         switch (inst_address) {
+            case 0x106a2:
+               return inst_priority_t::High;
+            default:
+               return inst_priority_t::Normal;
+         }
+      } else if (m_app == "02") { // spmv
+         switch (inst_address) {
+            case 0x103f6 : // vle64.v	v24, (t3)
+            case 0x103fa : // vle64.v	v8, (t1)
+            case 0x103fe : // vsll.vi	v24, v24, 3
+            case 0x10404 : // vluxei64.v	v24, (a3), v24
+               // ROB_DEBUG_PRINTF("spmv instruction %08lx is priority instruction\n", inst_address);
+               return inst_priority_t::High;
+            default :
+               // ROB_DEBUG_PRINTF("spmv instruction %08lx is NOT priority instruction\n", inst_address);
+               return inst_priority_t::Normal;
+         }
       } else {
          return inst_priority_t::Normal;
       }
-
-      // } else if (m_app == "cc") {
-      //    switch (inst_address) {
-      //       case 0x13c9c:  // vle64.v	v8, (a5)
-      //       case 0x13ca0:  // vsll.vi	v9, v8, 3
-      //       case 0x13ca4:  // vluxei64.v	v9, (a6), v9
-
-      //       case 0x13d14: // vle64.v	v8, (a5)
-      //       case 0x13d1c: // vsll.vi	v11, v8, 3
-      //       case 0x13d20: // vluxei64.v	v12, (t0), v11
-
-      //       case 0x13f6c: // vle64.v	v8, (s0)
-      //       case 0x13f70: // vsll.vi	v8, v8, 3
-      //       case 0x13f74: // vluxei64.v	v11, (t6), v8
-
-      //       case 0x1406c: // vle64.v	v8, (a3)
-      //       case 0x14070: // vsll.vi	v8, v8, 3
-      //       case 0x14074: // vluxei64.v	v9, (a0), v8
-
-      //       case 0x14078: // vle64.v	v8, (a5)
-      //       case 0x1407c: // vsll.vi	v8, v8, 3
-      //       case 0x14080: // vluxei64.v	v10, (a0), v8
-      //          is_priority_inst = true;
-      //    }
-      // } else if (m_app == "pr") {
-      //    switch (inst_address) {
-      //       case 0x143ac: // vle64.v	v11, (a7)
-      //       case 0x143b0: // vsll.vi	v11, v11, 3
-      //       case 0x143b4: // vluxei64.v	v11, (a2), v11
-      //          is_priority_inst = true;
-      //    }
-      // } else if (m_app == "sssp") {
-      //    switch (inst_address) {
-      //       case 0x142e0: // vle64.v	v10, (a4)
-      //       case 0x142ec: // vsll.vi	v10, v10, 3
-      //       case 0x142f0: // vluxei64.v	v10, (t0), v10
-
-      //       case 0x14298: // vle64.v	v8, (a6)
-      //       case 0x142a4: // vsll.vi	v8, v8, 3
-      //       case 0x142a8: // vluxei64.v	v9, (a1), v8
-      //          is_priority_inst = true;
-      //    }
-      // } else if (m_app == "00") {
-      //    is_priority_inst = (inst_address == 0x10692);
-      // } else if (m_app == "01") {
-      //    is_priority_inst = (inst_address == 0x106a2);
-      // } else if (m_app == "02") { // spmv
-      //    switch (inst_address) {
-      //       case 0x103f6 : // vle64.v	v24, (t3)
-      //          // case 0x103fa : // vle64.v	v8, (t1)
-      //       case 0x103fe : // vsll.vi	v24, v24, 3
-      //       case 0x10404 : // vluxei64.v	v24, (a3), v24
-      //          ROB_DEBUG_PRINTF("spmv instruction %08lx is priority instruction\n", inst_address);
-      //          is_priority_inst = true;
-      //          break;
-      //       default :
-      //          ROB_DEBUG_PRINTF("spmv instruction %08lx is NOT priority instruction\n", inst_address);
-      //          is_priority_inst = false;
-      //          break;
-      //    }
-      // } else {
-      //    is_priority_inst = uop->getMicroOp()->isVecLoad() &&
-      //          uop->getMicroOp()->canVecSquash();   // VLE
-      // }
-      // return is_priority_inst;
+      return inst_priority_t::Normal;
    }
+
+   // 型エイリアスを定義
+   //                            pc,     priority,        Exec latency, Exec count     LPIQ latency, LPIQ count,  assembly
+   using StatsEntry = std::tuple<UInt64, inst_priority_t, uint32_t,     uint32_t,      uint32_t,     uint32_t,    String>; // latency と count を保持
+   // 統計情報を格納するグローバルリスト
+   std::vector<StatsEntry> m_vec_stats_list;
+
+   void UpdateVectorLatencyStats (DynamicMicroOp *uop)
+   {
+      inst_priority_t priority = uop->isReserveInst() ? inst_priority_t::Reserve :
+                                 uop->isStrongPriorityInst() ? inst_priority_t::High :
+                                 inst_priority_t::Normal;
+      UInt64 pc = uop->getMicroOp()->getInstruction()->getAddress();
+      // 既存のエントリを検索
+      for (auto& entry : m_vec_stats_list) {
+         UInt64          existingPc;
+         inst_priority_t existingPriority;
+         uint32_t        existingExecLatency;
+         uint32_t        existingExecCount;
+         uint32_t        existingLPIQLatency;
+         uint32_t        existingLPIQCount;
+         String          disassembly;
+
+         std::tie(existingPc, existingPriority,
+                  existingExecLatency, existingExecCount,
+                  existingLPIQLatency, existingLPIQCount,
+                  disassembly) = entry;
+
+         if (existingPc == pc && existingPriority == priority) {
+               // 既存エントリの latency を加算し、count を増やす
+               std::get<2>(entry) += uop->getExecLatency();
+               std::get<3>(entry) += 1;
+               return;
+         }
+      }
+      // 新規エントリを追加 (count は初期値 1)
+      m_vec_stats_list.emplace_back(pc,
+                             priority,
+                             uop->getExecLatency(),
+                             1,
+                             0, 0,
+                             uop->getMicroOp()->getInstruction()->getDisassembly());
+   }
+
+   void UpdateVectorLPIQStats (DynamicMicroOp *uop, UInt64 lpiq_latency)
+   {
+      inst_priority_t priority = uop->isReserveInst() ? inst_priority_t::Reserve :
+                                 uop->isStrongPriorityInst() ? inst_priority_t::High :
+                                 inst_priority_t::Normal;
+      UInt64 pc = uop->getMicroOp()->getInstruction()->getAddress();
+      // 既存のエントリを検索
+      for (auto& entry : m_vec_stats_list) {
+         UInt64          existingPc;
+         inst_priority_t existingPriority;
+         uint32_t        existingExecLatency;
+         uint32_t        existingExecCount;
+         uint32_t        existingLPIQLatency;
+         uint32_t        existingLPIQCount;
+         String          disassembly;
+
+         std::tie(existingPc, existingPriority,
+                  existingExecLatency, existingExecCount,
+                  existingLPIQLatency, existingLPIQCount,
+                  disassembly) = entry;
+
+         if (existingPc == pc && existingPriority == priority) {
+               // 既存エントリの latency を加算し、count を増やす
+               std::get<4>(entry) += lpiq_latency;
+               std::get<5>(entry) += 1;
+               return;
+         }
+      }
+      // 新規エントリを追加 (count は初期値 1)
+      m_vec_stats_list.emplace_back(pc,
+                             priority,
+                             0, 0,
+                             lpiq_latency, 1,
+                             uop->getMicroOp()->getInstruction()->getDisassembly());
+   }
+
 
 };
 

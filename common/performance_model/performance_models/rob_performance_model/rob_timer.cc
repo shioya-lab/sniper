@@ -392,6 +392,29 @@ RobTimer::~RobTimer()
    }
 
    fclose (m_mem_access_fp);
+
+   std::cout << "-------------------------------\n";
+   std::cout << "Vector Instruction Statistics\n";
+   std::cout << "-------------------------------\n";
+   for (auto& entry : m_vec_stats_list) {
+      fprintf(stderr, "PC=%08lx, %s, %10d, average = %7.2lf",
+            std::get<0>(entry),
+            std::get<1>(entry) == inst_priority_t::Reserve ? "Reserve" :
+            std::get<1>(entry) == inst_priority_t::High    ? "High   " : "Normal ",
+            std::get<3>(entry),
+            static_cast<double>(std::get<2>(entry)) / static_cast<double>(std::get<3>(entry)));
+
+      if (std::get<5>(entry) != 0) {
+         fprintf(stderr, ", %10d, average = %7.2lf",
+                 std::get<5>(entry),
+                 static_cast<double>(std::get<4>(entry)) / static_cast<double>(std::get<5>(entry)));
+      } else {
+         fprintf(stderr, ",           ,                  ");
+      }
+
+      fprintf(stderr, ", %s\n", std::get<6>(entry).c_str());
+   }
+
 }
 
 void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
@@ -507,21 +530,21 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
             entry->uop->setStrongPriorityInst ();
          } else if (priority == inst_priority_t::Reserve) {
             entry->uop->setReserveInst ();
-         }
-      }
+         } else {
+         // 低優先度の命令に依存している or 高優先度の命令に依存している
+            for(size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
+               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
 
-      // 低優先度の命令に依存している or 高優先度の命令に依存している
-      for(size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
-         RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-
-         bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-               Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-         if (is_waiting_entry_vector_dest_reg &&
-             (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
-              waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
-            entry->uop->setReserveInst();
-            ROB_DEBUG_PRINTF ("Set Reserve Priority uop_idx=%ld %s\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
-            break;
+               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
+                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
+               if (is_waiting_entry_vector_dest_reg &&
+                   (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
+                    waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
+                  entry->uop->setReserveInst();
+                  ROB_DEBUG_PRINTF ("Set Reserve Priority uop_idx=%ld %s\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
+                  break;
+               }
+            }
          }
       }
 
@@ -792,10 +815,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                // 後続の依存している命令にLow Priorityを伝える
                for(size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
                   RobEntry *depEntry = entry->getDependant(idx);
-                  depEntry->uop->setReserveInst();
-                  ROB_DEBUG_PRINTF ("Set DependEntry Reserve Priority uop_idx=%ld %s\n",
-                                    depEntry->uop->getSequenceNumber(),
-                                    depEntry->uop->getMicroOp()->toShortString().c_str());
+                  if (!depEntry->uop->isStrongPriorityInst()) {
+                     depEntry->uop->setReserveInst();
+                     ROB_DEBUG_PRINTF ("Set DependEntry Reserve Priority uop_idx=%ld %s\n",
+                                       depEntry->uop->getSequenceNumber(),
+                                       depEntry->uop->getMicroOp()->toShortString().c_str());
+                  }
                }
             }
          }
@@ -970,9 +995,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                } else if (result == RegisterManager::AllocChain) {
                   // Firstではない命令は、Firstの命令の結果に依存している
                   InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::CHAIN);
+               } else if (result == RegisterManager::AllocReserve) {
+                  // 予約用のレジスタを確保した場合
+                  InsertResRegLPIQ (&uop);
                } else {
-                  // 予約用のレジスタの確保に失敗した場合: レジスタの解放を待つ
-                  InsertPhyRegLPIQ (&uop);
+                  // 物理レジスタを確保し転向を期待する場合
+                  InsertTransRegLPIQ (&uop);
                }
             } else {
                if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
@@ -1416,6 +1444,11 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                        uop.getMicroOp()->getInstruction()->getAddress(), m_1st_issue_in_cycle);
       UpdateInorderStats (uop.getMicroOp()->getInstruction()->getAddress(), m_1st_issue_in_cycle);
       m_1st_issue_in_cycle = false;
+   }
+
+   // Update the statistics
+   if (uop.getMicroOp()->isVector()) {
+      UpdateVectorLatencyStats (&uop);
    }
 }
 
@@ -2060,34 +2093,61 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          }
       }
 
-      m_reg_manager->ReleaseRegister (entry->uop);
       if (m_enable_vec_priority_alloc) {
          // 非優先命令の持っているレジスタは解放時に、LPIQ内のレジスタを渡す
          dl::Decoder *dec = Sim()->getDecoder();
-         if (entry->uop->isUseReserveRegisterGroup() &&
-             entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+         if (entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
              entry->uop->isLast() &&
              dec->is_reg_vector(entry->uop->getMicroOp()->getDestinationRegister(0))) {
-            bool lowpri_reg_pass_succeeded = false;
-            for (auto &f : m_lpiq_fifo) {
-               RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
-               if (lpiq_entry->uop->isInLPIQ() &&
-                   lpiq_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
-                   dec->is_reg_vector(lpiq_entry->uop->getMicroOp()->getDestinationRegister(0)) &&
-                   lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::PHYREG) {
-                  lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
-                  ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
-                                    lpiq_entry->uop->getSequenceNumber(),
-                                    lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-                  lowpri_reg_pass_succeeded = true;
-                  break;
+            if (entry->uop->isUseReserveRegisterGroup()) {
+               m_reg_manager->ReleaseRegister (entry->uop);
+               bool lowpri_reg_pass_succeeded = false;
+               for (auto &f : m_lpiq_fifo) {
+                  RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
+                  if (lpiq_entry->uop->isInLPIQ() &&
+                      lpiq_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+                      dec->is_reg_vector(lpiq_entry->uop->getMicroOp()->getDestinationRegister(0)) &&
+                      lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESREG) {
+                     lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
+                     ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
+                                       lpiq_entry->uop->getSequenceNumber(),
+                                       lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+                     lowpri_reg_pass_succeeded = true;
+                     break;
+                  }
+               }
+               if (!lowpri_reg_pass_succeeded) {
+                  // 渡す予約命令が無いので、物理レジスタに戻す
+                  m_reg_manager->ForceReleaseVoctorRegister();
+               }
+            } else {
+               // isUseNormalRegisterGroup()
+               // 通常の命令ではあるが、LPIQ内に通常物理レジスタの予約転向を待っている命令が存在している場合
+               bool lowpri_reg_pass_succeeded = false;
+               for (auto &f : m_lpiq_fifo) {
+                  RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
+                  if (lpiq_entry->uop->isInLPIQ() &&
+                      lpiq_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+                      dec->is_reg_vector(lpiq_entry->uop->getMicroOp()->getDestinationRegister(0)) &&
+                      lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::TRANSREG) {
+                     lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
+                     ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
+                                       lpiq_entry->uop->getSequenceNumber(),
+                                       lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+                     lowpri_reg_pass_succeeded = true;
+                     break;
+                  }
+               }
+               if (!lowpri_reg_pass_succeeded) {
+                  // 渡す予約命令が無いので、物理レジスタに戻す
+                  m_reg_manager->ForceReleaseVoctorRegister();
                }
             }
-            if (!lowpri_reg_pass_succeeded) {
-               // 渡す予約命令が無いので、物理レジスタに戻す
-               m_reg_manager->ForceReleaseVoctorRegister();
-            }
+         } else {
+            m_reg_manager->ReleaseRegister (entry->uop);
          }
+      } else {
+         m_reg_manager->ReleaseRegister (entry->uop);
       }
 
       entry->free();
@@ -2227,7 +2287,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
          // fprintf (m_core->getKanataFp(), "  // %ld %ld\n", now.getElapsedTime().getNS(), cycle);
          if (now.getElapsedTime().getNS() > cycle) {
             fprintf (m_core->getKanataFp(), "E\t%ld\t%d\tP\n", global_id, 0);
-            fprintf (m_core->getKanataFp(), "R\t%ld\t%d\tP\n", global_id, 0);
+            fprintf (m_core->getKanataFp(), "R\t%ld\t%d\t0\n", global_id, 0);
             it = m_core->prefetch_arrive_list.erase(it);
          } else {
             it++;
@@ -2398,7 +2458,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
       //     e->uop->isFirst() &&
       //     e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
       //     dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))) {
-      //    if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::PHYREG) {
+      //    if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESREG) {
       //       break_vecreg_normal_alloc_count = true;
       //    }
       // }
@@ -2416,14 +2476,15 @@ void RobTimer::printRob(bool is_output, bool enable_check)
       }
 
       if (e->uop->getMicroOp()->isVector()) {
-         if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::PHYREG) {
+         if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESREG) {
             DEBUG_COUT_IF (state, "LPIQ(PR) ");
+         } else if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::TRANSREG) {
+            DEBUG_COUT_IF (state, "LPIQ(TR) ");
          } else if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESOLVED) {
             DEBUG_COUT_IF (state, "LPIQ(ok) ");
          } else if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::CHAIN) {
             DEBUG_COUT_IF (state, "LPIQ(--) ");
          } else if (e->uop->isInLPIQ() && e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::SQ) {
-
             DEBUG_COUT_IF (state, "LPIQ(SQ) ");
          } else if (i >= m_num_in_rob) {
             DEBUG_COUT_IF (state, "PREROB    ");
@@ -2626,6 +2687,9 @@ bool RobTimer::InsertLPIQ (DynamicMicroOp *uop, DynamicMicroOp::lpiq_t reason)
       m_last_lpiq_sequencenumber = uop->getSequenceNumber();
       UpdateLPIQStats(uop);
 
+      RobEntry *uop_entry = this->findEntryBySequenceNumber(uop->getSequenceNumber());
+      uop_entry->lpiq_inserted = now.getCycleCount();
+
       ROB_DEBUG_PRINTF ("InsertLPIQ : uop_idx=%ld %s reason=%d\n", uop->getSequenceNumber(),
                         uop->getMicroOp()->getInstruction()->getDisassembly().c_str(), reason);
 
@@ -2636,11 +2700,6 @@ bool RobTimer::InsertLPIQ (DynamicMicroOp *uop, DynamicMicroOp::lpiq_t reason)
    }
 }
 
-
-bool RobTimer::InsertPhyRegLPIQ (DynamicMicroOp *uop)
-{
-   return InsertLPIQ (uop, DynamicMicroOp::lpiq_t::PHYREG);
-}
 
 // ----------------------------------------------------
 // If Vector Memory Store,
@@ -2706,6 +2765,14 @@ void RobTimer::releaseLPIQ ()
          lpiq_front_entry->uop->unsetLPIQ ();
          fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Wf");
          fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Ds");
+
+         lpiq_front_entry->lpiq_released = now.getCycleCount();
+         UpdateVectorLPIQStats (lpiq_front_entry->uop,
+                                lpiq_front_entry->lpiq_released - lpiq_front_entry->lpiq_inserted);
+         if (lpiq_front_entry->uop->getMicroOp()->getInstruction()->getAddress() == 0x149a8) {
+            fprintf (stderr, "0x149a8 LPIQ latency = %ld\n",
+                     lpiq_front_entry->lpiq_released - lpiq_front_entry->lpiq_inserted);
+         }
          ROB_DEBUG_PRINTF ("RobTimer::releaseLPIQ succeeded : uop_idx=%ld %s\n",
                            lpiq_front_entry->uop->getSequenceNumber(),
                            lpiq_front_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());

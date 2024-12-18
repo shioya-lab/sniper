@@ -54,7 +54,8 @@ class DynamicMicroOp
       {
          RESOLVED,
          // NONE,
-         PHYREG,
+         RESREG,  // 予約レジスタの再利用を予約
+         TRANSREG,  // 物理レジスタから予約レジスタの転向を予約
          CHAIN,
          SQ
       };
