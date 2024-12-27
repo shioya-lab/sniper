@@ -12,6 +12,7 @@
 #include "magic_server.h"
 #include "vector_dependencies.h"
 #include "register_manager.hpp"
+#include "mem_stats_manager.h"
 
 #include <deque>
 #include <list>
@@ -328,17 +329,17 @@ private:
    } ;
    std::unordered_map<UInt64, dcache_stats_t*> m_vec_dcache_stats;  // <PC, <<Hit, Miss>, assembly>>
    inline void UpdateVecDCacheStats(DynamicMicroOp *uop, int hitwhere) {
-      // Update stats
-      auto vec_dcache_it = m_vec_dcache_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
-      if (vec_dcache_it == m_vec_dcache_stats.end()) {
-         dcache_stats_t *s = new dcache_stats_t();
-         s->hitwhere[hitwhere] = 1;
-         s->assembly = uop->getMicroOp()->getInstruction()->getDisassembly();
-         m_vec_dcache_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(), s)); // Not found
-      } else {
-         // Found
-         (vec_dcache_it->second)->hitwhere[hitwhere]++;
-      }
+      // // Update stats
+      // auto vec_dcache_it = m_vec_dcache_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
+      // if (vec_dcache_it == m_vec_dcache_stats.end()) {
+      //    dcache_stats_t *s = new dcache_stats_t();
+      //    s->hitwhere[hitwhere] = 1;
+      //    s->assembly = uop->getMicroOp()->getInstruction()->getDisassembly();
+      //    m_vec_dcache_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(), s)); // Not found
+      // } else {
+      //    // Found
+      //    (vec_dcache_it->second)->hitwhere[hitwhere]++;
+      // }
    }
 
    // 統計情報 : プリロードがどれくらい発行されたか
@@ -470,142 +471,16 @@ public:
       return isPriInst (pc);
    }
 
-   // Todo: Gather命令のオペランドを生成する命令は、さらに優先命令として陽に宣言する
-   // 0. どの命令PCがどのレジスタを書き込むのかをテーブルとして持っておく
-   // 1. ある優先命令が実行されたとき、そのテーブルを参照してどの命令がそのオペランドを生成するかを知る
-   // 2. その命令を優先命令化する
+   MemStatsManager *m_mem_stats;
 
-   FILE *m_mem_access_fp;
-   std::unordered_map<UInt64, std::pair<UInt64, UInt64>> m_mem_stats;  // first: PC, second: <Inst Count, Latency Total>
-   std::list<UInt64> m_mem_latest_access;  // 直近でアクセスしtあメモリアドレス
-
-   void UpdateMemStats (UInt64 pc, UInt64 latency) {
-      auto ino_it = m_mem_stats.find(pc);
-      if (ino_it == m_mem_stats.end()) {
-         // Not found
-         m_mem_stats.insert(std::make_pair(pc, std::make_pair(1, latency)));
-         ROB_DEBUG_PRINTF ("Updated Mem Status: PC=%08lx, Latency=%ld\n", pc, latency);
-      } else {
-         (ino_it->second).first++;
-         (ino_it->second).second += latency;
-         ROB_DEBUG_PRINTF ("Updated Mem Status: PC=%08lx, Num=%ld, Average=%f\n",
-                  ino_it->first, ino_it->second.first, static_cast<float>(ino_it->second.second) / ino_it->second.first);
-      }
-
-      if (m_mem_latest_access.size() >= 64) {
-         m_mem_latest_access.pop_front();
-      }
-      m_mem_latest_access.push_back(pc);
-   }
-
-   UInt64 findShortLatencyInsts () {
-
-      float max_latency = 0.0;
-      UInt64 max_pc = 0;
-
-      for (auto mem: m_mem_stats) {
-         if (std::find (nonpri_insts.begin(), nonpri_insts.end(), mem.first) != nonpri_insts.end()) {
-            continue;
-         }
-
-         float latency = static_cast<float>(mem.second.second) / mem.second.first;
-         if (latency > 10) {
-            continue;
-         }
-         if (max_latency > latency || max_latency == 0.0) {
-            max_latency = latency;
-            max_pc = mem.first;
-         }
-      }
-
-      if (max_pc != 0) {
-         fprintf (stderr, "%ld : findShortLatencyInsts : PC=%08lx, Latency = %f\n", now.getCycleCount(), max_pc, max_latency);
-      }
-
-      return max_pc;
-   }
-
-   // 比較関数 (出現回数でソート)
-   static bool compareByValue(const std::pair<int, int>& a, const std::pair<int, int>& b) {
-      return a.second > b.second; // 大きい順にソート
-   }
-
-   UInt64 findLongLatencyInsts () {
-
-      // float max_latency = 0.0;
-      // UInt64 max_usage = 0;
-      // UInt64 max_pc = 0;
-
-      // 要素をカウントするための std::map を使用
-      std::map<UInt64, UInt64> countMap;
-
-      // リスト内の各要素をカウント
-      for (int pc : m_mem_latest_access) {
-         countMap[pc]++;
-      }
-      // map の内容を vector にコピーして、値（カウント）でソート
-      std::vector<std::pair<UInt64, UInt64>> sortedList(countMap.begin(), countMap.end());
-      // 出現回数に基づいてソート (大きい順)
-      std::sort(sortedList.begin(), sortedList.end(), compareByValue);
-
-      // // 結果を出力
-      // std::cout << "  mem_access_list:" << std::endl;
-      // for (const auto& pair : countMap) {
-      //    std::cout << "    " << std::hex << pair.first << ": " << std::dec << pair.second << std::endl;
-      // }
-
-      for (auto mem: sortedList) {
-         UInt64 pc = mem.first;
-
-         if (std::find (pri_insts.begin(), pri_insts.end(), pc) != pri_insts.end()) {
-            continue;
-         }
-
-         if (pc == 0) { continue; }
-         float latency = static_cast<float>(m_mem_stats[pc].second) / m_mem_stats[pc].first;
-         // fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %ld, usage = %ld, recent_list = %ld\n",
-         //          pc, m_mem_stats[pc].second, m_mem_stats[pc].first,
-         //          countMap[pc]);
-         if (latency > 100) {
-            // fprintf (stderr, "  findLongLatencyInsts : PC=%08lx, Latency = %f, usage = %ld, recent_list = %ld\n",
-            //          pc, latency, m_mem_stats[pc].first,
-            //          countMap[pc]);
-            return pc;
-         }
-      }
-
-      // fprintf (stderr, "  findLongLatencyInsts : There are no best instruction.\n");
-      return 0;
-
-      // for (auto mem: m_mem_stats) {
-      //    if (std::find (pri_insts.begin(), pri_insts.end(), mem.first) != pri_insts.end()) {
-      //       continue;
-      //    }
-      //    // 対象のメモリアクセス命令は直近で使用されている必要がある
-      //    if (std::find(m_mem_latest_access.begin(), m_mem_latest_access.end(), mem.first) == m_mem_latest_access.end()) {
-      //       continue;
-      //    }
-      //
-      //
-      //    float latency = static_cast<float>(mem.second.second) / mem.second.first;
-      //    if (latency <= 4) {
-      //       continue;
-      //    }
-      //    if (max_latency < latency || max_latency == 0.0) {
-      //       max_latency = latency;
-      //       max_usage = mem.second.first;
-      //       max_pc = mem.first;
-      //    }
-      // }
-      //
-      // if (max_pc != 0) {
-      //    fprintf (stderr, "%ld : findLongLatencyInsts : PC=%08lx, Latency = %f, usage = %ld\n",
-      //             now.getCycleCount(), max_pc, max_latency, max_usage);
-      // }
-      //
-      // return max_pc;
-   }
-
+   // std::unordered_map<UInt64, std::pair<UInt64, UInt64>> m_mem_stats;  // first: PC, second: <Inst Count, Latency Total>
+   // void UpdateMemStats (UInt64 pc, UInt64 latency) {
+   //    auto &entry = m_mem_stats[pc];
+   //    entry.first++;  // 命令数をインクリメント
+   //    entry.second += latency;  // 遅延時間を累計
+   //    ROB_DEBUG_PRINTF("Updated Mem Status: PC=%08lx, Num=%ld, Average=%f\n",
+   //                      pc, entry.first, static_cast<float>(entry.second) / entry.first);
+   // }
 
    std::unordered_map<UInt64, std::pair<UInt64, UInt64>> m_ino_stats;  // first: PC, second: <Whole Count, Inorder Count>
    std::vector <UInt64> nonpri_insts;
@@ -691,142 +566,193 @@ public:
       High    = 2
    } inst_priority_t;
 
-   inst_priority_t getPriority (DynamicMicroOp *uop) {
-      // return true;
-      //
-      // UInt64 pc = uop->getMicroOp()->getInstruction()->getAddress();
-      // bool is_pri = std::find(nonpri_insts.begin(), nonpri_insts.end(), pc) == nonpri_insts.end();
-      //
-      // return is_pri;
+   std::unordered_map<UInt64, inst_priority_t> m_priority_map;
+   std::list<UInt64> m_priority_remove_queue;  // Highが依存する命令の削除候補キュー
 
-      // Not used
-      bool is_strong_priority_inst = false;
-      UInt64 inst_address = uop->getMicroOp()->getInstruction()->getAddress();
-
-      static uint32_t neighbors_counter[100] = {0};
-      size_t index = 100;
-
-      if (m_app == "bfs") {
-         switch (inst_address) {
-            // case 0x142e0 : // vl1re64.v	v8, (t2)
-            // case 0x142e4 : // vl1re64.v	v9, (t1)
-            //
-            // case 0x14484 : // vl1re64.v	v12, (s9)
-            //    index = 0;
-            //    break;
-            // case 0x14488 : // vsll.vi	v12, v12, 3
-            // case 0x1448c : // vluxei64.v	v13, (t6), v12
-            //
-            // case 0x14948 : // vle64.v	v8, (a7)
-            //    index = 1;
-            //    break;
-            // case 0x14950 : // vsll.vi	v8, v8, 3
-            // case 0x14954 : // vluxei64.v	v9, (a7), v8
-            // case 0x14958 : // vmslt.vx	v9, v9, zero
-            // case 0x14970 : // vle64.v	v10, (t3)
-            // case 0x14974 : // vmv.v.i	v11, 0
-            // case 0x14994 : // vmv1r.v	v0, v9
-            case 0x149a4 : // vle64.v	v13, (t0)
-            case 0x149a8 : // vsll.vi	v14, v13, 3
-            case 0x149ac : // vluxei64.v	v14, (a2), v14
-               index = 2;
-               break;
-               // case 0x148f0:
-               for (size_t i = 0; i < 100; i++) {
-                  neighbors_counter[i] = 0;
-               }
-               // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
-               //                   uop->getSequenceNumber());
-               break;
+   // priorityがRemoveされれば、trueを返す
+   bool UpdateInstPriority (UInt64 pc, UInt64 latency) {
+      auto it = m_priority_map.find(pc);
+      if (it == m_priority_map.end()) {
+         if (latency > 40) {
+            m_priority_map[pc] = inst_priority_t::High;
+            // ROB_DEBUG_PRINTF ("%ld pc=%08lx : Set Priority High\n", now.getCycleCount(), pc);
+            fprintf (stderr, "%ld: pc=%08lx : Set Priority High (latency=%ld)\n", now.getCycleCount(), pc, latency);
          }
-
-         if (index != 100) {
-            is_strong_priority_inst = true;
-            // is_strong_priority_inst = true;
-            // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
-            //                   uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
-            if (uop->isLast()) {
-               neighbors_counter[index]++;
-            }
-            return is_strong_priority_inst ? inst_priority_t::High : inst_priority_t::Reserve;
-         }
-         return inst_priority_t::Normal;
-      } else if (m_app == "cc") {
-         switch (inst_address) {
-            case 0x13c9c:  // vle64.v	v8, (a5)
-            case 0x13ca0:  // vsll.vi	v9, v8, 3
-            case 0x13ca4:  // vluxei64.v	v9, (a6), v9
-
-            case 0x13d14: // vle64.v	v8, (a5)
-            case 0x13d1c: // vsll.vi	v11, v8, 3
-            case 0x13d20: // vluxei64.v	v12, (t0), v11
-
-            case 0x13f6c: // vle64.v	v8, (s0)
-            case 0x13f70: // vsll.vi	v8, v8, 3
-            case 0x13f74: // vluxei64.v	v11, (t6), v8
-
-            case 0x1406c: // vle64.v	v8, (a3)
-            case 0x14070: // vsll.vi	v8, v8, 3
-            case 0x14074: // vluxei64.v	v9, (a0), v8
-
-            case 0x14078: // vle64.v	v8, (a5)
-            case 0x1407c: // vsll.vi	v8, v8, 3
-            case 0x14080: // vluxei64.v	v10, (a0), v8
-               return inst_priority_t::High;
-            default:
-               return inst_priority_t::Normal;
-         }
-      } else if (m_app == "pr") {
-         switch (inst_address) {
-            case 0x143ac: // vle64.v	v11, (a7)
-            case 0x143b0: // vsll.vi	v11, v11, 3
-            case 0x143b4: // vluxei64.v	v11, (a2), v11
-               return inst_priority_t::High;
-            default:
-               return inst_priority_t::Normal;
-         }
-      } else if (m_app == "sssp") {
-         switch (inst_address) {
-            case 0x142e0: // vle64.v	v10, (a4)
-            case 0x142ec: // vsll.vi	v10, v10, 3
-            case 0x142f0: // vluxei64.v	v10, (t0), v10
-
-            case 0x14298: // vle64.v	v8, (a6)
-            case 0x142a4: // vsll.vi	v8, v8, 3
-            case 0x142a8: // vluxei64.v	v9, (a1), v8
-               return inst_priority_t::High;
-         }
-      } else if (m_app == "00") {
-         switch (inst_address) {
-            case 0x10692:
-               return inst_priority_t::High;
-            default:
-               return inst_priority_t::Normal;
-         }
-      } else if (m_app == "01") {
-         switch (inst_address) {
-            case 0x106a2:
-               return inst_priority_t::High;
-            default:
-               return inst_priority_t::Normal;
-         }
-      } else if (m_app == "02") { // spmv
-         switch (inst_address) {
-            case 0x103f6 : // vle64.v	v24, (t3)
-            case 0x103fa : // vle64.v	v8, (t1)
-            case 0x103fe : // vsll.vi	v24, v24, 3
-            case 0x10404 : // vluxei64.v	v24, (a3), v24
-               // ROB_DEBUG_PRINTF("spmv instruction %08lx is priority instruction\n", inst_address);
-               return inst_priority_t::High;
-            default :
-               // ROB_DEBUG_PRINTF("spmv instruction %08lx is NOT priority instruction\n", inst_address);
-               return inst_priority_t::Normal;
-         }
+         return false;
       } else {
-         return inst_priority_t::Normal;
+         inst_priority_t priority = it->second;
+         if (priority == High) {
+            if (latency < 30) {
+               m_priority_map.erase(pc);
+               // ROB_DEBUG_PRINTF ("%ld pc=%08lx : Remove Priority\n", now.getCycleCount(), pc);
+               fprintf (stderr, "%ld: pc=%08lx : Remove Priority (latency=%ld) \n", now.getCycleCount(), pc, latency);
+               m_priority_remove_queue.push_back (pc);
+               return true;
+            }
+         }
+         return false;
       }
-      return inst_priority_t::Normal;
    }
+
+   inst_priority_t getPriority (UInt64 pc) {
+      // マップにキー(pc)がある場合はその値を返す
+      auto it = m_priority_map.find(pc);
+      if (it != m_priority_map.end()) {
+         return it->second;
+      }
+      // ない場合はデフォルト値
+      return Normal;
+   }
+
+   void setPriority (UInt64 pc, inst_priority_t priority) {
+      // マップにキー(pc)がない場合は新規エントリが作られる
+      auto it = m_priority_map.find(pc);
+      if (it == m_priority_map.end()) {
+         fprintf (stderr, "setPriority pc=%08lx as %d\n", pc, priority);
+      }
+      m_priority_map[pc] = priority;
+   }
+
+   void removePriority (UInt64 pc) {
+      m_priority_map.erase(pc);
+   }
+
+   // inst_priority_t getPriority (DynamicMicroOp *uop) {
+   //    // return true;
+   //    //
+   //    // UInt64 pc = uop->getMicroOp()->getInstruction()->getAddress();
+   //    // bool is_pri = std::find(nonpri_insts.begin(), nonpri_insts.end(), pc) == nonpri_insts.end();
+   //    //
+   //    // return is_pri;
+
+   //    // Not used
+   //    bool is_strong_priority_inst = false;
+   //    UInt64 inst_address = uop->getMicroOp()->getInstruction()->getAddress();
+
+   //    static uint32_t neighbors_counter[100] = {0};
+   //    size_t index = 100;
+
+   //    if (m_app == "bfs") {
+   //       switch (inst_address) {
+   //          // case 0x142e0 : // vl1re64.v	v8, (t2)
+   //          // case 0x142e4 : // vl1re64.v	v9, (t1)
+   //          //
+   //          // case 0x14484 : // vl1re64.v	v12, (s9)
+   //          //    index = 0;
+   //          //    break;
+   //          // case 0x14488 : // vsll.vi	v12, v12, 3
+   //          // case 0x1448c : // vluxei64.v	v13, (t6), v12
+   //          //
+   //          // case 0x14948 : // vle64.v	v8, (a7)
+   //          //    index = 1;
+   //          //    break;
+   //          // case 0x14950 : // vsll.vi	v8, v8, 3
+   //          // case 0x14954 : // vluxei64.v	v9, (a7), v8
+   //          // case 0x14958 : // vmslt.vx	v9, v9, zero
+   //          // case 0x14970 : // vle64.v	v10, (t3)
+   //          // case 0x14974 : // vmv.v.i	v11, 0
+   //          // case 0x14994 : // vmv1r.v	v0, v9
+   //          case 0x149a4 : // vle64.v	v13, (t0)
+   //          case 0x149a8 : // vsll.vi	v14, v13, 3
+   //          case 0x149ac : // vluxei64.v	v14, (a2), v14
+   //             index = 2;
+   //             break;
+   //             // case 0x148f0:
+   //             for (size_t i = 0; i < 100; i++) {
+   //                neighbors_counter[i] = 0;
+   //             }
+   //             // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld : neighbors_counter = 0\n",
+   //             //                   uop->getSequenceNumber());
+   //             break;
+   //       }
+
+   //       if (index != 100) {
+   //          is_strong_priority_inst = true;
+   //          // is_strong_priority_inst = true;
+   //          // ROB_DEBUG_PRINTF ("isStrongPriorityInst uop_idx=%ld %d : neighbors_counter = %d\n",
+   //          //                   uop->getSequenceNumber(), is_strong_priority_inst, neighbors_counter);
+   //          if (uop->isLast()) {
+   //             neighbors_counter[index]++;
+   //          }
+   //          return is_strong_priority_inst ? inst_priority_t::High : inst_priority_t::Reserve;
+   //       }
+   //       return inst_priority_t::Normal;
+   //    } else if (m_app == "cc") {
+   //       switch (inst_address) {
+   //          case 0x13c9c:  // vle64.v	v8, (a5)
+   //          case 0x13ca0:  // vsll.vi	v9, v8, 3
+   //          case 0x13ca4:  // vluxei64.v	v9, (a6), v9
+
+   //          case 0x13d14: // vle64.v	v8, (a5)
+   //          case 0x13d1c: // vsll.vi	v11, v8, 3
+   //          case 0x13d20: // vluxei64.v	v12, (t0), v11
+
+   //          case 0x13f6c: // vle64.v	v8, (s0)
+   //          case 0x13f70: // vsll.vi	v8, v8, 3
+   //          case 0x13f74: // vluxei64.v	v11, (t6), v8
+
+   //          case 0x1406c: // vle64.v	v8, (a3)
+   //          case 0x14070: // vsll.vi	v8, v8, 3
+   //          case 0x14074: // vluxei64.v	v9, (a0), v8
+
+   //          case 0x14078: // vle64.v	v8, (a5)
+   //          case 0x1407c: // vsll.vi	v8, v8, 3
+   //          case 0x14080: // vluxei64.v	v10, (a0), v8
+   //             return inst_priority_t::High;
+   //          default:
+   //             return inst_priority_t::Normal;
+   //       }
+   //    } else if (m_app == "pr") {
+   //       switch (inst_address) {
+   //          case 0x143ac: // vle64.v	v11, (a7)
+   //          case 0x143b0: // vsll.vi	v11, v11, 3
+   //          case 0x143b4: // vluxei64.v	v11, (a2), v11
+   //             return inst_priority_t::High;
+   //          default:
+   //             return inst_priority_t::Normal;
+   //       }
+   //    } else if (m_app == "sssp") {
+   //       switch (inst_address) {
+   //          case 0x142e0: // vle64.v	v10, (a4)
+   //          case 0x142ec: // vsll.vi	v10, v10, 3
+   //          case 0x142f0: // vluxei64.v	v10, (t0), v10
+
+   //          case 0x14298: // vle64.v	v8, (a6)
+   //          case 0x142a4: // vsll.vi	v8, v8, 3
+   //          case 0x142a8: // vluxei64.v	v9, (a1), v8
+   //             return inst_priority_t::High;
+   //       }
+   //    } else if (m_app == "00") {
+   //       switch (inst_address) {
+   //          case 0x10692:
+   //             return inst_priority_t::High;
+   //          default:
+   //             return inst_priority_t::Normal;
+   //       }
+   //    } else if (m_app == "01") {
+   //       switch (inst_address) {
+   //          case 0x106a2:
+   //             return inst_priority_t::High;
+   //          default:
+   //             return inst_priority_t::Normal;
+   //       }
+   //    } else if (m_app == "02") { // spmv
+   //       switch (inst_address) {
+   //          case 0x103f6 : // vle64.v	v24, (t3)
+   //          case 0x103fa : // vle64.v	v8, (t1)
+   //          case 0x103fe : // vsll.vi	v24, v24, 3
+   //          case 0x10404 : // vluxei64.v	v24, (a3), v24
+   //             // ROB_DEBUG_PRINTF("spmv instruction %08lx is priority instruction\n", inst_address);
+   //             return inst_priority_t::High;
+   //          default :
+   //             // ROB_DEBUG_PRINTF("spmv instruction %08lx is NOT priority instruction\n", inst_address);
+   //             return inst_priority_t::Normal;
+   //       }
+   //    } else {
+   //       return inst_priority_t::Normal;
+   //    }
+   //    return inst_priority_t::Normal;
+   // }
 
    // 型エイリアスを定義
    //                            pc,     priority,        Exec latency, Exec count     LPIQ latency, LPIQ count,  assembly

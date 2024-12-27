@@ -302,12 +302,9 @@ RobTimer::RobTimer(
 
    m_lowpri_inst_find_mode = false;
 
-   m_reg_manager = new RegisterManager (core->getId());
+   m_mem_stats = new MemStatsManager(&now, &enable_rob_timer_log, &rob_start_cycle);
 
-   if ((m_mem_access_fp = fopen("mem_access.txt", "w")) == NULL) {
-      perror("mem_access.txt");
-      exit (EXIT_FAILURE);
-   }
+   m_reg_manager = new RegisterManager (core->getId());
 }
 
 RobTimer::~RobTimer()
@@ -376,22 +373,11 @@ RobTimer::~RobTimer()
    }
 
    std::cout << "-------------------\n";
-   std::cout << "Memory Latency Statitics\n";
-   std::cout << "-------------------\n";
-   for (auto mem: m_mem_stats) {
-      float latency = static_cast<float>(mem.second.second) / mem.second.first;
-      fprintf (stderr, "PC=%08lx : Count=%0ld, Latency=%f\n", mem.first,
-               mem.second.first, latency);
-   }
-
-   std::cout << "-------------------\n";
    std::cout << "Preload usage\n";
    std::cout << "-------------------\n";
    for (auto it = m_preload_stats.begin(); it != m_preload_stats.end(); it++) {
       std::cout << std::hex << it->first << ", " << std::dec << (it->second).first << " : " << (it->second).second << '\n';
    }
-
-   fclose (m_mem_access_fp);
 
    std::cout << "-------------------------------\n";
    std::cout << "Vector Instruction Statistics\n";
@@ -414,6 +400,8 @@ RobTimer::~RobTimer()
 
       fprintf(stderr, ", %s\n", std::get<6>(entry).c_str());
    }
+
+   delete m_mem_stats;
 
 }
 
@@ -506,47 +494,8 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          continue;
       }
 
-      // // 緊急措置：robがfullであれば、fullでなくなるまで待つ。
-      // while (rob.full())
-      // {
-      //    // fprintf(stderr, "Waiting ROB is not full ...\n");
-      //    uint64_t instructionsExecuted;
-      //    SubsecondTime latency;
-      //    execute(instructionsExecuted, latency);
-      //    totalInsnExec += instructionsExecuted;
-      //    totalLat += latency;
-      //    // if (latency == SubsecondTime::Zero())
-      //    //    break;
-      // }
-      // // fprintf(stderr, "Exited ROB\n");
-
       RobEntry *entry = &this->rob.next();
       entry->init(*it, nextSequenceNumber++);
-
-      LOG_ASSERT_ERROR(!entry->uop->isReserveInst() && !entry->uop->isStrongPriorityInst(), "Priority must not allocate before execution");
-      if (m_enable_vec_priority_alloc) {
-         inst_priority_t priority = getPriority(entry->uop);
-         if (priority == inst_priority_t::High) {
-            entry->uop->setStrongPriorityInst ();
-         } else if (priority == inst_priority_t::Reserve) {
-            entry->uop->setReserveInst ();
-         } else {
-         // 低優先度の命令に依存している or 高優先度の命令に依存している
-            for(size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-
-               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-               if (is_waiting_entry_vector_dest_reg &&
-                   (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
-                    waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
-                  entry->uop->setReserveInst();
-                  ROB_DEBUG_PRINTF ("Set Reserve Priority uop_idx=%ld %s\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
-                  break;
-               }
-            }
-         }
-      }
 
       // Add = calculate dependencies, add yourself to list of depenants
       // If no dependants in window: set ready = now()
@@ -591,6 +540,79 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       this->vectorDependencies->setDependencies(*entry->uop);
 
       setVSETDependencies (*entry->uop, lowestValidSequenceNumber);
+
+      LOG_ASSERT_ERROR(!entry->uop->isReserveInst() && !entry->uop->isStrongPriorityInst(), "Priority must not allocate before execution");
+      if (m_enable_vec_priority_alloc) {
+         auto remove_it = std::find(m_priority_remove_queue.begin(), m_priority_remove_queue.end(),
+                                    entry->uop->getMicroOp()->getInstruction()->getAddress());
+         if (remove_it != m_priority_remove_queue.end()) {
+            removePriority (entry->uop->getMicroOp()->getInstruction()->getAddress());
+            m_priority_remove_queue.erase(remove_it);
+            fprintf (stderr, "Priority remove propagation phase: PC=%08lx\n", entry->uop->getMicroOp()->getInstruction()->getAddress());
+
+            for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
+               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
+
+               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
+                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
+               if (is_waiting_entry_vector_dest_reg) {
+                  UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
+                  m_priority_remove_queue.push_back (wait_entry_pc);
+                  fprintf (stderr, "Priority Remove Candidate: PC=%08lx\n", wait_entry_pc);
+               }
+            }
+         }
+
+         inst_priority_t priority = getPriority(entry->uop->getMicroOp()->getInstruction()->getAddress());
+         if (priority == inst_priority_t::High) {
+            entry->uop->setStrongPriorityInst ();
+
+            // fprintf (stderr, "simulate(): pc=%08lx Priority instruction\n", 
+            //          entry->uop->getMicroOp()->getInstruction()->getAddress());
+
+            // if (entry->uop->getMicroOp()->getInstruction()->getAddress() == 0x149ac) {
+            //    printRob();
+            // }
+
+            // 優先度の伝搬: 自分が即時割り当ての命令であれば、自分が依存している命令も即時割り当ての命令でなければならない
+            for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
+               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
+
+               // fprintf (stderr, "  dependency(%ld) = %ld\n", idx, entry->uop->getDependency(idx));
+
+               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
+                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
+               if (is_waiting_entry_vector_dest_reg) {
+                  UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
+                  if (getPriority(wait_entry_pc) != inst_priority_t::High) {
+                     setPriority (wait_entry_pc, inst_priority_t::High);
+
+                     fprintf (stderr, "Priority backpopagation: Strong propagated from PC=%08lx to PC=%08lx\n", 
+                                       entry->uop->getMicroOp()->getInstruction()->getAddress(),
+                                       waiting_entry->uop->getMicroOp()->getInstruction()->getAddress());
+                  }
+               }
+            }
+
+         } else if (priority == inst_priority_t::Reserve) {
+            entry->uop->setReserveInst ();
+         } else {
+            // 低優先度の命令に依存している or 高優先度の命令に依存している
+            for(size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
+               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
+
+               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
+                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
+               if (is_waiting_entry_vector_dest_reg &&
+                   (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
+                    waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
+                  entry->uop->setReserveInst();
+                  ROB_DEBUG_PRINTF ("Set Reserve Priority uop_idx=%ld %s\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
+                  break;
+               }
+            }
+         }
+      }
 
       if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad() &&
           !entry->uop->getMicroOp()->isVector()) // In Vector, remove dependency for forwarding not support.
@@ -976,33 +998,66 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
-         if (m_enable_vec_priority_alloc) {
-            // 予約に回る命令であれば、LPIQに格納する
-            if (uop.isReserveInst()) {
-               // LPIQに入れるべき命令の場合
-               RegisterManager::AllocResult_t result = m_reg_manager->AllocateRegister (&uop);
-               if (uop.getMicroOp()->getDestinationRegistersLength() &&
-                   !Sim()->getDecoder()->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0))) {
-                  // 整数・浮動小数点レジスタ確保
-                  if (result != RegisterManager::AllocSuccess) {
-                     break;
-                  } else {
+         if (uop.getMicroOp()->getDestinationRegistersLength() != 0) {
+            if (m_enable_vec_priority_alloc) {
+               // 予約に回る命令であれば、LPIQに格納する
+               if (uop.isReserveInst()) {
+                  // LPIQに入れるべき命令の場合
+                  RegisterManager::AllocResult_t result = m_reg_manager->AllocateRegister (&uop);
+                  if (!Sim()->getDecoder()->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0))) {
+                     // 整数・浮動小数点レジスタ確保
+                     if (result != RegisterManager::AllocSuccess) {
+                        break;
+                     // } else {
+                     //    InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
+                     }
+                  } else if (result == RegisterManager::AllocSuccess) {
+                     // 予約用のレジスタの確保に成功した場合: 確保したうえでLPIQに入る
                      InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
+                  } else if (result == RegisterManager::AllocChain) {
+                     // Firstではない命令は、Firstの命令の結果に依存している
+                     InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::CHAIN);
+                  } else if (result == RegisterManager::AllocReserve) {
+                     // 予約用のレジスタを確保した場合
+                     InsertResRegLPIQ (&uop);
+                  } else {
+                     // 物理レジスタを確保し転向を期待する場合
+                     InsertTransRegLPIQ (&uop);
                   }
-               } else if (result == RegisterManager::AllocSuccess) {
-                  // 予約用のレジスタの確保に成功した場合: 確保したうえでLPIQに入る
-                  InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
-               } else if (result == RegisterManager::AllocChain) {
-                  // Firstではない命令は、Firstの命令の結果に依存している
-                  InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::CHAIN);
-               } else if (result == RegisterManager::AllocReserve) {
-                  // 予約用のレジスタを確保した場合
-                  InsertResRegLPIQ (&uop);
                } else {
-                  // 物理レジスタを確保し転向を期待する場合
-                  InsertTransRegLPIQ (&uop);
+                  if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
+                     dl::Decoder *dec = Sim()->getDecoder();
+                     dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+                     if (dec->is_reg_int(dest_reg)) {
+                        m_frontstall_idx = frontstall_t::IPhyRegFull;
+                     } else if(dec->is_reg_float(dest_reg)) {
+                        m_frontstall_idx = frontstall_t::FPhyRegFull;
+                     } else if (dec->is_reg_vector(dest_reg)){
+                        m_frontstall_idx = frontstall_t::VPhyRegFull;
+                     } else {
+                        LOG_ASSERT_ERROR (false, "Unknown register type.");
+                     }
+                     break;
+                  }
+               }
+            } else if (m_vec_reserved_allocation) {
+               // 物理レジスタの確保試行
+               if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
+                  dl::Decoder *dec = Sim()->getDecoder();
+                  dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+                  if (dec->is_reg_int(dest_reg)) {
+                     m_frontstall_idx = frontstall_t::IPhyRegFull;
+                  } else if(dec->is_reg_float(dest_reg)) {
+                     m_frontstall_idx = frontstall_t::FPhyRegFull;
+                  } else if (dec->is_reg_vector(dest_reg)){
+                     m_frontstall_idx = frontstall_t::VPhyRegFull;
+                  } else {
+                     LOG_ASSERT_ERROR (false, "Unknown register type.");
+                  }
+                  break;
                }
             } else {
+               // 物理レジスタの確保試行
                if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
                   dl::Decoder *dec = Sim()->getDecoder();
                   dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
@@ -1018,40 +1073,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                   break;
                }
             }
-         } else if (m_vec_reserved_allocation) {
-            // 物理レジスタの確保試行
-            if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
-               dl::Decoder *dec = Sim()->getDecoder();
-               dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-               if (dec->is_reg_int(dest_reg)) {
-                  m_frontstall_idx = frontstall_t::IPhyRegFull;
-               } else if(dec->is_reg_float(dest_reg)) {
-                  m_frontstall_idx = frontstall_t::FPhyRegFull;
-               } else if (dec->is_reg_vector(dest_reg)){
-                  m_frontstall_idx = frontstall_t::VPhyRegFull;
-               } else {
-                  LOG_ASSERT_ERROR (false, "Unknown register type.");
-               }
-               break;
-            }
-         } else {
-            // 物理レジスタの確保試行
-            if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
-               dl::Decoder *dec = Sim()->getDecoder();
-               dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-               if (dec->is_reg_int(dest_reg)) {
-                  m_frontstall_idx = frontstall_t::IPhyRegFull;
-               } else if(dec->is_reg_float(dest_reg)) {
-                  m_frontstall_idx = frontstall_t::FPhyRegFull;
-               } else if (dec->is_reg_vector(dest_reg)){
-                  m_frontstall_idx = frontstall_t::VPhyRegFull;
-               } else {
-                  LOG_ASSERT_ERROR (false, "Unknown register type.");
-               }
-               break;
-            }
          }
-
 
          // if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
          //    cpiFrontEnd = &m_cpiVPhyRegFull;
@@ -1262,7 +1284,43 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       }
 
       if (uop.getMicroOp()->isVecLoad()) {
-         UpdateMemStats (uop.getMicroOp()->getInstruction()->getAddress(), latency);
+         DynamicMicroOp *last_uop = &uop;
+         if (!uop.isLast()) {
+            // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
+            //         uop.getSequenceNumber(), uop.getMicroOp()->UopIdx(), uop.getMicroOp()->NumUop());
+            size_t last_offset = 1;
+            RobEntry *uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
+            last_uop = uop_last_entry->uop;
+            while (!last_uop->isLast()) {
+               last_offset++;
+               uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
+               last_uop = uop_last_entry->uop;
+            };
+         }
+
+         // fprintf(stderr, "uop_max_latency pc = %08lx, uop_idx=%ld, trying to update %ld, max_latency=%ld : ", 
+         //         uop.getMicroOp()->getInstruction()->getAddress(),
+         //         uop.getSequenceNumber(),
+         //         last_uop->getSequenceNumber(),
+         //         latency);
+         if (last_uop->getMemMaxLatency() < latency) {
+            // fprintf(stderr, "updated: %ld -> %ld\n", last_uop->getMemMaxLatency(), latency);
+            last_uop->setMemMaxLatency(latency);
+         } else {
+            // fprintf(stderr, "\n");
+         }
+
+         if (uop.isLast()) {
+            // fprintf(stderr, "uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
+            //         uop.getMicroOp()->getInstruction()->getAddress(),
+            //         uop.getSequenceNumber(),
+            //         uop.getMemMaxLatency());
+            // UpdateMemStats (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
+            UInt64 average_latency = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
+            
+            // 命令の属性を変更させるかどうかをチェックする
+            UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
+         }
       }
       uop.setExecLatency(uop.getExecLatency() + latency); // execlatency already contains bypass latency
       uop.setDCacheHitWhere(res.hit_where);

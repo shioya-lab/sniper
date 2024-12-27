@@ -102,6 +102,8 @@ class DynamicMicroOp
 
       bool m_is_in_lpiq;
 
+      UInt64 memMaxLatency;
+
    public:
 
       DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, ComponentPeriod period);
@@ -212,6 +214,8 @@ class DynamicMicroOp
         iCacheLatency = _latency;
       };
 
+      UInt64 getMemMaxLatency() const { return this->memMaxLatency; }
+      void setMemMaxLatency(uint32_t latency) { this->memMaxLatency = latency; }
 
       void setAddress(const Memory::Access& loadAccess) { this->address = loadAccess; }
       const Memory::Access& getAddress(void) const { return this->address; }
