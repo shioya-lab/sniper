@@ -18,7 +18,7 @@
 #include <sstream>
 #include <iomanip>
 
-#define LPIQ_SIZE  (512)
+#define LPIQ_SIZE  (1024)
 
 // Define to get per-cycle printout of dispatch, issue, writeback stages
 // #define DEBUG_PERCYCLE
@@ -305,6 +305,7 @@ RobTimer::RobTimer(
    m_mem_stats = new MemStatsManager(&now, &enable_rob_timer_log, &rob_start_cycle);
 
    m_reg_manager = new RegisterManager (core->getId());
+   m_priority_manager = new PriorityManager (m_app, &now);
 }
 
 RobTimer::~RobTimer()
@@ -385,8 +386,8 @@ RobTimer::~RobTimer()
    for (auto& entry : m_vec_stats_list) {
       fprintf(stderr, "PC=%08lx, %s, %10d, average = %7.2lf",
             std::get<0>(entry),
-            std::get<1>(entry) == inst_priority_t::Reserve ? "Reserve" :
-            std::get<1>(entry) == inst_priority_t::High    ? "High   " : "Normal ",
+            std::get<1>(entry) == PriorityManager::inst_priority_t::Reserve ? "Reserve" :
+            std::get<1>(entry) == PriorityManager::inst_priority_t::High    ? "High   " : "Normal ",
             std::get<3>(entry),
             static_cast<double>(std::get<2>(entry)) / static_cast<double>(std::get<3>(entry)));
 
@@ -543,11 +544,12 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       LOG_ASSERT_ERROR(!entry->uop->isReserveInst() && !entry->uop->isStrongPriorityInst(), "Priority must not allocate before execution");
       if (m_enable_vec_priority_alloc) {
-         auto remove_it = std::find(m_priority_remove_queue.begin(), m_priority_remove_queue.end(),
+         auto priority_remove_queue_it = m_priority_manager->getPriorityRemoveQueue();
+         auto remove_it = std::find(priority_remove_queue_it.begin(), priority_remove_queue_it.end(),
                                     entry->uop->getMicroOp()->getInstruction()->getAddress());
-         if (remove_it != m_priority_remove_queue.end()) {
-            removePriority (entry->uop->getMicroOp()->getInstruction()->getAddress());
-            m_priority_remove_queue.erase(remove_it);
+         if (remove_it != priority_remove_queue_it.end()) {
+            m_priority_manager->removePriority (entry->uop->getMicroOp()->getInstruction()->getAddress());
+            priority_remove_queue_it.erase(remove_it);
             fprintf (stderr, "Priority remove propagation phase: PC=%08lx\n", entry->uop->getMicroOp()->getInstruction()->getAddress());
 
             for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
@@ -557,14 +559,14 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
                      Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
                if (is_waiting_entry_vector_dest_reg) {
                   UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-                  m_priority_remove_queue.push_back (wait_entry_pc);
+                  priority_remove_queue_it.push_back (wait_entry_pc);
                   fprintf (stderr, "Priority Remove Candidate: PC=%08lx\n", wait_entry_pc);
                }
             }
          }
 
-         inst_priority_t priority = getPriority(entry->uop->getMicroOp()->getInstruction()->getAddress());
-         if (priority == inst_priority_t::High) {
+         PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry->uop->getMicroOp()->getInstruction()->getAddress());
+         if (priority == PriorityManager::inst_priority_t::High) {
             entry->uop->setStrongPriorityInst ();
 
             // fprintf (stderr, "simulate(): pc=%08lx Priority instruction\n", 
@@ -584,17 +586,17 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
                      Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
                if (is_waiting_entry_vector_dest_reg) {
                   UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-                  if (getPriority(wait_entry_pc) != inst_priority_t::High) {
-                     setPriority (wait_entry_pc, inst_priority_t::High);
+                  if (m_priority_manager->getPriority(wait_entry_pc) != PriorityManager::inst_priority_t::High) {
+                     m_priority_manager->setPriority (wait_entry_pc, PriorityManager::inst_priority_t::High);
 
-                     fprintf (stderr, "Priority backpopagation: Strong propagated from PC=%08lx to PC=%08lx\n", 
+                     fprintf (stderr, "Priority backpropagation: Strong propagated from PC=%08lx to PC=%08lx\n", 
                                        entry->uop->getMicroOp()->getInstruction()->getAddress(),
                                        waiting_entry->uop->getMicroOp()->getInstruction()->getAddress());
                   }
                }
             }
 
-         } else if (priority == inst_priority_t::Reserve) {
+         } else if (priority == PriorityManager::inst_priority_t::Reserve) {
             entry->uop->setReserveInst ();
          } else {
             // 低優先度の命令に依存している or 高優先度の命令に依存している
@@ -1311,15 +1313,14 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          }
 
          if (uop.isLast()) {
-            // fprintf(stderr, "uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
-            //         uop.getMicroOp()->getInstruction()->getAddress(),
-            //         uop.getSequenceNumber(),
-            //         uop.getMemMaxLatency());
-            // UpdateMemStats (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
+            fprintf(stderr, "uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
+                    uop.getMicroOp()->getInstruction()->getAddress(),
+                    uop.getSequenceNumber(),
+                    uop.getMemMaxLatency());
             UInt64 average_latency = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
             
             // 命令の属性を変更させるかどうかをチェックする
-            UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
+            m_priority_manager->UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
          }
       }
       uop.setExecLatency(uop.getExecLatency() + latency); // execlatency already contains bypass latency
