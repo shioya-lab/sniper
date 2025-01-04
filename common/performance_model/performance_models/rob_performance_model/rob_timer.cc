@@ -305,7 +305,11 @@ RobTimer::RobTimer(
    m_mem_stats = new MemStatsManager(&now, &enable_rob_timer_log, &rob_start_cycle);
 
    m_reg_manager = new RegisterManager (core->getId());
-   m_priority_manager = new PriorityManager (m_app, &now);
+   if (m_enable_vec_priority_alloc) {
+      m_priority_manager = new PriorityManager (m_app, &now);
+   } else {
+      m_priority_manager = NULL;
+   }
 }
 
 RobTimer::~RobTimer()
@@ -545,11 +549,11 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       LOG_ASSERT_ERROR(!entry->uop->isReserveInst() && !entry->uop->isStrongPriorityInst(), "Priority must not allocate before execution");
       if (m_enable_vec_priority_alloc) {
          auto priority_remove_queue_it = m_priority_manager->getPriorityRemoveQueue();
-         auto remove_it = std::find(priority_remove_queue_it.begin(), priority_remove_queue_it.end(),
+         auto remove_it = std::find(priority_remove_queue_it->begin(), priority_remove_queue_it->end(),
                                     entry->uop->getMicroOp()->getInstruction()->getAddress());
-         if (remove_it != priority_remove_queue_it.end()) {
+         if (remove_it != priority_remove_queue_it->end()) {
             m_priority_manager->removePriority (entry->uop->getMicroOp()->getInstruction()->getAddress());
-            priority_remove_queue_it.erase(remove_it);
+            priority_remove_queue_it->erase(remove_it);
             fprintf (stderr, "Priority remove propagation phase: PC=%08lx\n", entry->uop->getMicroOp()->getInstruction()->getAddress());
 
             for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
@@ -559,7 +563,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
                      Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
                if (is_waiting_entry_vector_dest_reg) {
                   UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-                  priority_remove_queue_it.push_back (wait_entry_pc);
+                  priority_remove_queue_it->push_back (wait_entry_pc);
                   fprintf (stderr, "Priority Remove Candidate: PC=%08lx\n", wait_entry_pc);
                }
             }
@@ -1285,42 +1289,44 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          UpdateVecDCacheStats(&uop, res.hit_where);
       }
 
-      if (uop.getMicroOp()->isVecLoad()) {
-         DynamicMicroOp *last_uop = &uop;
-         if (!uop.isLast()) {
-            // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
-            //         uop.getSequenceNumber(), uop.getMicroOp()->UopIdx(), uop.getMicroOp()->NumUop());
-            size_t last_offset = 1;
-            RobEntry *uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
-            last_uop = uop_last_entry->uop;
-            while (!last_uop->isLast()) {
-               last_offset++;
-               uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
+      if (m_enable_vec_priority_alloc) {
+         if (uop.getMicroOp()->isVecLoad()) {
+            DynamicMicroOp *last_uop = &uop;
+            if (!uop.isLast()) {
+               // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
+               //         uop.getSequenceNumber(), uop.getMicroOp()->UopIdx(), uop.getMicroOp()->NumUop());
+               size_t last_offset = 1;
+               RobEntry *uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
                last_uop = uop_last_entry->uop;
-            };
-         }
+               while (!last_uop->isLast()) {
+                  last_offset++;
+                  uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
+                  last_uop = uop_last_entry->uop;
+               };
+            }
 
-         // fprintf(stderr, "uop_max_latency pc = %08lx, uop_idx=%ld, trying to update %ld, max_latency=%ld : ", 
-         //         uop.getMicroOp()->getInstruction()->getAddress(),
-         //         uop.getSequenceNumber(),
-         //         last_uop->getSequenceNumber(),
-         //         latency);
-         if (last_uop->getMemMaxLatency() < latency) {
-            // fprintf(stderr, "updated: %ld -> %ld\n", last_uop->getMemMaxLatency(), latency);
-            last_uop->setMemMaxLatency(latency);
-         } else {
-            // fprintf(stderr, "\n");
-         }
+            // fprintf(stderr, "uop_max_latency pc = %08lx, uop_idx=%ld, trying to update %ld, max_latency=%ld : ", 
+            //         uop.getMicroOp()->getInstruction()->getAddress(),
+            //         uop.getSequenceNumber(),
+            //         last_uop->getSequenceNumber(),
+            //         latency);
+            if (last_uop->getMemMaxLatency() < latency) {
+               // fprintf(stderr, "updated: %ld -> %ld\n", last_uop->getMemMaxLatency(), latency);
+               last_uop->setMemMaxLatency(latency);
+            } else {
+               // fprintf(stderr, "\n");
+            }
 
-         if (uop.isLast()) {
-            fprintf(stderr, "uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
-                    uop.getMicroOp()->getInstruction()->getAddress(),
-                    uop.getSequenceNumber(),
-                    uop.getMemMaxLatency());
-            UInt64 average_latency = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
-            
-            // 命令の属性を変更させるかどうかをチェックする
-            m_priority_manager->UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
+            if (uop.isLast()) {
+               fprintf(stderr, "uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
+                     uop.getMicroOp()->getInstruction()->getAddress(),
+                     uop.getSequenceNumber(),
+                     uop.getMemMaxLatency());
+               UInt64 average_latency = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
+               
+               // 命令の属性を変更させるかどうかをチェックする
+               m_priority_manager->UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
+            }
          }
       }
       uop.setExecLatency(uop.getExecLatency() + latency); // execlatency already contains bypass latency

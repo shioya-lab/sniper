@@ -3,6 +3,7 @@
 #include <map>
 #include <list>
 
+#include "config.hpp"
 class PriorityManager {
 
 public:
@@ -15,23 +16,28 @@ public:
 private:
    String m_app;
 
+   const String m_methodology;  // static / dynamic
+
    ComponentTime *m_now;
 
    std::unordered_map<UInt64, inst_priority_t> m_priority_map;
    std::list<UInt64> m_priority_remove_queue;  // Highが依存する命令の削除候補キュー
 
    public:
-      PriorityManager(String app, ComponentTime *now) {
+      PriorityManager(String app, ComponentTime *now)
+      : m_methodology(Sim()->getCfg()->getString("perf_model/core/rob_timer/priority_methodology"))
+      {
          m_app = app;
          m_now = now;
       }
 
-   std::list<UInt64> getPriorityRemoveQueue () {
-      return m_priority_remove_queue;
+   std::list<UInt64>* getPriorityRemoveQueue () {
+      return &m_priority_remove_queue;
    }
 
    // priorityがRemoveされれば、trueを返す
-   bool UpdateInstPriority (UInt64 pc, UInt64 latency) {
+   bool UpdateInstPriority (UInt64 pc, UInt64 latency)
+   {
       auto it = m_priority_map.find(pc);
       if (it == m_priority_map.end()) {
          if (latency > 100) {
@@ -56,13 +62,17 @@ private:
    }
 
    inst_priority_t getPriority (UInt64 pc) {
-      // マップにキー(pc)がある場合はその値を返す
-      auto it = m_priority_map.find(pc);
-      if (it != m_priority_map.end()) {
-         return it->second;
+      if (m_methodology == "static") {
+         return getPriority_Static(pc);
+      } else {
+         // マップにキー(pc)がある場合はその値を返す
+         auto it = m_priority_map.find(pc);
+         if (it != m_priority_map.end()) {
+            return it->second;
+         }
+         // ない場合はデフォルト値
+         return Normal;
       }
-      // ない場合はデフォルト値
-      return Normal;
    }
 
    void setPriority (UInt64 pc, inst_priority_t priority) {
@@ -78,11 +88,9 @@ private:
       m_priority_map.erase(pc);
    }
 
-   inst_priority_t getPriority_Static (DynamicMicroOp *uop) {
-      UInt64 inst_address = uop->getMicroOp()->getInstruction()->getAddress();
-
+   inst_priority_t getPriority_Static (UInt64 pc) {
       if (m_app == "bfs") {
-         switch (inst_address) {
+         switch (pc) {
             // case 0x142e0 : // vl1re64.v	v8, (t2)
             // case 0x142e4 : // vl1re64.v	v9, (t1)
             //
@@ -109,7 +117,7 @@ private:
                return inst_priority_t::Normal;
          }
       } else if (m_app == "cc") {
-         switch (inst_address) {
+         switch (pc) {
             case 0x13c9c:  // vle64.v	v8, (a5)
             case 0x13ca0:  // vsll.vi	v9, v8, 3
             case 0x13ca4:  // vluxei64.v	v9, (a6), v9
@@ -134,7 +142,7 @@ private:
                return inst_priority_t::Normal;
          }
       } else if (m_app == "pr") {
-         switch (inst_address) {
+         switch (pc) {
             case 0x143ac: // vle64.v	v11, (a7)
             case 0x143b0: // vsll.vi	v11, v11, 3
             case 0x143b4: // vluxei64.v	v11, (a2), v11
@@ -143,7 +151,7 @@ private:
                return inst_priority_t::Normal;
          }
       } else if (m_app == "sssp") {
-         switch (inst_address) {
+         switch (pc) {
             case 0x142e0: // vle64.v	v10, (a4)
             case 0x142ec: // vsll.vi	v10, v10, 3
             case 0x142f0: // vluxei64.v	v10, (t0), v10
@@ -154,21 +162,21 @@ private:
                return inst_priority_t::High;
          }
       } else if (m_app == "00") {
-         switch (inst_address) {
+         switch (pc) {
             case 0x10692:
                return inst_priority_t::High;
             default:
                return inst_priority_t::Normal;
          }
       } else if (m_app == "01") {
-         switch (inst_address) {
+         switch (pc) {
             case 0x106a2:
                return inst_priority_t::High;
             default:
                return inst_priority_t::Normal;
          }
       } else if (m_app == "02") { // spmv
-         switch (inst_address) {
+         switch (pc) {
             case 0x103f6 : // vle64.v	v24, (t3)
             case 0x103fa : // vle64.v	v8, (t1)
             case 0x103fe : // vsll.vi	v24, v24, 3
