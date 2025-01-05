@@ -965,7 +965,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STOREE) &&
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE) &&
              m_lsu_num_in_rs > m_lsu_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiLSURSFull;
@@ -974,7 +974,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STOR) &&
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
              m_vec_num_in_rs > m_vec_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiVECRSFull;
