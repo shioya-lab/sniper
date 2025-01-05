@@ -1149,8 +1149,17 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                    uop->getMicroOp()->getInstruction()->getAddress(),
                    uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
            if (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) {
-              fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAccess=%08lx\n", entry->global_sequence_id, 1,
+              fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
                     uop->getAddress().address);
+           }
+           if (uop->getMicroOp()->isVector()) {
+              fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
+                    m_reg_manager->getAllocVectorRegister());
+              if (m_enable_vec_priority_alloc) {
+               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
+                     m_reg_manager->getNonPriVectorRegisters(),
+                     m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
+              }
            }
            for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
               dl::Decoder *dec = Sim()->getDecoder();
@@ -2125,12 +2134,6 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
         fprintf (m_core->getO3Fp(), "O3PipeView:retire:%ld:store:0\n",        (cycle_commit    )*500);
       }
 
-      if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
-        fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
-        fprintf(m_core->getKanataFp(), "R\t%ld\t%ld\t%d\n", entry->global_sequence_id, entry->uop->getSequenceNumber(), 0);
-        m_kanata_generated_in_this_region = true;
-      }
-
       if (!entry->uop->getMicroOp()->isVector() && entry->uop->getMicroOp()->isLoad()) {
          scalar_load_queue++;
       }
@@ -2178,6 +2181,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                                        lpiq_entry->uop->getSequenceNumber(),
                                        lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
                      lowpri_reg_pass_succeeded = true;
+                     fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
+                              entry->global_sequence_id, 
+                              lpiq_entry->global_sequence_id, 0);
                      break;
                   }
                }
@@ -2199,6 +2205,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                      ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
                                        lpiq_entry->uop->getSequenceNumber(),
                                        lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+                     fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
+                              entry->global_sequence_id, 
+                              lpiq_entry->global_sequence_id, 0);
                      lowpri_reg_pass_succeeded = true;
                      break;
                   }
@@ -2213,6 +2222,12 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          }
       } else {
          m_reg_manager->ReleaseRegister (entry->uop);
+      }
+
+      if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
+        fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
+        fprintf(m_core->getKanataFp(), "R\t%ld\t%ld\t%d\n", entry->global_sequence_id, entry->uop->getSequenceNumber(), 0);
+        m_kanata_generated_in_this_region = true;
       }
 
       entry->free();
@@ -2247,7 +2262,9 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
 
    if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
      if (m_kanata_generated_in_this_region && m_last_kanata_time != now) {
-       fprintf(m_core->getKanataFp(), "C\t%ld\n", SubsecondTime::divideRounded(now - m_last_kanata_time, now.getPeriod()));
+       fprintf(m_core->getKanataFp(), "C\t%ld\t// %ld\n", 
+         SubsecondTime::divideRounded(now - m_last_kanata_time, now.getPeriod()),
+         now.getCycleCount());
        m_last_kanata_time = now;
        m_kanata_generated_in_this_region = false;
      }
