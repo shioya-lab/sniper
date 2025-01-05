@@ -965,16 +965,16 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STOREE) &&
              m_lsu_num_in_rs > m_lsu_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiLSURSFull;
             m_frontstall_idx = frontstall_t::LSURsFull;
             break;
          }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH) &&
+         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
+              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STOR) &&
              m_vec_num_in_rs > m_vec_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiVECRSFull;
@@ -1125,8 +1125,6 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                break;
             case MicroOp::UOP_SUBTYPE_LOAD :
             case MicroOp::UOP_SUBTYPE_STORE :
-            case MicroOp::UOP_SUBTYPE_VEC_LOAD :
-            case MicroOp::UOP_SUBTYPE_VEC_STORE :
                m_lsu_num_in_rs ++;
                break;
             case MicroOp::UOP_SUBTYPE_GENERIC :
@@ -1134,6 +1132,8 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                m_alu_num_in_rs++;
                break;
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
+            case MicroOp::UOP_SUBTYPE_VEC_LOAD :
+            case MicroOp::UOP_SUBTYPE_VEC_STORE :
                m_vec_num_in_rs++;
                break;
             default :
@@ -1420,8 +1420,6 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          break;
       case MicroOp::UOP_SUBTYPE_LOAD :
       case MicroOp::UOP_SUBTYPE_STORE :
-      case MicroOp::UOP_SUBTYPE_VEC_LOAD :
-      case MicroOp::UOP_SUBTYPE_VEC_STORE :
          m_lsu_num_in_rs--;
          break;
       case MicroOp::UOP_SUBTYPE_GENERIC :
@@ -1429,6 +1427,8 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          m_alu_num_in_rs--;
          break;
       case MicroOp::UOP_SUBTYPE_VEC_ARITH :
+      case MicroOp::UOP_SUBTYPE_VEC_LOAD :
+      case MicroOp::UOP_SUBTYPE_VEC_STORE :
          m_vec_num_in_rs--;
          break;
       default :
