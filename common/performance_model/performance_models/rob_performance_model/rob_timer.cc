@@ -570,6 +570,11 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          }
 
          PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry->uop->getMicroOp()->getInstruction()->getAddress());
+         // 物理レジスタFullを経験した場合はそのまま適用：
+         if (!m_full_phyreg_mode) {
+            priority = PriorityManager::inst_priority_t::Normal;
+         }
+
          if (priority == PriorityManager::inst_priority_t::High) {
             entry->uop->setStrongPriorityInst ();
 
@@ -1004,26 +1009,41 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
+         if (m_full_phyreg_mode &&
+             now.getCycleCount() - m_full_phyreg_mode_start > 1000) {
+            m_full_phyreg_mode = false;
+            fprintf (stderr, "%ld : Full PhyReg Mode End\n", now.getCycleCount());
+         }
+
          if (uop.getMicroOp()->getDestinationRegistersLength() != 0) {
             if (m_enable_vec_priority_alloc) {
+               RegisterManager::AllocResult_t alloc_result = m_reg_manager->AllocateRegister (&uop);
+               dl::Decoder *dec = Sim()->getDecoder();
+               dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+               if (dec->is_reg_vector(dest_reg) && alloc_result == RegisterManager::AllocFull) {
+                  if (!m_full_phyreg_mode) {
+                     fprintf (stderr, "%ld : Full PhyReg Mode Start\n", now.getCycleCount());
+                  }
+                  m_full_phyreg_mode = true;
+                  m_full_phyreg_mode_start = now.getCycleCount();
+               }
                // 予約に回る命令であれば、LPIQに格納する
                if (uop.isReserveInst()) {
                   // LPIQに入れるべき命令の場合
-                  RegisterManager::AllocResult_t result = m_reg_manager->AllocateRegister (&uop);
-                  if (!Sim()->getDecoder()->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0))) {
+                  if (!dec->is_reg_vector(dest_reg)) {
                      // 整数・浮動小数点レジスタ確保
-                     if (result != RegisterManager::AllocSuccess) {
+                     if (alloc_result != RegisterManager::AllocSuccess) {
                         break;
                      // } else {
                      //    InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
                      }
-                  } else if (result == RegisterManager::AllocSuccess) {
+                  } else if (alloc_result == RegisterManager::AllocSuccess) {
                      // 予約用のレジスタの確保に成功した場合: 確保したうえでLPIQに入る
                      InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
-                  } else if (result == RegisterManager::AllocChain) {
+                  } else if (alloc_result == RegisterManager::AllocChain) {
                      // Firstではない命令は、Firstの命令の結果に依存している
                      InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::CHAIN);
-                  } else if (result == RegisterManager::AllocReserve) {
+                  } else if (alloc_result == RegisterManager::AllocReserve) {
                      // 予約用のレジスタを確保した場合
                      InsertResRegLPIQ (&uop);
                   } else {
@@ -1031,9 +1051,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                      InsertTransRegLPIQ (&uop);
                   }
                } else {
-                  if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
-                     dl::Decoder *dec = Sim()->getDecoder();
-                     dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+                  if (alloc_result == RegisterManager::AllocFull) {
                      if (dec->is_reg_int(dest_reg)) {
                         m_frontstall_idx = frontstall_t::IPhyRegFull;
                      } else if(dec->is_reg_float(dest_reg)) {
