@@ -25,7 +25,7 @@ RobContentionBoomV1::RobContentionBoomV1(const Core *core, const CoreModel *core
    , alu_used_until(DynamicMicroOpBoomV1::UOP_ALU_SIZE, SubsecondTime::Zero())
    , vecalu_used_until(DynamicMicroOpBoomV1::UOP_ALU_SIZE, SubsecondTime::Zero())
    , vecmem_used_until(DynamicMicroOpBoomV1::UOP_ALU_SIZE, SubsecondTime::Zero())
-   , m_vector_issue_times_max(Sim()->getCfg()->getInt("general/vlen") / Sim()->getCfg()->getInt("general/dlen"))
+   , m_rate_vlen_dlen(Sim()->getCfg()->getInt("general/vlen") / Sim()->getCfg()->getInt("general/dlen"))
 {
   m_vsize = 8;
 }
@@ -137,36 +137,56 @@ void RobContentionBoomV1::doIssue(DynamicMicroOp &uop)
 {
   const DynamicMicroOpBoomV1 *core_uop_info = uop.getCoreSpecificInfo<DynamicMicroOpBoomV1>();
   DynamicMicroOpBoomV1::uop_alu_t alu = core_uop_info->getAlu();
-  if (alu)
+  if (alu) {
+    // Scalar Issue
     alu_used_until[alu] = m_now + m_core_model->getAluLatency(uop.getMicroOp());
-
-  if (uop.getMicroOp()->isVector() && (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
-    if (uop.getMicroOp()->canVecSquash()) {
-      UInt64 access_times = uop.getMicroOp()->getMemoryAccessSize() * (uop.getNumMergedInst() + 1) / m_dlen;
-
-      // printf("%ld : pc=%08x, address = %08x, size = %ld, access_times = %ld\n", uop.getSequenceNumber(), uop.getMicroOp()->getInstructionPointer().address,
-      //           uop.getAddress().address,
-      //           uop.getMicroOp()->getMemoryAccessSize(), access_times);
-
-      vecmem_used_until = m_now + access_times;
-     } else {
-      vecmem_used_until = m_now;
-     }
+  } else if (uop.getMicroOp()->isVector()) {
+    if (uop.getMicroOp()->isVecMem()) {
+      if (uop.getMicroOp()->canVecSquash()) {
+        vecmem_used_until = m_now + m_rate_vlen_dlen;
+      } else {
+        vecmem_used_until = m_now;
+      }
+    } else {
+      // Vector ALU
+      vecalu_used_until = m_now + m_rate_vlen_dlen;
+    }
   }
 
-  IntPtr uop_pc = uop.getMicroOp()->getInstructionPointer().address;
-  if (m_uop_prev_pc != uop_pc) {
-    m_working_vl = m_vl;
-  }
-  if (uop.getMicroOp()->isVector() && !(uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
-     UInt64 vecalu_latency = m_vlen / m_vsize < m_working_vl ? m_vector_issue_times_max : std::max((int)std::ceil(m_working_vl * m_vsize / m_dlen), 1);
-     vecalu_used_until = m_now + vecalu_latency;
-     // std::cout << std::hex << uop_pc << " : m_working_vl = " << std::dec << m_working_vl << ", m_vsize = " << std::dec << m_vsize <<
-     //       ", m_dlen = " << m_dlen <<
-     //       ", set vecalu_used_until as " << vecalu_latency << '\n';
-    m_working_vl = m_working_vl - m_vlen / m_vsize;
-  }
-  m_uop_prev_pc = uop_pc;
+  return;
+
+  // const DynamicMicroOpBoomV1 *core_uop_info = uop.getCoreSpecificInfo<DynamicMicroOpBoomV1>();
+  // DynamicMicroOpBoomV1::uop_alu_t alu = core_uop_info->getAlu();
+  // if (alu)
+  //   alu_used_until[alu] = m_now + m_core_model->getAluLatency(uop.getMicroOp());
+
+  // if (uop.getMicroOp()->isVector() && (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
+  //   if (uop.getMicroOp()->canVecSquash()) {
+  //     UInt64 access_times = uop.getMicroOp()->getMemoryAccessSize() * (uop.getNumMergedInst() + 1) / m_dlen;
+
+  //     // printf("%ld : pc=%08x, address = %08x, size = %ld, access_times = %ld\n", uop.getSequenceNumber(), uop.getMicroOp()->getInstructionPointer().address,
+  //     //           uop.getAddress().address,
+  //     //           uop.getMicroOp()->getMemoryAccessSize(), access_times);
+
+  //     vecmem_used_until = m_now + access_times;
+  //    } else {
+  //     vecmem_used_until = m_now;
+  //    }
+  // }
+
+  // IntPtr uop_pc = uop.getMicroOp()->getInstructionPointer().address;
+  // if (m_uop_prev_pc != uop_pc) {
+  //   m_working_vl = m_vl;
+  // }
+  // if (uop.getMicroOp()->isVector() && !(uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore())) {
+  //    UInt64 vecalu_latency = m_vlen / m_vsize < m_working_vl ? m_vector_issue_times_max : std::max((int)std::ceil(m_working_vl * m_vsize / m_dlen), 1);
+  //    vecalu_used_until = m_now + vecalu_latency;
+  //    // std::cout << std::hex << uop_pc << " : m_working_vl = " << std::dec << m_working_vl << ", m_vsize = " << std::dec << m_vsize <<
+  //    //       ", m_dlen = " << m_dlen <<
+  //    //       ", set vecalu_used_until as " << vecalu_latency << '\n';
+  //   m_working_vl = m_working_vl - m_vlen / m_vsize;
+  // }
+  // m_uop_prev_pc = uop_pc;
 }
 
 bool RobContentionBoomV1::noMore()

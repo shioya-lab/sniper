@@ -571,9 +571,9 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
          PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry->uop->getMicroOp()->getInstruction()->getAddress());
          // 物理レジスタFullを経験した場合はそのまま適用：
-         if (!m_full_phyreg_mode) {
-            priority = PriorityManager::inst_priority_t::Normal;
-         }
+         // if (!m_full_phyreg_mode) {
+         //    priority = PriorityManager::inst_priority_t::Normal;
+         // }
 
          if (priority == PriorityManager::inst_priority_t::High) {
             entry->uop->setStrongPriorityInst ();
