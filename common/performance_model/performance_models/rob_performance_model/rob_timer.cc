@@ -2442,6 +2442,10 @@ void RobTimer::countOutstandingMemop(SubsecondTime time)
 
 void RobTimer::printRob(bool is_output, bool enable_check)
 {
+   if (Sim()->getCfg()->getBoolArray("log/regression_mode", m_core->getId())) {
+      return;
+   }
+
    DEBUG_COUT_IF (std::cout, "** ROB state @ "<<SubsecondTime::divideRounded(now, now.getPeriod())<<"  size("<<m_num_in_rob<<") total("<<rob.size()<<")" << std::endl);
    if (frontend_stalled_until > now)
    {
