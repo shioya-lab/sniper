@@ -209,6 +209,11 @@ private:
    SubsecondTime m_cpiVECRSFull;
    SubsecondTime m_cpiVPhyRegFull;
 
+   UInt64 m_statsALURSMax;
+   UInt64 m_statsFPURSMax;
+   UInt64 m_statsLSURSMax;
+   UInt64 m_statsVECRSMax;
+
    SubsecondTime m_cpiLDQFull;
    SubsecondTime m_cpiSTQFull;
    SubsecondTime m_cpiVLDQFull;

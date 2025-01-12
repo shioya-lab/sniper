@@ -159,6 +159,16 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "cpiVLDQFull", &m_cpiVLDQFull);
    registerStatsMetric("rob_timer", core->getId(), "cpiVSTQFull", &m_cpiVSTQFull);
 
+   // Issue Queueの最大数
+   m_statsALURSMax = 0;
+   m_statsFPURSMax = 0;
+   m_statsLSURSMax = 0;
+   m_statsVECRSMax = 0;
+   registerStatsMetric("rob_timer", core->getId(), "statsALURSMax", &m_statsALURSMax);
+   registerStatsMetric("rob_timer", core->getId(), "statsFPURSMax", &m_statsFPURSMax);
+   registerStatsMetric("rob_timer", core->getId(), "statsLSURSMax", &m_statsLSURSMax);
+   registerStatsMetric("rob_timer", core->getId(), "statsVECRSMax", &m_statsVECRSMax);
+
    m_intRegisterFull    = 0;
    m_floatRegisterFull  = 0;
    m_vectorRegisterFull = 0;
@@ -1140,19 +1150,23 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             case MicroOp::UOP_SUBTYPE_FP_ADDSUB :
             case MicroOp::UOP_SUBTYPE_FP_MULDIV :
                m_fpu_num_in_rs++;
+               m_statsFPURSMax = std::max(m_statsFPURSMax, m_fpu_num_in_rs);
                break;
             case MicroOp::UOP_SUBTYPE_LOAD :
             case MicroOp::UOP_SUBTYPE_STORE :
                m_lsu_num_in_rs ++;
+               m_statsLSURSMax = std::max(m_statsLSURSMax, m_lsu_num_in_rs);
                break;
             case MicroOp::UOP_SUBTYPE_GENERIC :
             case MicroOp::UOP_SUBTYPE_BRANCH :
                m_alu_num_in_rs++;
+               m_statsALURSMax = std::max(m_statsALURSMax, m_alu_num_in_rs);
                break;
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
             case MicroOp::UOP_SUBTYPE_VEC_LOAD :
             case MicroOp::UOP_SUBTYPE_VEC_STORE :
                m_vec_num_in_rs++;
+               m_statsVECRSMax = std::max(m_statsVECRSMax, m_vec_num_in_rs);
                break;
             default :
                LOG_ASSERT_ERROR(false, "Not expected to this point");
