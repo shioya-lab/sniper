@@ -1162,23 +1162,25 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
            DynamicMicroOp *uop = entry->uop;
            entry->kanata_registered = true;
            entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
-           fprintf(m_core->getKanataFp(), "I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
-           fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
-                   uop->getMicroOp()->getInstruction()->getAddress(),
-                   uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-           if (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) {
-              fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
-                    uop->getAddress().address);
-           }
-           if (uop->getMicroOp()->isVector()) {
-              fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
-                    m_reg_manager->getAllocVectorRegister());
-              if (m_enable_vec_priority_alloc) {
-               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
-                     m_reg_manager->getNonPriVectorRegisters(),
-                     m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
-              }
-           }
+            if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
+               fprintf(m_core->getKanataFp(), "I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
+               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
+                        uop->getMicroOp()->getInstruction()->getAddress(),
+                        uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+               if (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) {
+                  fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
+                        uop->getAddress().address);
+               }
+               if (uop->getMicroOp()->isVector()) {
+                  fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
+                        m_reg_manager->getAllocVectorRegister());
+                  if (m_enable_vec_priority_alloc) {
+                     fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
+                           m_reg_manager->getNonPriVectorRegisters(),
+                           m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
+                  }
+               }
+            }
            for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
               dl::Decoder *dec = Sim()->getDecoder();
               uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
@@ -1190,11 +1192,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                  // fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
               }
            }
-           if (uop->isInLPIQ()) {
-              fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Wf"); // Wait in FIFO
-           } else {
-              fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
-           }
+            if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
+               if (uop->isInLPIQ()) {
+                  fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Wf"); // Wait in FIFO
+               } else {
+                  fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
+               }
+            }
            // fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tVecPhyregs=%ld\n", entry->global_sequence_id, 2, m_phy_registers[2] - 32);
            m_kanata_generated_in_this_region = true;
            // fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", uop->getSequenceNumber(), 0, "F");
@@ -2199,9 +2203,11 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                                        lpiq_entry->uop->getSequenceNumber(),
                                        lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
                      lowpri_reg_pass_succeeded = true;
-                     fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
-                              entry->global_sequence_id, 
-                              lpiq_entry->global_sequence_id, 0);
+                     if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
+                        fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
+                                 entry->global_sequence_id, 
+                                 lpiq_entry->global_sequence_id, 0);
+                     }
                      break;
                   }
                }
@@ -2223,9 +2229,11 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                      ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
                                        lpiq_entry->uop->getSequenceNumber(),
                                        lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-                     fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
-                              entry->global_sequence_id, 
-                              lpiq_entry->global_sequence_id, 0);
+                     if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
+                        fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
+                                 entry->global_sequence_id, 
+                                 lpiq_entry->global_sequence_id, 0);
+                     }
                      lowpri_reg_pass_succeeded = true;
                      break;
                   }
@@ -2867,9 +2875,10 @@ void RobTimer::releaseLPIQ ()
          lpiq_front_entry->uop->removeCommitDependency();
          m_lpiq_fifo.pop_front();
          lpiq_front_entry->uop->unsetLPIQ ();
-         fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Wf");
-         fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Ds");
-
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
+            fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Wf");
+            fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Ds");
+         }
          lpiq_front_entry->lpiq_released = now.getCycleCount();
          UpdateVectorLPIQStats (lpiq_front_entry->uop,
                                 lpiq_front_entry->lpiq_released - lpiq_front_entry->lpiq_inserted);
