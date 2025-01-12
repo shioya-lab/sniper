@@ -1158,51 +1158,47 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                LOG_ASSERT_ERROR(false, "Not expected to this point");
          }
 
-         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-           DynamicMicroOp *uop = entry->uop;
-           entry->kanata_registered = true;
-           entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
-            if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-               fprintf(m_core->getKanataFp(), "I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
-               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
-                        uop->getMicroOp()->getInstruction()->getAddress(),
-                        uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-               if (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) {
-                  fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
-                        uop->getAddress().address);
-               }
-               if (uop->getMicroOp()->isVector()) {
-                  fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
-                        m_reg_manager->getAllocVectorRegister());
-                  if (m_enable_vec_priority_alloc) {
-                     fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
-                           m_reg_manager->getNonPriVectorRegisters(),
-                           m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
-                  }
-               }
-            }
-           for(unsigned int i = 0; i < uop->getDependenciesLength(); ++i) {
-              dl::Decoder *dec = Sim()->getDecoder();
-              uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
-              if (uop->getDependency(i) >= lowestValidSequenceNumber) {
-                 RobEntry *producerEntry = this->findEntryBySequenceNumber(uop->getDependency(i));
-                 if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
-                    continue;
-                 }
-                 // fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
-              }
-           }
-            if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-               if (uop->isInLPIQ()) {
-                  fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Wf"); // Wait in FIFO
-               } else {
-                  fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
-               }
-            }
-           // fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tVecPhyregs=%ld\n", entry->global_sequence_id, 2, m_phy_registers[2] - 32);
-           m_kanata_generated_in_this_region = true;
-           // fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", uop->getSequenceNumber(), 0, "F");
+         entry->kanata_registered = true;
+         entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
+         KANATA_PRINTF ("I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
+         KANATA_PRINTF ("L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
+                        uop.getMicroOp()->getInstruction()->getAddress(),
+                        uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
+         if (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore()) {
+            KANATA_PRINTF ("L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
+                           uop.getAddress().address);
          }
+         if (uop.getMicroOp()->isVector()) {
+            KANATA_PRINTF ("L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
+                           m_reg_manager->getAllocVectorRegister());
+            if (m_enable_vec_priority_alloc) {
+               KANATA_PRINTF ("L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
+                     m_reg_manager->getNonPriVectorRegisters(),
+                     m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
+            }
+         }
+         for(unsigned int i = 0; i < uop.getDependenciesLength(); ++i) {
+            dl::Decoder *dec = Sim()->getDecoder();
+            uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
+            if (uop.getDependency(i) >= lowestValidSequenceNumber) {
+               RobEntry *producerEntry = this->findEntryBySequenceNumber(uop.getDependency(i));
+               if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
+                  continue;
+               }
+               // KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
+            }
+         }
+         if (uop.isInLPIQ()) {
+            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                          "Wf"); // Wait in FIFO
+         } else {
+            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                          "Ds");
+         }
+         // KANATA_PRINTF ("L\t%ld\t%d\tVecPhyregs=%ld\n",
+         // entry->global_sequence_id, 2, m_phy_registers[2] - 32);
+         m_kanata_generated_in_this_region = true;
+         // KANATA_PRINTF ("E\t%ld\t%d\t%s\n", uop.getSequenceNumber(), 0, "F");
 
          uops_dispatched++;
          if (uop.isLast())
@@ -1430,13 +1426,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    entry->issued = now;
    entry->done = cycle_done;
 
-   if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
-      fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Wf");
+   if (entry->kanata_registered) {
+      KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Wf");
       if (uop.isPreloadDone()) {
-         fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
+         KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
       }
-      fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
-      fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "X");
+      KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
+      KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "X");
       m_kanata_generated_in_this_region = true;
    }
 
@@ -1636,10 +1632,8 @@ SubsecondTime RobTimer::doIssue()
          canIssue = false;
       } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
          ROB_DEBUG_PRINTF ("  disambiguation, index = %ld\n", uop->getSequenceNumber());
-         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "disambiguation failed");
-            m_kanata_generated_in_this_region = true;
-         }
+         KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "disambiguation failed");
+         m_kanata_generated_in_this_region = true;
          canIssue = false;          // preceding store with unknown address
       }
       else if (uop->getMicroOp()->isStore() && !uop->getMicroOp()->isVector() && !store_queue.hasFreeSlot(now)) {
@@ -1716,7 +1710,7 @@ SubsecondTime RobTimer::doIssue()
             //     issued_vec_mem++;
             //   } else {
             //      if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            //         fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector Load slot full");
+            //         KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector Load slot full");
             //      }
             //      canIssue = false;
             //   }
@@ -1764,7 +1758,7 @@ SubsecondTime RobTimer::doIssue()
                               uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
                   }
                   // if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-                  //    fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, bank conflict");
+                  //    KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, bank conflict");
                   // }
                }
 
@@ -1775,7 +1769,7 @@ SubsecondTime RobTimer::doIssue()
               canIssue = false;
             }
             // if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            //    fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
+            //    KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
             // }
             // if (canIssue) {
             //   if (uop->getMicroOp()->isLoad()) {
@@ -1786,10 +1780,8 @@ SubsecondTime RobTimer::doIssue()
             // }
          }
       } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
-         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector inorder, wait");
-            m_kanata_generated_in_this_region = true;
-         }
+         KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector inorder, wait");
+         m_kanata_generated_in_this_region = true;
          canIssue = false;
       }
 
@@ -1870,10 +1862,8 @@ SubsecondTime RobTimer::doIssue()
          //        ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
          //        "\n";
          // }
-         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            if (entry->kanata_registered) {
-               fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
-            }
+         if (entry->kanata_registered) {
+            KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
          }
          canIssue = false;          // blocked by structural hazard
       }
@@ -2203,11 +2193,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                                        lpiq_entry->uop->getSequenceNumber(),
                                        lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
                      lowpri_reg_pass_succeeded = true;
-                     if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-                        fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
-                                 entry->global_sequence_id, 
-                                 lpiq_entry->global_sequence_id, 0);
-                     }
+                     KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", 
+                              entry->global_sequence_id, 
+                              lpiq_entry->global_sequence_id, 0);
                      break;
                   }
                }
@@ -2229,11 +2217,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                      ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
                                        lpiq_entry->uop->getSequenceNumber(),
                                        lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-                     if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-                        fprintf(m_core->getKanataFp(), "W\t%ld\t%ld\t%d\n", 
-                                 entry->global_sequence_id, 
-                                 lpiq_entry->global_sequence_id, 0);
-                     }
+                     KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", 
+                              entry->global_sequence_id, 
+                              lpiq_entry->global_sequence_id, 0);
                      lowpri_reg_pass_succeeded = true;
                      break;
                   }
@@ -2250,10 +2236,10 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          m_reg_manager->ReleaseRegister (entry->uop);
       }
 
-      if (m_active_kanata_gen && m_konata_count < m_konata_count_max && entry->kanata_registered) {
-        fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
-        fprintf(m_core->getKanataFp(), "R\t%ld\t%ld\t%d\n", entry->global_sequence_id, entry->uop->getSequenceNumber(), 0);
-        m_kanata_generated_in_this_region = true;
+      if (entry->kanata_registered) {
+         KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
+         KANATA_PRINTF ("R\t%ld\t%ld\t%d\n", entry->global_sequence_id, entry->uop->getSequenceNumber(), 0);
+         m_kanata_generated_in_this_region = true;
       }
 
       entry->free();
@@ -2286,14 +2272,13 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
       std::cout<<"Running cycles "<< std::dec << SubsecondTime::divideRounded(now, now.getPeriod())<<std::endl;
    }
 
-   if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-     if (m_kanata_generated_in_this_region && m_last_kanata_time != now) {
-       fprintf(m_core->getKanataFp(), "C\t%ld\t// %ld\n", 
-         SubsecondTime::divideRounded(now - m_last_kanata_time, now.getPeriod()),
-         now.getCycleCount());
-       m_last_kanata_time = now;
-       m_kanata_generated_in_this_region = false;
-     }
+   if (m_kanata_generated_in_this_region && m_last_kanata_time != now) {
+      KANATA_PRINTF("C\t%ld\t// %ld\n",
+                    SubsecondTime::divideRounded(now - m_last_kanata_time,
+                                                 now.getPeriod()),
+                    now.getCycleCount());
+      m_last_kanata_time = now;
+      m_kanata_generated_in_this_region = false;
    }
 
    if (m_roi_started) {
@@ -2321,27 +2306,26 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    SubsecondTime next_issue    = doIssue();
    SubsecondTime next_commit   = doCommit(instructionsExecuted);
 
-   if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-     for(unsigned int i = 0; i < rob.size(); ++i) {
-       RobEntry *e = &rob.at(i);
+   for (unsigned int i = 0; i < rob.size(); ++i) {
+      RobEntry *e = &rob.at(i);
 
-       if (e->done == now) {
+      if (e->done == now) {
          if (!e->kanata_registered) {
-           DynamicMicroOp *uop = e->uop;
-           e->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
-           fprintf(m_core->getKanataFp(), "I\t%ld\t%d\t%d\n", e->global_sequence_id, 0, 0);
-           fprintf(m_core->getKanataFp(), "L\t%ld\t%d\t%08lx:%s\n", e->global_sequence_id, 0,
-                   uop->getMicroOp()->getInstruction()->getAddress(),
-                   uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-           m_kanata_generated_in_this_region = true;
+            DynamicMicroOp *uop = e->uop;
+            e->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
+            KANATA_PRINTF("I\t%ld\t%d\t%d\n", e->global_sequence_id, 0, 0);
+            KANATA_PRINTF(
+                "L\t%ld\t%d\t%08lx:%s\n", e->global_sequence_id, 0,
+                uop->getMicroOp()->getInstruction()->getAddress(),
+                uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+            m_kanata_generated_in_this_region = true;
          } else {
-           fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", e->global_sequence_id, 0, "X");
-           fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", e->global_sequence_id, 0, "Cm");
-           m_kanata_generated_in_this_region = true;
+            KANATA_PRINTF("E\t%ld\t%d\t%s\n", e->global_sequence_id, 0, "X");
+            KANATA_PRINTF("S\t%ld\t%d\t%s\n", e->global_sequence_id, 0, "Cm");
+            m_kanata_generated_in_this_region = true;
          }
-          m_konata_count++;
-       }
-     }
+         m_konata_count++;
+      }
    }
 
    if (true) {
@@ -2392,10 +2376,10 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
       for (auto it = m_core->prefetch_arrive_list.begin(); it != m_core->prefetch_arrive_list.end();) {
          UInt64 global_id = it->first;
          UInt64 cycle     = it->second;
-         // fprintf (m_core->getKanataFp(), "  // %ld %ld\n", now.getElapsedTime().getNS(), cycle);
+         // KANATA_PRINTF ("  // %ld %ld\n", now.getElapsedTime().getNS(), cycle);
          if (now.getElapsedTime().getNS() > cycle) {
-            fprintf (m_core->getKanataFp(), "E\t%ld\t%d\tP\n", global_id, 0);
-            fprintf (m_core->getKanataFp(), "R\t%ld\t%d\t0\n", global_id, 0);
+            KANATA_PRINTF ("E\t%ld\t%d\tP\n", global_id, 0);
+            KANATA_PRINTF ("R\t%ld\t%d\t0\n", global_id, 0);
             it = m_core->prefetch_arrive_list.erase(it);
          } else {
             it++;
@@ -2751,11 +2735,9 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
                            rob_idx,
                            uop.getSequenceNumber());
          uop.setPreloadDone();
-         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
-            fprintf(m_core->getKanataFp(), "L\t%ld\t%d\tAddress=%08lx\n", entry->global_sequence_id, 1, uop.getAddress().address);
-            m_kanata_generated_in_this_region = true;
-         }
+         KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
+         KANATA_PRINTF ("L\t%ld\t%d\tAddress=%08lx\n", entry->global_sequence_id, 1, uop.getAddress().address);
+         m_kanata_generated_in_this_region = true;
 
          m_preload_count ++;
          UpdatePreloadStats (&uop);
@@ -2875,10 +2857,8 @@ void RobTimer::releaseLPIQ ()
          lpiq_front_entry->uop->removeCommitDependency();
          m_lpiq_fifo.pop_front();
          lpiq_front_entry->uop->unsetLPIQ ();
-         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            fprintf(m_core->getKanataFp(), "E\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Wf");
-            fprintf(m_core->getKanataFp(), "S\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Ds");
-         }
+         KANATA_PRINTF ("E\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Wf");
+         KANATA_PRINTF ("S\t%ld\t%d\t%s\n", lpiq_front_entry->global_sequence_id, 0, "Ds");
          lpiq_front_entry->lpiq_released = now.getCycleCount();
          UpdateVectorLPIQStats (lpiq_front_entry->uop,
                                 lpiq_front_entry->lpiq_released - lpiq_front_entry->lpiq_inserted);
