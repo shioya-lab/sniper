@@ -1673,13 +1673,8 @@ SubsecondTime RobTimer::doIssue()
          }
       }
 
-      // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-      //   std::cout << "  hazard check final result : " << uop->getMicroOp()->toShortString() <<
-      //       ", index = " << uop->getSequenceNumber() <<
-      //       (canIssue ? " True" : " False") << std::endl;
-      // }
-
       if (!canIssue && !uop->getMicroOp()->isVector()) {
+         // スカラ命令で命令発行が止まると、それ以降のベクトル命令は発行してはいけない
          vector_someone_cant_be_issued = dyn_vector_inorder;
       }
 
@@ -1687,51 +1682,11 @@ SubsecondTime RobTimer::doIssue()
                                                                                   inhead_vecmem_existed);
       bool v_to_s_block = (v_to_s_fence && inhead_vector_existed && !uop->getMicroOp()->isVector()) || scalar_lsu_fence;
 
-      // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-      //    if (!uop->getMicroOp()->isVector() &&
-      //                            (uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore())) {
-      //       fprintf(stderr, "Instr %ld, inflight_vecmem_block condition?: %s\n", uop->getSequenceNumber(),
-      //                uop->getMicroOp()->toShortString().c_str());
-      //       fprintf(stderr, "  commit_time = %ld, now = %ld, inhead_vecmem_existed = %d, scalar_lsu_fence = %d\n",
-      //               SubsecondTime::divideRounded(m_latest_vecmem_commit_time, m_core->getDvfsDomain()->getPeriod()),
-      //               SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()),
-      //               inhead_vecmem_existed, scalar_lsu_fence);
-      //    }
-      // }
-
-
       if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
           uop->getMicroOp()->isVector()) {
-         // fprintf (stderr, "m_gather_scatter_merge = %d\n", m_gather_scatter_merge);
          if (uop->getMicroOp()->isVector() &&
              !uop->getMicroOp()->canVecSquash()) {
-            // Gather Scatter
-
-            // if (dyn_vector_inorder) {
-            //   if (issued_vec_mem < 8 &&
-            //       (issued_vec_mem == 0 ||
-            //        static_cast<uint64_t>(last_vec_issued_idx + 1) == i)) { // Initial Vector Inst, or sequential Vector inst
-            //     last_vec_issued_idx = i;
-            //     issued_vec_mem++;
-            //     if (vector_someone_cant_be_issued) {
-            //       canIssue = false;
-            //     }
-            //   } else {
-            //     canIssue = false;
-            //   }
-            // } else { // Vector Out-of-Order
-            //   if (issued_vec_mem < 8) {
-            //     issued_vec_mem++;
-            //   } else {
-            //      if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            //         KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector Load slot full");
-            //      }
-            //      canIssue = false;
-            //   }
-            // }
-
-            // If Gather/Scatter Merge NOT, number of Vector Store request into Scalar LoadQ is,
-            // same as # of request
+            // Gather/Scatter命令の場合：キャッシュラインマージ操作が入る
 
             if (canIssue) {
 
@@ -1747,13 +1702,6 @@ SubsecondTime RobTimer::doIssue()
                               uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
                   }
                   m_bank_info[bank_index] = banked_cache_line;
-                  // if (m_gather_scatter_merge && canIssue) {
-                  //   if (uop->getMicroOp()->isLoad()) {
-                  //     m_VtoS_RdRequests ++;
-                  //   } else {
-                  //     m_VtoS_WrRequests ++;
-                  //   }
-                  // }
                } else if (m_bank_info[bank_index] == banked_cache_line) {
                   // Same Bank Access and Can be Merge:
                   uop->setMemAccessMerge();
@@ -1771,29 +1719,21 @@ SubsecondTime RobTimer::doIssue()
                               uop->getMicroOp()->toShortString().c_str(),
                               uop->getAddress().address, m_bank_info[bank_index], bank_index, canIssue);
                   }
-                  // if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-                  //    KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, bank conflict");
-                  // }
                }
 
                m_bank_info[bank_index] = banked_cache_line;
             }
-         } else {   // Gather Scatter Merge doesn't happen
+         } else {
+            // Gather Scatter 以外の命令
             if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
-              canIssue = false;
+               // vector_someone_cant_be_issuedが立っていると、スカラ命令によってベクトル命令の発行は禁止される
+               // ベクトル命令は発行してはならない
+               canIssue = false;
             }
-            // if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            //    KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Gather Scatter, merge doesn't happen");
-            // }
-            // if (canIssue) {
-            //   if (uop->getMicroOp()->isLoad()) {
-            //     m_VtoS_RdRequests ++;
-            //   } else {
-            //     m_VtoS_WrRequests ++;
-            //   }
-            // }
          }
       } else if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
+         // vector_someone_cant_be_issuedが立っていると、スカラ命令によってベクトル命令の発行は禁止される
+         // ベクトル命令は発行してはならない
          KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vector inorder, wait");
          m_kanata_generated_in_this_region = true;
          canIssue = false;
@@ -1811,6 +1751,7 @@ SubsecondTime RobTimer::doIssue()
          v_to_s_fenced = true;
       }
 
+      // 統計情報取得
       if (uop->getMicroOp()->isVector()) {
          // Vector Instructions
          if (canIssue) {
@@ -1822,21 +1763,9 @@ SubsecondTime RobTimer::doIssue()
             }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                vec_ooo_issue_count ++;
-               // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-               //    fprintf (stderr, "Vector %ld was issued out-of-ordered. PC=%08lx, %s\n",
-               //                      uop->getSequenceNumber(),
-               //                      uop->getAddress().address,
-               //                      uop->getMicroOp()->toShortString().c_str());
-               // }
             }
          } else if (!uop->isVirtuallyIssued()) {
             vector_someone_wait_issue = true;
-            // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-            //    fprintf (stderr, "Vector %ld waiting: %s %ld\n",
-            //                      uop->getSequenceNumber(),
-            //                      uop->getMicroOp()->toShortString().c_str(),
-            //                      SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
-            // }
          }
       } else {
          // Scalar Instructions
@@ -1849,33 +1778,14 @@ SubsecondTime RobTimer::doIssue()
             }
             if (vector_someone_wait_issue || scalar_someone_wait_issue) {
                scalar_ooo_issue_count++;
-               // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-               //    fprintf (stderr, "Scalar %ld was issued out-of-ordered. PC=%08lx, %s\n",
-               //                      uop->getSequenceNumber(),
-               //                      uop->getAddress().address,
-               //                      uop->getMicroOp()->toShortString().c_str());
-               // }
             }
          } else {
             scalar_someone_wait_issue = true;
-            // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-            //    fprintf (stderr, "Scalar %ld waiting: %s %ld\n",
-            //                      uop->getSequenceNumber(),
-            //                      uop->getMicroOp()->toShortString().c_str(),
-            //                      SubsecondTime::divideRounded(entry->done, m_core->getDvfsDomain()->getPeriod()));
-            // }
          }
       }
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-         // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-         //    std::cout << "  tryIssue failed " << uop->getMicroOp()->toShortString() <<
-         //        ", index = " << uop->getSequenceNumber() <<
-         //        ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
-         //        ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
-         //        "\n";
-         // }
          if (entry->kanata_registered) {
             KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
          }
@@ -1890,45 +1800,11 @@ SubsecondTime RobTimer::doIssue()
           m_vec_preload &&
           uop->getMicroOp()->isVecMem() && /* uop->getMicroOp()->isLoad() && */
           !uop->isPreloadDone()) {
-         // // dependencyのチェック：ちょっと詳細にチェックしないといけない
-         // // 1. 依存先の命令が同じPCでIDが1つ違い -> 同じベクトル命令グループのため，この依存は無視してよい
-         // bool real_dependency = false;
-         // for (uint32_t j = 0; j < entry->uop->getDependenciesLength(); j++) {
-         //    RobEntry *dep_entry = findEntryBySequenceNumber(entry->uop->getDependency(j));
-         //    if (dep_entry->uop->getMicroOp()->getInstruction()->getAddress() == uop->getMicroOp()->getInstruction()->getAddress() &&
-         //        dep_entry->uop->getSequenceNumber() + 1 == uop->getSequenceNumber()) {
-         //       // This is pseudo (Vector group in-order dependency)
-         //    } else {
-         //       real_dependency = true;
-         //    }
-         // }
-
-         // for(unsigned int ad = 0; ad < uop->getMicroOp()->getAddressRegistersLength(); ++ad)
-         // {
-         //    uint64_t addressProducer = uop->getMicroOp()->getAddressRegister(ad);
-         //    RobEntry *prodEntry = addressProducer >= this->rob.front().uop->getSequenceNumber()
-         //                        ? this->findEntryBySequenceNumber(addressProducer) : NULL;
-         //    if (prodEntry && prodEntry->done == SubsecondTime::MaxTime()) {
-         //       // An address producer has not yet been issued: address remains not ready
-         //       real_dependency = true;
-         //    }
-         // }
-
          if (/* entry->addressReady > now */entry->uop->getDependenciesLength() == 0 && m_rob_contention->tryPreload()) {
             // Pipeline available
             preloadInstruction (i);
             done_preload = true;
-         // } else {
-         //   if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-         //     std::cout << "Early preload : tryIssue failed " << uop->getMicroOp()->toShortString() <<
-         //         ", index = " << uop->getSequenceNumber() <<
-         //         ", vecmem_used_until = " << SubsecondTime::divideRounded(m_rob_contention->get_vecmem_used_until(), m_core->getDvfsDomain()->getPeriod()) <<
-         //         ", now = " << SubsecondTime::divideRounded(now, m_core->getDvfsDomain()->getPeriod()) <<
-         //         "\n";
-         //   }
          }
-      // } else {
-      //    ROB_DEBUG_PRINTF ("seqId=%ld : Preload condition failed, regDependenciesLength = %d\n", uop->getSequenceNumber(), entry->uop->getRegDependenciesLength());
       }
 
       if (canIssue && !done_preload) {
@@ -2024,10 +1900,6 @@ SubsecondTime RobTimer::doIssue()
 
       if (canIssue && uop->getMicroOp()->isVector() &&
           uop->getMicroOp()->UopIdx() == 0) {
-          // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-          //      std::cout << "Vector Issue Start = " << uop->getMicroOp()->toShortString() <<
-          //          ", index = " << uop->getSequenceNumber() << '\n';
-          // }
         uop->setVirtuallyIssued();
         for (uint64_t j = i+1; j < m_num_in_rob; ++j) {
           RobEntry *subseq_entry = &rob.at(j);
@@ -2035,10 +1907,6 @@ SubsecondTime RobTimer::doIssue()
 
           if (subseq_uop->getMicroOp()->getInstruction()->getAddress() ==
               uop->getMicroOp()->getInstruction()->getAddress()) {
-               // if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-               //    std::cout << "  Set Virtually Issue. " << subseq_uop->getMicroOp()->toShortString() <<
-               //        ", index = " << subseq_uop->getSequenceNumber() << '\n';
-               // }
             subseq_uop->setVirtuallyIssued();
           } else {
             break;
