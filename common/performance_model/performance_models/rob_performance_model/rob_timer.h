@@ -400,6 +400,8 @@ private:
    const String m_app;
    const UInt64 m_pref_target_log;
 
+   const bool m_vec_store_inorder;
+
    bool m_show_rob;
 
    PriorityManager *m_priority_manager; 

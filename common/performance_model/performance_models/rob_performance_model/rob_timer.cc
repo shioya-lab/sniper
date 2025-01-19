@@ -93,6 +93,7 @@ RobTimer::RobTimer(
       , m_last_committed_time(core->getDvfsDomain())
       , m_app(Sim()->getCfg()->getString("general/app"))
       , m_pref_target_log(strtol(Sim()->getCfg()->getStringArray("log/vec_pref_target_pc", core->getId()).c_str(), NULL, 16))
+      , m_vec_store_inorder (Sim()->getCfg()->getBoolArray("research_option/vec_store_inorder", core->getId()))  // Vector Store 命令のみインオーダで実行する
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -1004,6 +1005,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             m_frontstall_idx = frontstall_t::VLDQFull;
             break;
          }
+         // VSTQ full
+         if (uop.getMicroOp()->isVecStore() && vec_store_queue == 0) {
+            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Store Queue overflow\n", uop.getSequenceNumber());
+            cpiFrontEnd = &m_cpiVSTQFull;
+            m_frontstall_idx = frontstall_t::VSTQFull;
+            break;
+         }
          // Scalar LDQ full
          if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad() && scalar_load_queue == 0) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Load Queue overflow\n", uop.getSequenceNumber());
@@ -1125,11 +1133,11 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          //    break;
          // }
 
-         if (!ReserveVSTQ (m_num_in_rob)) {
-            cpiFrontEnd = &m_cpiVSTQFull;
-            m_frontstall_idx = frontstall_t::VSTQFull;
-            break;
-         }
+         // if (!ReserveVSTQ (m_num_in_rob)) {
+         //    cpiFrontEnd = &m_cpiVSTQFull;
+         //    m_frontstall_idx = frontstall_t::VSTQFull;
+         //    break;
+         // }
 
          entry->fetch = missed_icache;
          entry->dispatched = now;
@@ -1138,6 +1146,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          if (uop.getMicroOp()->isVecLoad()) {
             --vec_load_queue;
+         }
+         if (!m_vec_store_inorder && uop.getMicroOp()->isVecStore()) {
+            --vec_store_queue;
          }
          if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad()) {
             --scalar_load_queue;
@@ -1172,42 +1183,44 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                LOG_ASSERT_ERROR(false, "Not expected to this point");
          }
 
-         entry->kanata_registered = true;
-         entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
-         KANATA_PRINTF ("I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
-         KANATA_PRINTF ("L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
-                        uop.getMicroOp()->getInstruction()->getAddress(),
-                        uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
-         if (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore()) {
-            KANATA_PRINTF ("L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
-                           uop.getAddress().address);
-         }
-         if (uop.getMicroOp()->isVector()) {
-            KANATA_PRINTF ("L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
-                           m_reg_manager->getAllocVectorRegister());
-            if (m_enable_vec_priority_alloc) {
-               KANATA_PRINTF ("L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
-                     m_reg_manager->getNonPriVectorRegisters(),
-                     m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
+            entry->kanata_registered = true;
+            entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
+            KANATA_PRINTF ("I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
+            KANATA_PRINTF ("L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
+                           uop.getMicroOp()->getInstruction()->getAddress(),
+                           uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
+            if (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore()) {
+               KANATA_PRINTF ("L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
+                              uop.getAddress().address);
             }
-         }
-         for(unsigned int i = 0; i < uop.getDependenciesLength(); ++i) {
-            dl::Decoder *dec = Sim()->getDecoder();
-            uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
-            if (uop.getDependency(i) >= lowestValidSequenceNumber) {
-               RobEntry *producerEntry = this->findEntryBySequenceNumber(uop.getDependency(i));
-               if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
-                  continue;
+            if (uop.getMicroOp()->isVector()) {
+               KANATA_PRINTF ("L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
+                              m_reg_manager->getAllocVectorRegister());
+               if (m_enable_vec_priority_alloc) {
+                  KANATA_PRINTF ("L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
+                        m_reg_manager->getNonPriVectorRegisters(),
+                        m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
                }
-               // KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
             }
-         }
-         if (uop.isInLPIQ()) {
-            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
-                          "Wf"); // Wait in FIFO
-         } else {
-            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
-                          "Ds");
+            for(unsigned int i = 0; i < uop.getDependenciesLength(); ++i) {
+               dl::Decoder *dec = Sim()->getDecoder();
+               uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
+               if (uop.getDependency(i) >= lowestValidSequenceNumber) {
+                  RobEntry *producerEntry = this->findEntryBySequenceNumber(uop.getDependency(i));
+                  if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
+                     continue;
+                  }
+                  // KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
+               }
+            }
+            if (uop.isInLPIQ()) {
+               KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                           "Wf"); // Wait in FIFO
+            } else {
+               KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                           "Ds");
+            }
          }
          // KANATA_PRINTF ("L\t%ld\t%d\tVecPhyregs=%ld\n",
          // entry->global_sequence_id, 2, m_phy_registers[2] - 32);
@@ -1574,6 +1587,7 @@ SubsecondTime RobTimer::doIssue()
    bool dyn_inorder = inorder;
 
    bool vector_someone_cant_be_issued = false;
+   bool vector_store_someone_cant_be_issued = false;
 
    if (m_rob_contention)
       m_rob_contention->initCycle(now);
@@ -1682,11 +1696,15 @@ SubsecondTime RobTimer::doIssue()
                                                                                   inhead_vecmem_existed);
       bool v_to_s_block = (v_to_s_fence && inhead_vector_existed && !uop->getMicroOp()->isVector()) || scalar_lsu_fence;
 
-      if ((uop->getMicroOp()->isLoad() || uop->getMicroOp()->isStore()) &&
-          uop->getMicroOp()->isVector()) {
-         if (uop->getMicroOp()->isVector() &&
-             !uop->getMicroOp()->canVecSquash()) {
+      if (uop->getMicroOp()->isVecMem()) {
+         if (!uop->getMicroOp()->canVecSquash()) {
             // Gather/Scatter命令の場合：キャッシュラインマージ操作が入る
+
+            if (uop->getMicroOp()->isVecStore() && 
+                        m_vec_store_inorder && vector_store_someone_cant_be_issued) {
+               // m_vec_store_inorderが有効だと、ベクトルストアはインオーダで実行されなければならい
+               canIssue = false;
+            }
 
             if (canIssue) {
 
@@ -1728,6 +1746,11 @@ SubsecondTime RobTimer::doIssue()
             if (uop->getMicroOp()->isVector() && dyn_vector_inorder && vector_someone_cant_be_issued) {
                // vector_someone_cant_be_issuedが立っていると、スカラ命令によってベクトル命令の発行は禁止される
                // ベクトル命令は発行してはならない
+               canIssue = false;
+            }
+            if (uop->getMicroOp()->isVecStore() &&
+                        m_vec_store_inorder && vector_store_someone_cant_be_issued) {
+               // m_vec_store_inorderが有効だと、ベクトルストアはインオーダで実行されなければならい
                canIssue = false;
             }
          }
@@ -1887,7 +1910,13 @@ SubsecondTime RobTimer::doIssue()
          head_of_queue = false;     // Subsequent instructions are not at the head of the ROB
 
          if (uop->getMicroOp()->isVector() && dyn_vector_inorder && !uop->isVirtuallyIssued()) {
-           vector_someone_cant_be_issued = true; // Vector can't continue
+            // 後続のベクトル命令が発行されていない場合
+            vector_someone_cant_be_issued = true; // Vector can't continue
+         }
+
+         if (uop->getMicroOp()->isVector() &&
+             m_vec_store_inorder && !uop->isVirtuallyIssued()) {
+            vector_store_someone_cant_be_issued = true; // Vector store can't continue
          }
 
          if (uop->getMicroOp()->isStore() && entry->addressReady > now)
@@ -2038,22 +2067,25 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          vec_load_queue++;
       }
       if (entry->uop->getMicroOp()->isVecStore()) {
-         vec_store_queue += 1;
-         // fprintf (stderr, "vector Store queue increased : %ld\n", vec_store_queue);
-         static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
-         LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value.");
-
-         // VSQ資源が解決されれば，m_lpiq_fifo内の先頭SQハザードをRESOLVEDに変更する
-         for (auto &f : m_lpiq_fifo) {
-            RobEntry *lpiq_entry = this->findEntryBySequenceNumber(f);
-            if (lpiq_entry->uop->isInLPIQ() &&
-                lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::SQ) {
-               lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
-               vec_store_queue -= 1;
-               break;
-            }
-         }
+         vec_store_queue++;
       }
+      // if (entry->uop->getMicroOp()->isVecStore()) {
+      //    vec_store_queue += 1;
+      //    // fprintf (stderr, "vector Store queue increased : %ld\n", vec_store_queue);
+      //    static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
+      //    LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value.");
+
+      //    // VSQ資源が解決されれば，m_lpiq_fifo内の先頭SQハザードをRESOLVEDに変更する
+      //    for (auto &f : m_lpiq_fifo) {
+      //       RobEntry *lpiq_entry = this->findEntryBySequenceNumber(f);
+      //       if (lpiq_entry->uop->isInLPIQ() &&
+      //           lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::SQ) {
+      //          lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
+      //          vec_store_queue -= 1;
+      //          break;
+      //       }
+      //    }
+      // }
 
       if (m_enable_vec_priority_alloc) {
          // 非優先命令の持っているレジスタは解放時に、LPIQ内のレジスタを渡す
@@ -2352,7 +2384,8 @@ void RobTimer::printRob(bool is_output, bool enable_check)
    DEBUG_COUT_IF (std::cout, "   VLDQ entries remained: "<< vec_load_queue << "  VSTQ entries remained: "<< vec_store_queue << std::endl);
 
    static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
-   LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value.");
+   LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value. %ld <= %ld",
+                     vec_store_queue, vec_store_queue_max);
 
    size_t vecstore_count = 0;
 
