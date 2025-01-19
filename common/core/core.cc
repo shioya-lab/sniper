@@ -121,11 +121,14 @@ Core::Core(SInt32 id)
       fprintf (m_kanata_fp, "C=\t%d\n", 0);
    }
 
+   m_dump_hw_config = new DumpHwConfig(m_core_id);
+
    m_performance_model = PerformanceModel::create(this);
 }
 
 Core::~Core()
 {
+
    if (m_cheetah_manager)
       delete m_cheetah_manager;
    delete m_topology_info;

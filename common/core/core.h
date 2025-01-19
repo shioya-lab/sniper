@@ -20,6 +20,7 @@ class CheetahManager;
 #include "bbv_count.h"
 #include "cpuid.h"
 #include "hit_where.h"
+#include "dump_hw_config.h"
 
 #include <set>
 
@@ -173,6 +174,8 @@ class Core
       FILE *m_o3_fp;
       FILE *m_kanata_fp;
       uint64_t global_sequence_id = 0;
+
+      DumpHwConfig *m_dump_hw_config;
 
       MemoryResult initiateMemoryAccess(
           MemComponent::component_t mem_component,
