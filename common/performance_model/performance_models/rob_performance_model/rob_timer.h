@@ -64,6 +64,8 @@ private:
 
          bool kanata_registered;  // Indicate Kanata Format Instruction Registered
          size_t phy_reg_index;    // Physical Register allocated index
+
+         bool front_stall_now;
    };
 
    const uint64_t dispatchWidth;
@@ -335,17 +337,17 @@ private:
    } ;
    std::unordered_map<UInt64, dcache_stats_t*> m_vec_dcache_stats;  // <PC, <<Hit, Miss>, assembly>>
    inline void UpdateVecDCacheStats(DynamicMicroOp *uop, int hitwhere) {
-      // // Update stats
-      // auto vec_dcache_it = m_vec_dcache_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
-      // if (vec_dcache_it == m_vec_dcache_stats.end()) {
-      //    dcache_stats_t *s = new dcache_stats_t();
-      //    s->hitwhere[hitwhere] = 1;
-      //    s->assembly = uop->getMicroOp()->getInstruction()->getDisassembly();
-      //    m_vec_dcache_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(), s)); // Not found
-      // } else {
-      //    // Found
-      //    (vec_dcache_it->second)->hitwhere[hitwhere]++;
-      // }
+      // Update stats
+      auto vec_dcache_it = m_vec_dcache_stats.find(uop->getMicroOp()->getInstruction()->getAddress());
+      if (vec_dcache_it == m_vec_dcache_stats.end()) {
+         dcache_stats_t *s = new dcache_stats_t();
+         s->hitwhere[hitwhere] = 1;
+         s->assembly = uop->getMicroOp()->getInstruction()->getDisassembly();
+         m_vec_dcache_stats.insert(std::make_pair(uop->getMicroOp()->getInstruction()->getAddress(), s)); // Not found
+      } else {
+         // Found
+         (vec_dcache_it->second)->hitwhere[hitwhere]++;
+      }
    }
 
    // 統計情報 : プリロードがどれくらい発行されたか

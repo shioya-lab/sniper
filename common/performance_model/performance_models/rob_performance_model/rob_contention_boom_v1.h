@@ -15,7 +15,7 @@
 class RobContentionBoomV1 : public RobContention {
    private:
       const CoreModel *m_core_model;
-      uint64_t m_cache_block_mask;
+      uint64_t m_cache_block_size;
       ComponentTime m_now;
 
       // port contention

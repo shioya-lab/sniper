@@ -370,8 +370,6 @@ RobTimer::~RobTimer()
    }
    std::cout << '\n';
    for (auto it = m_vec_dcache_stats.begin(); it != m_vec_dcache_stats.end(); it++) {
-      std::cout << std::hex << it->first << ", ";
-
       // Calculate L1/L2 hit rate
       UInt64 hit_count = 0, whole_count = 0;
       for (int h = HitWhere::WHERE_FIRST ; h < HitWhere::NUM_HITWHERES ; h++) {
@@ -380,6 +378,10 @@ RobTimer::~RobTimer()
             hit_count += (it->second)->hitwhere[h];
          }
       }
+      if (whole_count < 100) {
+         continue;
+      }
+      std::cout << std::hex << it->first << ", ";
       std::cout << std::fixed << std::setprecision(3) << (static_cast<double>(hit_count)/whole_count) << ", ";
 
       for (int h = HitWhere::WHERE_FIRST ; h < HitWhere::NUM_HITWHERES ; h++) {
@@ -407,7 +409,7 @@ RobTimer::~RobTimer()
             static_cast<double>(std::get<2>(entry)) / static_cast<double>(std::get<3>(entry)));
 
       if (std::get<5>(entry) != 0) {
-         fprintf(stderr, ", %10d, average = %7.2lf",
+         fprintf(stderr, ", %10d, lpiq_average = %7.2lf",
                  std::get<5>(entry),
                  static_cast<double>(std::get<4>(entry)) / static_cast<double>(std::get<5>(entry)));
       } else {
@@ -441,6 +443,7 @@ void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
    commitDependant = 0;
 
    kanata_registered = false;
+   front_stall_now = false;
 }
 
 void RobTimer::RobEntry::free()
@@ -845,7 +848,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          // if (uop.getMicroOp()->isVecStore() && vec_store_queue == 0) {
          //    if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
-         //       fprintf(stderr, "Vector Store Queue overflow\n");
+         //       fprintf(stderr, "Vector Store Queue Overflow");
          //    }
          //    break;
          // }
@@ -964,12 +967,27 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          //    }
          // }
 
+         if (m_active_kanata_gen && m_konata_count < m_konata_count_max && !entry->kanata_registered) {
+            entry->kanata_registered = true;
+            entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
+            KANATA_PRINTF ("I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
+            KANATA_PRINTF ("L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
+                           uop.getMicroOp()->getInstruction()->getAddress(),
+                           uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
+         }
+
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
               uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
             m_fpu_num_in_rs > m_fpu_window_size) {
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : FPU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiFPURSFull;
             m_frontstall_idx = frontstall_t::FPURsFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "FPU Instruction Window Overflow");
+            }
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
@@ -978,6 +996,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : ALU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiALURSFull;
             m_frontstall_idx = frontstall_t::ALURsFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "ALU Instruction Window Overflow");
+            }
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
@@ -986,6 +1010,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiLSURSFull;
             m_frontstall_idx = frontstall_t::LSURsFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "LSU Instruction Window Overflow");
+            }
             break;
          }
          if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
@@ -995,6 +1025,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiVECRSFull;
             m_frontstall_idx = frontstall_t::VECRsFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vec Arith Instruction Window Overflow");
+            }
             break;
          }
 
@@ -1003,6 +1039,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiVLDQFull;
             m_frontstall_idx = frontstall_t::VLDQFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "VLDQ Instruction Window Overflow");
+            }
             break;
          }
          // VSTQ full
@@ -1010,6 +1052,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Store Queue overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiVSTQFull;
             m_frontstall_idx = frontstall_t::VSTQFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "VSTQ Instruction Window Overflow");
+            }
             break;
          }
          // Scalar LDQ full
@@ -1017,6 +1065,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Load Queue overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiLDQFull;
             m_frontstall_idx = frontstall_t::LDQFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "SLDQ Instruction Window Overflow");
+            }
             break;
          }
          // Scalar STQ full
@@ -1024,6 +1078,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Store Queue overflow\n", uop.getSequenceNumber());
             cpiFrontEnd = &m_cpiSTQFull;
             m_frontstall_idx = frontstall_t::STQFull;
+            if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "SSTQ Instruction Window Overflow");
+            }
             break;
          }
 
@@ -1051,6 +1111,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                   if (!dec->is_reg_vector(dest_reg)) {
                      // 整数・浮動小数点レジスタ確保
                      if (alloc_result != RegisterManager::AllocSuccess) {
+                        if (!entry->front_stall_now) {
+                           // stall start
+                           entry->front_stall_now = true;
+                           KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+                           KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "INT/FP Register Full");
+                        }
                         break;
                      // } else {
                      //    InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
@@ -1070,14 +1136,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                   }
                } else {
                   if (alloc_result == RegisterManager::AllocFull) {
-                     if (dec->is_reg_int(dest_reg)) {
-                        m_frontstall_idx = frontstall_t::IPhyRegFull;
-                     } else if(dec->is_reg_float(dest_reg)) {
-                        m_frontstall_idx = frontstall_t::FPhyRegFull;
-                     } else if (dec->is_reg_vector(dest_reg)){
-                        m_frontstall_idx = frontstall_t::VPhyRegFull;
-                     } else {
-                        LOG_ASSERT_ERROR (false, "Unknown register type.");
+                     if (!entry->front_stall_now) {
+                        // stall start
+                        entry->front_stall_now = true;
+                        KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+                        KANATA_PRINTF ("L\t%ld\t%d\t%s Normal Priority Register Full\n", entry->global_sequence_id, 2, 
+                              dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
                      }
                      break;
                   }
@@ -1096,6 +1160,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                   } else {
                      LOG_ASSERT_ERROR (false, "Unknown register type.");
                   }
+                  if (!entry->front_stall_now) {
+                     // stall start
+                     entry->front_stall_now = true;
+                     KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+                     KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
+                           dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
+                  }
                   break;
                }
             } else {
@@ -1112,10 +1183,24 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                   } else {
                      LOG_ASSERT_ERROR (false, "Unknown register type.");
                   }
+                  if (!entry->front_stall_now) {
+                        // stall start
+                        entry->front_stall_now = true;
+                        KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+                        KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
+                              dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
+                  }
                   break;
                }
             }
          }
+
+         if (entry->front_stall_now) {
+            // stall end
+            entry->front_stall_now = false;
+            KANATA_PRINTF("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+         }
+
 
          // if (!UpdateReservedBindPhyRegAllocation(m_num_in_rob)) {
          //    cpiFrontEnd = &m_cpiVPhyRegFull;
@@ -1183,45 +1268,38 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                LOG_ASSERT_ERROR(false, "Not expected to this point");
          }
 
-         if (m_active_kanata_gen && m_konata_count < m_konata_count_max) {
-            entry->kanata_registered = true;
-            entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
-            KANATA_PRINTF ("I\t%ld\t%d\t%d\n", entry->global_sequence_id, 0, 0);
-            KANATA_PRINTF ("L\t%ld\t%d\t%08lx:%s\n", entry->global_sequence_id, 0,
-                           uop.getMicroOp()->getInstruction()->getAddress(),
-                           uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
-            if (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore()) {
-               KANATA_PRINTF ("L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
-                              uop.getAddress().address);
-            }
-            if (uop.getMicroOp()->isVector()) {
-               KANATA_PRINTF ("L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
-                              m_reg_manager->getAllocVectorRegister());
-               if (m_enable_vec_priority_alloc) {
-                  KANATA_PRINTF ("L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
-                        m_reg_manager->getNonPriVectorRegisters(),
-                        m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
-               }
-            }
-            for(unsigned int i = 0; i < uop.getDependenciesLength(); ++i) {
-               dl::Decoder *dec = Sim()->getDecoder();
-               uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
-               if (uop.getDependency(i) >= lowestValidSequenceNumber) {
-                  RobEntry *producerEntry = this->findEntryBySequenceNumber(uop.getDependency(i));
-                  if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
-                     continue;
-                  }
-                  // KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
-               }
-            }
-            if (uop.isInLPIQ()) {
-               KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
-                           "Wf"); // Wait in FIFO
-            } else {
-               KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
-                           "Ds");
+         if (uop.getMicroOp()->isLoad() || uop.getMicroOp()->isStore()) {
+            KANATA_PRINTF ("L\t%ld\t%d\tAccess=%08lx,\n", entry->global_sequence_id, 1,
+                           uop.getAddress().address);
+         }
+         if (uop.getMicroOp()->isVector()) {
+            KANATA_PRINTF ("L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
+                           m_reg_manager->getAllocVectorRegister());
+            if (m_enable_vec_priority_alloc) {
+               KANATA_PRINTF ("L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
+                     m_reg_manager->getNonPriVectorRegisters(),
+                     m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
             }
          }
+         for(unsigned int i = 0; i < uop.getDependenciesLength(); ++i) {
+            dl::Decoder *dec = Sim()->getDecoder();
+            uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
+            if (uop.getDependency(i) >= lowestValidSequenceNumber) {
+               RobEntry *producerEntry = this->findEntryBySequenceNumber(uop.getDependency(i));
+               if (dec->is_vsetvl(producerEntry->uop->getMicroOp()->getInstructionOpcode())) {
+                  continue;
+               }
+               // KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", entry->global_sequence_id, producerEntry->global_sequence_id, 0);
+            }
+         }
+         if (uop.isInLPIQ()) {
+            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                        "Wf"); // Wait in FIFO
+         } else {
+            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                        "Ds");
+         }
+
          // KANATA_PRINTF ("L\t%ld\t%d\tVecPhyregs=%ld\n",
          // entry->global_sequence_id, 2, m_phy_registers[2] - 32);
          m_kanata_generated_in_this_region = true;
@@ -1339,12 +1417,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       m_previous_latency = latency;
       m_previous_hit_where = res.hit_where;
 
-      if (uop.getMicroOp()->isVecMem()) {
+      if (uop.getMicroOp()->isLoad()) {
          UpdateVecDCacheStats(&uop, res.hit_where);
       }
 
       if (m_enable_vec_priority_alloc) {
-         if (uop.getMicroOp()->isVecLoad()) {
+         // if (uop.getMicroOp()->isVecLoad()) {
+          if (uop.getMicroOp()->isLoad()) {
             DynamicMicroOp *last_uop = &uop;
             if (!uop.isLast()) {
                // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
@@ -1656,7 +1735,7 @@ SubsecondTime RobTimer::doIssue()
       }
       else if (uop->getMicroOp()->isLoad() && !uop->getMicroOp()->isVector() && !load_queue.hasFreeSlot(now)) {
          // LDQ full
-         ROB_DEBUG_PRINTF ("Scalar Load Queue overflow\n");
+         ROB_DEBUG_PRINTF ("Scalar Load Queue Overflow");
          canIssue = false;
       } else if (uop->getMicroOp()->isLoad() && m_no_address_disambiguation && have_unresolved_store) {
          ROB_DEBUG_PRINTF ("  disambiguation, index = %ld\n", uop->getSequenceNumber());
@@ -1809,9 +1888,9 @@ SubsecondTime RobTimer::doIssue()
 
       // canIssue already marks issue ports as in use, so do this one last
       if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-         if (entry->kanata_registered) {
-            KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
-         }
+         // if (entry->kanata_registered) {
+         //    KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
+         // }
          canIssue = false;          // blocked by structural hazard
       }
 
@@ -2066,7 +2145,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (entry->uop->getMicroOp()->isVecLoad()) {
          vec_load_queue++;
       }
-      if (entry->uop->getMicroOp()->isVecStore()) {
+      if (!m_vec_store_inorder && entry->uop->getMicroOp()->isVecStore()) {
          vec_store_queue++;
       }
       // if (entry->uop->getMicroOp()->isVecStore()) {

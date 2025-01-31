@@ -18,7 +18,7 @@ class Instruction;
 
 RobContentionBoomV1::RobContentionBoomV1(const Core *core, const CoreModel *core_model)
    : m_core_model(core_model)
-   , m_cache_block_mask(~(core->getMemoryManager()->getCacheBlockSize() - 1))
+   , m_cache_block_size(core->getMemoryManager()->getCacheBlockSize())
    , m_now(core->getDvfsDomain())
    , m_vlen(Sim()->getCfg()->getInt("general/vlen"))
    , m_dlen(Sim()->getCfg()->getInt("general/dlen"))
@@ -141,9 +141,13 @@ void RobContentionBoomV1::doIssue(DynamicMicroOp &uop)
     // Scalar Issue
     alu_used_until[alu] = m_now + m_core_model->getAluLatency(uop.getMicroOp());
   } else if (uop.getMicroOp()->isVector()) {
+    uint8_t dlen_per_cacheline = m_cache_block_size * 8 / m_dlen;
     if (uop.getMicroOp()->isVecMem()) {
       if (uop.getMicroOp()->canVecSquash()) {
-        vecmem_used_until = m_now + m_rate_vlen_dlen;
+        // 例えば、VLEN=1024, DLEN=256の場合、チャンク数=4となる。
+        // DCache 2ライン分なので2つのuopに分解されているのだが、
+        // 1OpあたりはDLEN2つ分なので、2サイクル分発行キューを消費することになる.
+        vecmem_used_until = m_now + std::min(m_rate_vlen_dlen, dlen_per_cacheline);
       } else {
         vecmem_used_until = m_now;
       }

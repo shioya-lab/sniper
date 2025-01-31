@@ -39,7 +39,7 @@ class FaultInjector;
 class ShmemPerf;
 
 // Maximum size of the list of addresses to prefetch
-#define PREFETCH_MAX_QUEUE_LENGTH 32
+#define PREFETCH_MAX_QUEUE_LENGTH (256)
 // Time between prefetches
 #define PREFETCH_INTERVAL SubsecondTime::PS(500)
 // #define PREFETCH_INTERVAL SubsecondTime::PS(100)
@@ -425,6 +425,7 @@ namespace ParametricDramDirectoryMSI
                                                 bool count,
                                                 IntPtr access_pc,
                                                 uint64_t uop_idx,
+                                                bool is_prefetch = false,
                                                 bool use_prefetch = true);
          void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
 

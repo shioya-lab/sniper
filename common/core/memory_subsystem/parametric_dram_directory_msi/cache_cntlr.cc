@@ -364,6 +364,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
                                  bool count,
                                  IntPtr access_pc,
                                  uint64_t uop_idx,
+                                 bool is_prefetch,
                                  bool use_prefetch)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
@@ -491,45 +492,53 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
      }
 
    } else {
-     /* cache miss: either wrong coherency state or not present in the cache */
-     MYLOG("L1 miss");
-     if (!m_passthrough)
-       getMemoryManager()->incrElapsedTime(m_mem_component, CachePerfModel::ACCESS_CACHE_TAGS, ShmemPerfModel::_USER_THREAD);
+      /* cache miss: either wrong coherency state or not present in the cache */
+      MYLOG("L1 miss");
 
-     SubsecondTime t_miss_begin = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
-     SubsecondTime t_mshr_avail = t_miss_begin;
+      if (!m_passthrough)
+         getMemoryManager()->incrElapsedTime(m_mem_component, CachePerfModel::ACCESS_CACHE_TAGS, ShmemPerfModel::_USER_THREAD);
 
-     if (modeled && m_l1_mshr && !m_passthrough)
-     {
-       ScopedLock sl(getLock());
-       t_mshr_avail = m_master->m_l1_mshr.getStartTime(t_miss_begin);
-       LOG_ASSERT_ERROR(t_mshr_avail >= t_miss_begin, "t_mshr_avail < t_miss_begin");
-       SubsecondTime mshr_latency = t_mshr_avail - t_miss_begin;
-       // Delay until we have an empty slot in the MSHR
-       getShmemPerfModel()->incrElapsedTime(mshr_latency, ShmemPerfModel::_USER_THREAD);
-       MYLOG("mshr_latency : %ld", mshr_latency.getNS());
-       stats.mshr_latency += mshr_latency;
-     }
+      SubsecondTime t_miss_begin = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
+      SubsecondTime t_mshr_avail = t_miss_begin;
 
-     if (lock_signal == Core::UNLOCK)
-       LOG_PRINT_ERROR("Expected to find address(0x%x) in L1 Cache", ca_address);
+      if (modeled && m_l1_mshr && !m_passthrough)
+      {
+         ScopedLock sl(getLock());
+         t_mshr_avail = m_master->m_l1_mshr.getStartTime(t_miss_begin);
+         LOG_ASSERT_ERROR(t_mshr_avail >= t_miss_begin, "t_mshr_avail < t_miss_begin");
+         SubsecondTime mshr_latency = t_mshr_avail - t_miss_begin;
+         if (is_prefetch && t_mshr_avail != t_miss_begin) {
+            MYPREFLOG("Prefetch Cancel, due to lack of MSHR entries");
+            return HitWhere::UNKNOWN;
+         } else {
+         // Delay until we have an empty slot in the MSHR
+         getShmemPerfModel()->incrElapsedTime(mshr_latency, ShmemPerfModel::_USER_THREAD);
+         MYLOG("mshr_latency : %ld", mshr_latency.getNS());
+         //  m_master->m_l1_mshr.dumpEntry(t_miss_begin);
+         MYLOG("mshr hasFreeSlot: %s", m_master->m_l1_mshr.hasFreeSlot(t_miss_begin, ca_address) ? "Yes" : "No");
+         stats.mshr_latency += mshr_latency;
+         }
+      }
+
+      if (lock_signal == Core::UNLOCK)
+         LOG_PRINT_ERROR("Expected to find address(0x%x) in L1 Cache", ca_address);
 
 #ifdef PRIVATE_L2_OPTIMIZATION
 #else
-     if (!lock_all)
-       acquireStackLock(ca_address, true);
+      if (!lock_all)
+         acquireStackLock(ca_address, true);
 #endif
 
-     // Invalidate the cache block before passing the request to L2 Cache
-     if (getCacheState(ca_address) != CacheState::INVALID)
-     {
-       invalidateCacheBlock(ca_address);
-     }
+      // Invalidate the cache block before passing the request to L2 Cache
+      if (getCacheState(ca_address) != CacheState::INVALID)
+      {
+         invalidateCacheBlock(ca_address);
+      }
 
-     MYLOG("processMemOpFromCore l%d before next", m_mem_component);
-     hit_where = m_next_cache_cntlr->processShmemReqFromPrevCache(this, mem_op_type, ca_address, modeled, count, Prefetch::NONE, t_start, false);
-     bool next_cache_hit = hit_where != HitWhere::MISS;
-     MYLOG("processMemOpFromCore l%d next hit = %d", m_mem_component, next_cache_hit);
+      MYLOG("processMemOpFromCore l%d before next", m_mem_component);
+      hit_where = m_next_cache_cntlr->processShmemReqFromPrevCache(this, mem_op_type, ca_address, modeled, count, Prefetch::NONE, t_start, false);
+      bool next_cache_hit = hit_where != HitWhere::MISS;
+      MYLOG("processMemOpFromCore l%d next hit = %d", m_mem_component, next_cache_hit);
 
      if (next_cache_hit) {
 
@@ -643,7 +652,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
          stats.loads_where[hit_where]++;
    }
 
-   if (modeled && m_master->m_prefetcher)
+   if (!is_prefetch && modeled && m_master->m_prefetcher)
    {
       // IntPtr train_address = mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC ? ca_address : ca_address + offset;
       IntPtr train_address = ca_address + offset;
@@ -786,7 +795,7 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
                              (!cache_hit && !l1d_pref_keep) ||
                              (m_prefetch_on_prefetch_hit && prefetch_hit)))
    {
-      m_master->m_prefetch_list.clear();
+      // m_master->m_prefetch_list.clear();
 
       // Just talked to the next-level cache, wait a bit before we start to prefetch if enabled
       if (m_master->m_prefetch_next == SubsecondTime::Zero()) { m_master->m_prefetch_next = t_issue; }
@@ -794,22 +803,20 @@ CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cac
       // MYLOG("  trainPrefetcher::m_master->m_prefetch_next = %ld ns", m_master->m_prefetch_next.getNS());
 
       if (!prefetchList.empty()) {
-         MYPREFLOG2("Prefetcher List Insertion: ");
 
          for(std::vector<IntPtr>::iterator it = prefetchList.begin(); it != prefetchList.end(); ++it)
          {
-            // Keep at most PREFETCH_MAX_QUEUE_LENGTH entries in the prefetch queue
-            // if (m_master->m_prefetch_list.size() > PREFETCH_MAX_QUEUE_LENGTH)
-            //    break;
             if (!operationPermissibleinCache(*it, Core::READ)) {
                if (std::find(m_master->m_prefetch_list.begin(),
                            m_master->m_prefetch_list.end(), *it) == m_master->m_prefetch_list.end()) { // Not Found
-                  MYPREFLOG2("%08lx ", *it);
+                  if (m_master->m_prefetch_list.size() >= PREFETCH_MAX_QUEUE_LENGTH) {
+                     m_master->m_prefetch_list.pop_front();
+                  }
                   m_master->m_prefetch_list.push_back(*it);
+                  MYPREFLOG2("Prefetcher List Insertion (%ld): %08lx\n", m_master->m_prefetch_list.size(), *it);
                }
             }
          }
-         MYPREFLOG2("\n");
       }
    }
 }
@@ -925,7 +932,7 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
 
    HitWhere::where_t hit_where;
    if (isFirstLevel()) {
-      hit_where = processMemOpFromCore(Core::NONE, Core::READ, prefetch_address, 0, NULL, 64, true, true, 0, 0, false);
+      hit_where = processMemOpFromCore(Core::NONE, Core::READ, prefetch_address, 0, NULL, 64, true, true, 0, 0, true, false);
    } else {
       acquireStackLock(prefetch_address);
       hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, true, true, Prefetch::OWN, t_start, false);
@@ -940,7 +947,7 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
       wakeUpNetworkThread();
 
       if (isFirstLevel()) {
-         hit_where = processMemOpFromCore(Core::NONE, Core::READ, prefetch_address, 0, NULL, 64, true, true, 0, 0, false);
+         hit_where = processMemOpFromCore(Core::NONE, Core::READ, prefetch_address, 0, NULL, 64, true, true, 0, 0, true, false);
       } else {
          hit_where = processShmemReqFromPrevCache(this, Core::READ, prefetch_address, false, false, Prefetch::OWN, t_start, false);
       }

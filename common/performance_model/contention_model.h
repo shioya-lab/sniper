@@ -37,6 +37,8 @@ class ContentionModel {
       bool hasFreeSlot(SubsecondTime t_start, UInt64 tag = -1);
       bool hasFreeSlot(uint64_t t_start, UInt64 tag = -1);
       bool hasTag(UInt64 tag);
+
+      void dumpEntry(SubsecondTime t_start);
 };
 
 #endif // CONTENTION_MODEL_H

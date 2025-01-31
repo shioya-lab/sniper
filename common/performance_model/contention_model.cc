@@ -284,3 +284,16 @@ ContentionModel::getStartTime(SubsecondTime t_start)
          return t_start;
    }
 }
+
+void ContentionModel::dumpEntry(SubsecondTime t_start)
+{
+   fprintf(stderr, "dumpEntry start: %ld\n", t_start.getNS());
+   for (UInt32 i = 0; i < m_num_outstanding; ++i)
+   {
+      if (m_time[i].first <= t_start)
+         fprintf(stderr, " %ld*, ", m_time[i].first.getNS());
+      else
+         fprintf(stderr, " %ld, ", m_time[i].first.getNS());
+   }
+   fprintf (stderr, "\n");
+}

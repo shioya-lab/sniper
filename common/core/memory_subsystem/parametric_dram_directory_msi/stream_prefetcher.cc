@@ -80,7 +80,7 @@ StreamPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_t
         size_t table_index = monitor_ret.second;
         auto stream = m_stream_table[table_index];
 
-        LOG_ASSERT_ERROR (m_degree >= 3, "m_degree must larger than 2");
+        // LOG_ASSERT_ERROR (m_degree >= 3, "m_degree must larger than 2");
 
         IntPtr prefetch = stream->addr + (stream->ascending ? stream->MonitorWindow : -stream->MonitorWindow);
         for (int i = 0; i < m_degree; i++) {

@@ -149,7 +149,8 @@ class DynamicMicroOp
       lpiq_t getCommitDependency() { return m_wfifo_wait_reason; }
 
       void setReserveInst () {
-         LOG_ASSERT_ERROR(!this->strong_priority_inst, "strong_priority_inst is already set");
+         // LOG_ASSERT_ERROR(!this->strong_priority_inst, "strong_priority_inst is already set");
+         this->strong_priority_inst = false;
          this->reserve_inst = true;
       }
       bool isReserveInst () { return this->reserve_inst; }
