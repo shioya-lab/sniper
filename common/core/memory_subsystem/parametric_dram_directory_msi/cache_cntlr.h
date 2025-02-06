@@ -39,7 +39,9 @@ class FaultInjector;
 class ShmemPerf;
 
 // Maximum size of the list of addresses to prefetch
-#define PREFETCH_MAX_QUEUE_LENGTH (256)
+// #define PREFETCH_MAX_QUEUE_LENGTH (256)
+#define PREFETCH_MAX_QUEUE_LENGTH (2048)
+
 // Time between prefetches
 #define PREFETCH_INTERVAL SubsecondTime::PS(500)
 // #define PREFETCH_INTERVAL SubsecondTime::PS(100)
@@ -174,6 +176,8 @@ namespace ParametricDramDirectoryMSI
          std::deque<IntPtr> m_prefetch_list;
          SubsecondTime m_prefetch_next;
 
+         size_t m_prefetch_list_max;
+
          void createSetLocks(UInt32 cache_block_size, UInt32 num_sets, UInt32 core_offset, UInt32 num_cores);
          SetLock* getSetLock(IntPtr addr);
 
@@ -193,7 +197,9 @@ namespace ParametricDramDirectoryMSI
             , m_atds()
             , m_prefetch_list()
             , m_prefetch_next(SubsecondTime::Zero())
-         {}
+         {
+            registerStatsMetric(name, core_id, "prefetch_list_max", &m_prefetch_list_max);
+         }
          ~CacheMasterCntlr();
 
          friend class CacheCntlr;
@@ -274,6 +280,9 @@ namespace ParametricDramDirectoryMSI
          bool m_cache_writethrough;
          ComponentLatency m_writeback_time;
          ComponentBandwidthPerCycle m_next_level_read_bandwidth;
+
+         UInt64 m_cache_target_pc;
+         UInt64 m_cache_target_address;
 
          UInt32 m_shared_cores;        /**< Number of cores this cache is shared with */
          core_id_t m_core_id_master;   /**< Core id of the 'master' (actual) cache controller we're proxying */

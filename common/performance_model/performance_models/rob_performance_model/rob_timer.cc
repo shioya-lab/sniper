@@ -316,11 +316,11 @@ RobTimer::RobTimer(
    m_mem_stats = new MemStatsManager(&now, &enable_rob_timer_log, &rob_start_cycle);
 
    m_reg_manager = new RegisterManager (core->getId());
-   if (m_enable_vec_priority_alloc) {
-      m_priority_manager = new PriorityManager (m_app, &now);
-   } else {
-      m_priority_manager = NULL;
-   }
+   // if (m_enable_vec_priority_alloc) {
+   m_priority_manager = new PriorityManager (&now);
+   // } else {
+   //    m_priority_manager = NULL;
+   // }
 }
 
 RobTimer::~RobTimer()
@@ -568,7 +568,9 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          if (remove_it != priority_remove_queue_it->end()) {
             m_priority_manager->removePriority (entry->uop->getMicroOp()->getInstruction()->getAddress());
             priority_remove_queue_it->erase(remove_it);
-            fprintf (stderr, "Priority remove propagation phase: PC=%08lx\n", entry->uop->getMicroOp()->getInstruction()->getAddress());
+            ROB_DEBUG_PRINTF ("%ld: Priority remove propagation phase: PC=%08lx\n", 
+                     now.getCycleCount(),
+                     entry->uop->getMicroOp()->getInstruction()->getAddress());
 
             for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
                RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
@@ -578,16 +580,12 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
                if (is_waiting_entry_vector_dest_reg) {
                   UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
                   priority_remove_queue_it->push_back (wait_entry_pc);
-                  fprintf (stderr, "Priority Remove Candidate: PC=%08lx\n", wait_entry_pc);
+                  ROB_DEBUG_PRINTF ("Priority Remove Candidate: PC=%08lx\n", wait_entry_pc);
                }
             }
          }
 
          PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry->uop->getMicroOp()->getInstruction()->getAddress());
-         // 物理レジスタFullを経験した場合はそのまま適用：
-         // if (!m_full_phyreg_mode) {
-         //    priority = PriorityManager::inst_priority_t::Normal;
-         // }
 
          if (priority == PriorityManager::inst_priority_t::High) {
             entry->uop->setStrongPriorityInst ();
@@ -612,9 +610,10 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
                   if (m_priority_manager->getPriority(wait_entry_pc) != PriorityManager::inst_priority_t::High) {
                      m_priority_manager->setPriority (wait_entry_pc, PriorityManager::inst_priority_t::High);
 
-                     fprintf (stderr, "Priority backpropagation: Strong propagated from PC=%08lx to PC=%08lx\n", 
-                                       entry->uop->getMicroOp()->getInstruction()->getAddress(),
-                                       waiting_entry->uop->getMicroOp()->getInstruction()->getAddress());
+                     ROB_DEBUG_PRINTF ("%ld: Priority backpropagation: Strong propagated from PC=%08lx to PC=%08lx\n", 
+                              now.getCycleCount(), 
+                              entry->uop->getMicroOp()->getInstruction()->getAddress(),
+                              waiting_entry->uop->getMicroOp()->getInstruction()->getAddress());
                   }
                }
             }
@@ -752,6 +751,8 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       if (m_uops_total > 10000 && m_uops_x87 > m_uops_total / 20)
          LOG_PRINT_WARNING_ONCE("Significant fraction of x87 instructions encountered, accuracy will be low. Compile without -mno-sse2 -mno-sse3 to avoid.");
+
+      m_priority_manager->countTargetInst(*(*it)->getMicroOp());
    }
 
    if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) {
@@ -1087,24 +1088,11 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             break;
          }
 
-         if (m_full_phyreg_mode &&
-             now.getCycleCount() - m_full_phyreg_mode_start > 1000) {
-            m_full_phyreg_mode = false;
-            fprintf (stderr, "%ld : Full PhyReg Mode End\n", now.getCycleCount());
-         }
-
          if (uop.getMicroOp()->getDestinationRegistersLength() != 0) {
             if (m_enable_vec_priority_alloc) {
                RegisterManager::AllocResult_t alloc_result = m_reg_manager->AllocateRegister (&uop);
                dl::Decoder *dec = Sim()->getDecoder();
                dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-               if (dec->is_reg_vector(dest_reg) && alloc_result == RegisterManager::AllocFull) {
-                  if (!m_full_phyreg_mode) {
-                     fprintf (stderr, "%ld : Full PhyReg Mode Start\n", now.getCycleCount());
-                  }
-                  m_full_phyreg_mode = true;
-                  m_full_phyreg_mode_start = now.getCycleCount();
-               }
                // 予約に回る命令であれば、LPIQに格納する
                if (uop.isReserveInst()) {
                   // LPIQに入れるべき命令の場合
@@ -1136,14 +1124,30 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                   }
                } else {
                   if (alloc_result == RegisterManager::AllocFull) {
-                     if (!entry->front_stall_now) {
-                        // stall start
-                        entry->front_stall_now = true;
-                        KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-                        KANATA_PRINTF ("L\t%ld\t%d\t%s Normal Priority Register Full\n", entry->global_sequence_id, 2, 
-                              dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
+                     if (!dec->is_reg_vector(dest_reg)) {
+                        if (!entry->front_stall_now) {
+                           // stall start
+                           entry->front_stall_now = true;
+                           KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+                           KANATA_PRINTF ("L\t%ld\t%d\t%s Normal Priority Register Full\n", entry->global_sequence_id, 2, 
+                                 dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
+                        }
+                        break;
+                     } else {
+                        uop.setReserveInst();
+                        break;
                      }
-                     break;
+                  } else if (alloc_result == RegisterManager::AllocChain) {
+                     // fprintf (stderr, "Chain Entry check: %ld, %d\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->UopIdx());
+                     UInt64 index = 1;
+                     RobEntry *firstEntry = findEntryBySequenceNumber(entry->uop->getSequenceNumber() - index);
+                     while (!firstEntry->uop->isFirst()) {
+                        index++;
+                        firstEntry = findEntryBySequenceNumber(entry->uop->getSequenceNumber() - index);
+                     } 
+                     if (firstEntry->uop->isReserveInst()) {
+                        uop.setReserveInst();
+                     }
                   }
                }
             } else if (m_vec_reserved_allocation) {
@@ -1451,12 +1455,15 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
             }
 
             if (uop.isLast()) {
-               fprintf(stderr, "uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
+               ROB_DEBUG_PRINTF ("uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
                      uop.getMicroOp()->getInstruction()->getAddress(),
                      uop.getSequenceNumber(),
                      uop.getMemMaxLatency());
                UInt64 average_latency = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
                
+               if (uop.getMicroOp()->getInstruction()->getAddress() == 0x149ac) {
+                  m_mem_stats->dumpMemStats (uop.getMicroOp()->getInstruction()->getAddress());
+               }
                // 命令の属性を変更させるかどうかをチェックする
                m_priority_manager->UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
             }
@@ -1467,7 +1474,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
       if (m_pref_target_log == 0 || uop.getMicroOp()->getInstruction()->getAddress() == m_pref_target_log) {
          static UInt64 last_address = 0;
-         fprintf (stderr, "memory_access : 0x%08lx,0x%08lx,%ld,%d,%s,last=%lx\n",
+         ROB_DEBUG_PRINTF ("memory_access : 0x%08lx,0x%08lx,%ld,%d,%s,last=%lx\n",
                   uop.getMicroOp()->getInstruction()->getAddress(),
                   uop.getAddress().address,
                   latency,
@@ -1853,6 +1860,14 @@ SubsecondTime RobTimer::doIssue()
          v_to_s_fenced = true;
       }
 
+      // canIssue already marks issue ports as in use, so do this one last
+      if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
+         // if (entry->kanata_registered) {
+         //    KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
+         // }
+         canIssue = false;          // blocked by structural hazard
+      }
+
       // 統計情報取得
       if (uop->getMicroOp()->isVector()) {
          // Vector Instructions
@@ -1884,14 +1899,6 @@ SubsecondTime RobTimer::doIssue()
          } else {
             scalar_someone_wait_issue = true;
          }
-      }
-
-      // canIssue already marks issue ports as in use, so do this one last
-      if (canIssue && m_rob_contention && ! m_rob_contention->tryIssue(*uop)) {
-         // if (entry->kanata_registered) {
-         //    KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Issue Port, full");
-         // }
-         canIssue = false;          // blocked by structural hazard
       }
 
       bool done_preload = false;

@@ -14,27 +14,39 @@ public:
    } inst_priority_t;
 
 private:
-   String m_app;
-
    const String m_methodology;  // static / dynamic
+   const String m_app;
 
    ComponentTime *m_now;
 
    std::unordered_map<UInt64, inst_priority_t> m_priority_map;
    std::list<UInt64> m_priority_remove_queue;  // Highが依存する命令の削除候補キュー
 
+   size_t target_inst_counter;
+   size_t inst_counter;
+
    public:
-      PriorityManager(String app, ComponentTime *now)
+      PriorityManager(ComponentTime *now)
       : m_methodology(Sim()->getCfg()->getString("perf_model/core/rob_timer/priority_methodology"))
+      , m_app(Sim()->getCfg()->getString("general/app"))
       {
-         m_app = app;
          m_now = now;
+         target_inst_counter = 0;
+
+         registerStatsMetric("rob_timer", 0, "target_inst_count", &target_inst_counter);
+         registerStatsMetric("rob_timer", 0, "inst_count", &inst_counter);
       }
 
    std::list<UInt64>* getPriorityRemoveQueue () {
       return &m_priority_remove_queue;
    }
 
+   void dumpPriorityMap () {
+      for (auto it = m_priority_map.begin(); it != m_priority_map.end(); it++) {
+         fprintf (stderr, "  pc=%08lx : %s\n", it->first, it->second == 0 ? "Normal" : it->second == 1 ? "Reserve" : "High");
+      }
+   }
+   
    // priorityがRemoveされれば、trueを返す
    bool UpdateInstPriority (UInt64 pc, UInt64 latency)
    {
@@ -42,8 +54,8 @@ private:
       if (it == m_priority_map.end()) {
          if (latency > 100) {
             m_priority_map[pc] = inst_priority_t::High;
-            // ROB_DEBUG_PRINTF ("%ld pc=%08lx : Set Priority High\n", m_now->getCycleCount(), pc);
             fprintf (stderr, "%ld: pc=%08lx : Set Priority High (latency=%ld)\n", m_now->getCycleCount(), pc, latency);
+            // dumpPriorityMap();
          }
          return false;
       } else {
@@ -51,8 +63,8 @@ private:
          if (priority == High) {
             if (latency < 30) {
                m_priority_map.erase(pc);
-               // ROB_DEBUG_PRINTF ("%ld pc=%08lx : Remove Priority\n", m_now->getCycleCount(), pc);
                fprintf (stderr, "%ld: pc=%08lx : Remove Priority (latency=%ld) \n", m_now->getCycleCount(), pc, latency);
+               // dumpPriorityMap();
                m_priority_remove_queue.push_back (pc);
                return true;
             }
@@ -77,11 +89,9 @@ private:
 
    void setPriority (UInt64 pc, inst_priority_t priority) {
       // マップにキー(pc)がない場合は新規エントリが作られる
-      auto it = m_priority_map.find(pc);
-      if (it == m_priority_map.end()) {
-         fprintf (stderr, "setPriority pc=%08lx as %d\n", pc, priority);
-      }
+      fprintf (stderr, "%ld: pc=%08lx setPriority as %d\n", m_now->getCycleCount(), pc, priority);
       m_priority_map[pc] = priority;
+      // dumpPriorityMap();
    }
 
    void removePriority (UInt64 pc) {
@@ -191,5 +201,87 @@ private:
          return inst_priority_t::Normal;
       }
       return inst_priority_t::Normal;
+   }
+
+   // 特定の命令の回数をカウントする：
+   void countTargetInst (MicroOp uop) {
+      if (!uop.isLast()) {
+         return;
+      }
+      inst_counter++;
+      UInt64 pc = uop.getInstruction()->getAddress();
+      if (m_app == "bfs") {
+         switch (pc) {
+            case 0x14484 : // vl1re64.v	v12, (s9)
+            case 0x14488 : // vsll.vi	v12, v12, 3
+            case 0x1448c : // vluxei64.v	v13, (t6), v12
+            
+            case 0x14948 : // vle64.v	v8, (a7)
+            case 0x14950 : // vsll.vi	v8, v8, 3
+            case 0x14954 : // vluxei64.v	v9, (a7), v8
+
+            case 0x14970 : // vle64.v	v10, (t3)
+            case 0x14974 : // vmv.v.i	v11, 0
+            case 0x14994 : // vmv1r.v	v0, v9
+
+            case 0x149a4 : // vle64.v	v13, (t0)
+            case 0x149a8 : // vsll.vi	v14, v13, 3
+            case 0x149ac : // vluxei64.v	v14, (a2), v14
+               target_inst_counter++;
+               break;
+            default:
+               break;
+            }
+      } else if (m_app == "cc") {
+         switch (pc) {
+            case 0x13c9c:  // vle64.v	v8, (a5)
+            case 0x13ca0:  // vsll.vi	v9, v8, 3
+            case 0x13ca4:  // vluxei64.v	v9, (a6), v9
+
+            case 0x13d14: // vle64.v	v8, (a5)
+            case 0x13d1c: // vsll.vi	v11, v8, 3
+            case 0x13d20: // vluxei64.v	v12, (t0), v11
+
+            case 0x13f6c: // vle64.v	v8, (s0)
+            case 0x13f70: // vsll.vi	v8, v8, 3
+            case 0x13f74: // vluxei64.v	v11, (t6), v8
+
+            case 0x1406c: // vle64.v	v8, (a3)
+            case 0x14070: // vsll.vi	v8, v8, 3
+            case 0x14074: // vluxei64.v	v9, (a0), v8
+
+            case 0x14078: // vle64.v	v8, (a5)
+            case 0x1407c: // vsll.vi	v8, v8, 3
+            case 0x14080: // vluxei64.v	v10, (a0), v8
+               target_inst_counter++;
+               break;
+            default:
+               break;
+         }
+      } else if (m_app == "pr") {
+         switch (pc) {
+            case 0x143ac: // vle64.v	v11, (a7)
+            case 0x143b0: // vsll.vi	v11, v11, 3
+            case 0x143b4: // vluxei64.v	v11, (a2), v11
+               target_inst_counter++;
+               break;
+            default:
+               break;
+         }
+      } else if (m_app == "sssp") {
+         switch (pc) {
+            case 0x142e0: // vle64.v	v10, (a4)
+            case 0x142ec: // vsll.vi	v10, v10, 3
+            case 0x142f0: // vluxei64.v	v10, (t0), v10
+
+            case 0x14298: // vle64.v	v8, (a6)
+            case 0x142a4: // vsll.vi	v8, v8, 3
+            case 0x142a8: // vluxei64.v	v9, (a1), v8
+               target_inst_counter++;
+               break;
+            default:
+               break;
+         }
+      }
    }
 };

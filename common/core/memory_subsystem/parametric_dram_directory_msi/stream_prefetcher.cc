@@ -64,7 +64,7 @@ IntPtr StreamPrefetcher::MaskLineOffset( IntPtr addr)
 std::vector<IntPtr>
 StreamPrefetcher::getNextAddress(IntPtr current_address, Core::mem_op_t mem_op_type, IntPtr pc, uint64_t uop_idx, core_id_t _core_id)
 {
-   if (pc == 0) {
+   if (configName == "l1_dcache" && pc == 0) {
       // プリフェッチャのリクエストそのものであれば、学習に使用しない
       return std::vector<IntPtr>();
    }

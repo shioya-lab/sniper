@@ -63,17 +63,41 @@ public:
         }
         stats.latencies.push_back(latency); // 新しい値を追加
 
-        // 平均値を計算
+        // 最大値と最小値を除去したうえで平均値を計算
         UInt64 total_latency = 0;
+        UInt64 min_latency = std::numeric_limits<UInt64>::max();
+        UInt64 max_latency = 0;
         for (const auto& value : stats.latencies) {
             total_latency += value;
+            min_latency = std::min(min_latency, value);
+            max_latency = std::max(max_latency, value);
         }
-        float average_latency = static_cast<float>(total_latency) / stats.latencies.size();
+        float average_latency = stats.latencies.size() < 2 ? static_cast <UInt64>(total_latency) / stats.latencies.size() :
+            static_cast<float>(total_latency - min_latency - max_latency) / (stats.latencies.size() - 2);
+
+        // // 平均値を計算
+        // UInt64 total_latency = 0;
+        // for (const auto& value : stats.latencies) {
+        //     total_latency += value;
+        // }
+        // float average_latency = static_cast<float>(total_latency) / stats.latencies.size();
 
         MEMSTATS_DEBUG_PRINTF("Updated Mem Status: PC=%08lx, Count=%ld, Average=%f\n",
                          pc, stats.latencies.size(), average_latency);
 
         return static_cast <UInt64>(average_latency);
     }
+
+    void dumpMemStats(UInt64 pc) {
+        auto it = m_mem_stats.find(pc);
+        if (it != m_mem_stats.end()) {
+            const auto& latencies = it->second.latencies;
+            fprintf(stderr, "PC=%08lx : Count=%lu : ", pc, latencies.size());
+            for (const auto& latency : latencies) {
+                fprintf(stderr, ", %lu", latency);
+            }
+            fprintf (stderr, "\n");
+        }
+    }    
 
 };

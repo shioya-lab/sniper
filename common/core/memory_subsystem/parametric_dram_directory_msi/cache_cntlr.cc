@@ -32,6 +32,13 @@ Lock iolock;
                             fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n");)
 #  define DUMPDATA(data_buf, data_length) { for(UInt32 i = 0; i < data_length; ++i) fprintf(stderr, "%02x ", data_buf[i]); }
 #else
+#define COND_MYLOG(pc, addr, ...) { if (unlikely(m_enable_log && \
+                                        (m_cache_target_pc == 0 || pc == 0 || m_cache_target_pc == pc) && \
+                                        (m_cache_target_address == 0 || m_cache_target_address == addr))) { \
+   fprintf(stderr, "%c%ld : ", Sim()->getCoreManager()->amiUserThread() ? 'U' : 'S', \
+   getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD).getNS()); \
+   fprintf(stderr, "%s ", m_configName.c_str()); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); } }
+
 #  define MYLOG(...) { if (unlikely(m_enable_log)) { fprintf(stderr, "%c%ld : ", Sim()->getCoreManager()->amiUserThread() ? 'U' : 'S', \
                                                              getShmemPerfModel()->getElapsedTime(Sim()->getCoreManager()->amiUserThread() ? ShmemPerfModel::_USER_THREAD : ShmemPerfModel::_SIM_THREAD).getNS()); \
       fprintf(stderr, "%s ", m_configName.c_str()); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); } }
@@ -167,7 +174,9 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
    m_last_remote_hit_where(HitWhere::UNKNOWN),
    m_shmem_perf(new ShmemPerf()),
    m_shmem_perf_global(NULL),
-   m_shmem_perf_model(shmem_perf_model)
+   m_shmem_perf_model(shmem_perf_model),
+   m_cache_target_pc (strtol(Sim()->getCfg()->getStringArray("log/cache_target_pc", core_id).c_str(), NULL, 16)),
+   m_cache_target_address (strtol(Sim()->getCfg()->getStringArray("log/cache_target_address", core_id).c_str(), NULL, 16))
 {
    m_core_id_master = m_core_id - m_core_id % m_shared_cores;
    Sim()->getStatsManager()->logTopology(name, core_id, m_core_id_master);
@@ -372,10 +381,10 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
    // Protect against concurrent access from sibling SMT threads
    ScopedLock sl_smt(m_master->m_smt_lock);
 
-   MYLOG("processMemOpFromCore(), lock_signal(%u), mem_op_type(%u), ca_address(0x%lx)",
+   COND_MYLOG(access_pc, ca_address, "processMemOpFromCore(), lock_signal(%u), mem_op_type(%u), ca_address(0x%lx)",
              lock_signal, mem_op_type, ca_address);
-   MYLOG("----------------------------------------------");
-   MYLOG("%c%c %lx+%u..+%u", mem_op_type == Core::WRITE ? 'W' : 'R', mem_op_type == Core::READ_EX ? 'X' : ' ', ca_address, offset, data_length);
+   COND_MYLOG(access_pc, ca_address, "----------------------------------------------");
+   COND_MYLOG(access_pc, ca_address, "%c%c %lx+%u..+%u", mem_op_type == Core::WRITE ? 'W' : 'R', mem_op_type == Core::READ_EX ? 'X' : ' ', ca_address, offset, data_length);
    LOG_ASSERT_ERROR((ca_address & (getCacheBlockSize() - 1)) == 0, "address at cache line + %x", ca_address & (getCacheBlockSize() - 1));
    LOG_ASSERT_ERROR(offset + data_length <= getCacheBlockSize(), "access until %u > %u", offset + data_length, getCacheBlockSize());
 
@@ -433,7 +442,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
 
    if (cache_hit)
    {
-     MYLOG("L1 hit");
+     COND_MYLOG(access_pc, ca_address, "L1 hit");
      getMemoryManager()->incrElapsedTime(m_mem_component, CachePerfModel::ACCESS_CACHE_DATA_AND_TAGS, ShmemPerfModel::_USER_THREAD);
      hit_where = (HitWhere::where_t)m_mem_component;
 
@@ -447,6 +456,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
        // This line was fetched by the prefetcher and has proven useful
        stats.hits_prefetch++;
        prefetch_hit = true;
+       COND_MYLOG(access_pc, ca_address, "L1 prefetch hit");
        cache_block_info->clearOption(CacheBlockInfo::PREFETCH);
      }
 
@@ -456,7 +466,11 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
        SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
        SubsecondTime t_completed = m_master->m_l1_mshr.getTagCompletionTime(ca_address);
        // Just check freeslot existed
-       m_master->m_l1_mshr.hasFreeSlot(t_now, ca_address);
+
+       COND_MYLOG (access_pc, ca_address, "mshr check : hasFreeSlot = %d, tagHit = %d",
+         m_master->m_l1_mshr.hasFreeSlot(t_now, ca_address),
+         m_master->m_l1_mshr.hasTag(ca_address)
+       );
 
        if (t_completed != SubsecondTime::MaxTime() && t_completed > t_now)
        {
@@ -465,7 +479,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
          else
            ++stats.load_overlapping_misses;
 
-         MYLOG("modeled && m_l1_mshr: t_completed = %ld, t_now = %ld", t_completed.getNS(), t_now.getNS());
+         COND_MYLOG(access_pc, ca_address, "modeled && m_l1_mshr: t_completed = %ld, t_now = %ld", t_completed.getNS(), t_now.getNS());
          SubsecondTime latency = t_completed - t_now;
          getShmemPerfModel()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
        }
@@ -482,7 +496,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
           // すでにMSHRにリクエストが格納されており、まだメモリアクセスが完了していない
          SubsecondTime latency = m_master->mshr[ca_address].t_complete - t_now;
 
-         MYLOG("modeled: t_mshr_issue = %ld, t_mshr_complete = %ld, t_now = %ld",
+         COND_MYLOG(access_pc, ca_address, "modeled: t_mshr_issue = %ld, t_mshr_complete = %ld, t_now = %ld",
                m_master->mshr[ca_address].t_issue.getNS(),
                m_master->mshr[ca_address].t_complete.getNS(), t_now.getNS());
 
@@ -493,7 +507,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
 
    } else {
       /* cache miss: either wrong coherency state or not present in the cache */
-      MYLOG("L1 miss");
+      COND_MYLOG(access_pc, ca_address, "L1 miss");
 
       if (!m_passthrough)
          getMemoryManager()->incrElapsedTime(m_mem_component, CachePerfModel::ACCESS_CACHE_TAGS, ShmemPerfModel::_USER_THREAD);
@@ -513,9 +527,9 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
          } else {
          // Delay until we have an empty slot in the MSHR
          getShmemPerfModel()->incrElapsedTime(mshr_latency, ShmemPerfModel::_USER_THREAD);
-         MYLOG("mshr_latency : %ld", mshr_latency.getNS());
+         COND_MYLOG(access_pc, ca_address, "mshr_latency : %ld", mshr_latency.getNS());
          //  m_master->m_l1_mshr.dumpEntry(t_miss_begin);
-         MYLOG("mshr hasFreeSlot: %s", m_master->m_l1_mshr.hasFreeSlot(t_miss_begin, ca_address) ? "Yes" : "No");
+         COND_MYLOG(access_pc, ca_address, "mshr hasFreeSlot: %s", m_master->m_l1_mshr.hasFreeSlot(t_miss_begin, ca_address) ? "Yes" : "No");
          stats.mshr_latency += mshr_latency;
          }
       }
@@ -535,17 +549,17 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
          invalidateCacheBlock(ca_address);
       }
 
-      MYLOG("processMemOpFromCore l%d before next", m_mem_component);
+      COND_MYLOG(access_pc, ca_address, "processMemOpFromCore l%d before next", m_mem_component);
       hit_where = m_next_cache_cntlr->processShmemReqFromPrevCache(this, mem_op_type, ca_address, modeled, count, Prefetch::NONE, t_start, false);
       bool next_cache_hit = hit_where != HitWhere::MISS;
-      MYLOG("processMemOpFromCore l%d next hit = %d", m_mem_component, next_cache_hit);
+      COND_MYLOG(access_pc, ca_address, "processMemOpFromCore l%d next hit = %d", m_mem_component, next_cache_hit);
 
      if (next_cache_hit) {
 
      } else {
        /* last level miss, a message has been sent. */
 
-       MYLOG("processMemOpFromCore l%d waiting for sent message", m_mem_component);
+       COND_MYLOG(access_pc, ca_address, "processMemOpFromCore l%d waiting for sent message", m_mem_component);
 #ifdef PRIVATE_L2_OPTIMIZATION
        releaseLock(ca_address);
 #else
@@ -553,18 +567,18 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
 #endif
 
        waitForNetworkThread();
-       MYLOG("processMemOpFromCore l%d postwakeup", m_mem_component);
+       COND_MYLOG(access_pc, ca_address, "processMemOpFromCore l%d postwakeup", m_mem_component);
 
        //acquireStackLock(ca_address);
        // Pass stack lock through from network thread
 
        wakeUpNetworkThread();
-       MYLOG("processMemOpFromCore l%d got message reply", m_mem_component);
+       COND_MYLOG(access_pc, ca_address, "processMemOpFromCore l%d got message reply", m_mem_component);
 
        /* have the next cache levels fill themselves with the new data */
-       MYLOG("processMemOpFromCore l%d before next fill", m_mem_component);
+       COND_MYLOG(access_pc, ca_address, "processMemOpFromCore l%d before next fill", m_mem_component);
        hit_where = m_next_cache_cntlr->processShmemReqFromPrevCache(this, mem_op_type, ca_address, false, false, Prefetch::NONE, t_start, true);
-       MYLOG("processMemOpFromCore l%d after next fill", m_mem_component);
+       COND_MYLOG(access_pc, ca_address, "processMemOpFromCore l%d after next fill", m_mem_component);
        LOG_ASSERT_ERROR(hit_where != HitWhere::MISS,
                         "Tried to read in next-level cache, but data is already gone");
 
@@ -577,9 +591,14 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
      /* data should now be in next-level cache, go get it */
      SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
      copyDataFromNextLevel(mem_op_type, ca_address, modeled, t_now);
-     MYLOG("copyDataFromNextLevel finished.");
+     COND_MYLOG(access_pc, ca_address, "copyDataFromNextLevel finished.");
 
      cache_block_info = getCacheBlockInfo(ca_address);
+
+     if (is_prefetch) {
+         COND_MYLOG(access_pc, ca_address, "set this request is prefetch.");
+         cache_block_info->setOption(CacheBlockInfo::PREFETCH);
+     }
 
 #ifdef PRIVATE_L2_OPTIMIZATION
 #else
@@ -595,7 +614,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
      {
        SubsecondTime t_miss_end = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
        ScopedLock sl(getLock());
-       MYLOG("mshr.getCompletionTime(t_miss_begin=%ld, t_delay=%ld(t_miss_end=%ld - t_mshr_avail=%ld))",
+       COND_MYLOG(access_pc, ca_address, "mshr.getCompletionTime(t_miss_begin=%ld, t_delay=%ld(t_miss_end=%ld - t_mshr_avail=%ld))",
             t_miss_begin.getNS(), (t_miss_end - t_mshr_avail).getNS(), t_miss_end.getNS(), t_mshr_avail.getNS());
        m_master->m_l1_mshr.getCompletionTime(t_miss_begin, t_miss_end - t_mshr_avail, ca_address);
      }
@@ -611,14 +630,18 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
      }
    }
 
-   MYLOG("%ld: %lx access start", getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD).getNS(), ca_address);
+   if (
+      cache_block_info
+   )
+
+   COND_MYLOG(access_pc, ca_address, "%ld: %lx access start", getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD).getNS(), ca_address);
    accessCache(mem_op_type, ca_address, offset, data_buf, data_length, hit_where == HitWhere::where_t(m_mem_component) && count);
 
-   MYLOG("%ld: %lx access done", getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD).getNS(), ca_address);
+   COND_MYLOG(access_pc, ca_address, "%ld: %lx access done", getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD).getNS(), ca_address);
    SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
    SubsecondTime total_latency = t_now - t_start;
 
-   MYLOG("t_start = %ld, t_finish(t_now) = %ld latency = %ld", t_start.getNS(), t_now.getNS(), total_latency.getNS());
+   COND_MYLOG(access_pc, ca_address, "t_start = %ld, t_finish(t_now) = %ld latency = %ld", t_start.getNS(), t_now.getNS(), total_latency.getNS());
 
    // From here on downwards: not long anymore, only stats update so blanket cntrl lock
    {
@@ -658,14 +681,14 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
       IntPtr train_address = ca_address + offset;
       trainPrefetcher(train_address, mem_op_type, cache_hit, prefetch_hit, false, t_start, access_pc, uop_idx);
 
-      MYLOG("processMemOpFromCore::trainPrefetcher() finished\n");
+      COND_MYLOG(access_pc, ca_address, "processMemOpFromCore::trainPrefetcher() finished\n");
    }
 
    // // Call Prefetch on next-level caches (but not for atomic instructions as that causes a locking mess)
    // if (lock_signal != Core::LOCK && modeled && use_prefetch)
    // {
    //   if (mem_op_type == Core::READ_VEC || mem_op_type == Core::WRITE_VEC) {
-   //      MYLOG("processMemOpFromCore::Prefetch(t_start) call");
+   //      COND_MYLOG(access_pc, ca_address, "processMemOpFromCore::Prefetch(t_start) call");
    //      VecPrefetch(t_start);
    //   } else {
    //      Prefetch(t_start);
@@ -675,7 +698,7 @@ CacheCntlr::processMemOpFromCore(Core::lock_signal_t lock_signal,
    if (Sim()->getConfig()->getCacheEfficiencyCallbacks().notify_access_func)
       Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_access(cache_block_info->getOwner(), mem_op_type, hit_where);
 
-   MYLOG("returning %s, latency %lu ns\n", HitWhereString(hit_where), total_latency.getNS());
+   COND_MYLOG(access_pc, ca_address, "returning %s, latency %lu ns\n", HitWhereString(hit_where), total_latency.getNS());
    return hit_where;
 }
 
@@ -686,7 +709,10 @@ CacheCntlr::processPrefetchFromCore(SubsecondTime core_time, Core::lock_signal_t
    // SubsecondTime t_start = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
    SubsecondTime t_start = core_time;
 
-   // fprintf (stderr, "CacheCntlr::processPrefetchFromCore:: m_prefetch_next = %ld, last_prefetch_time = %ld ns, t_start = %ld ns\n", m_master->m_prefetch_next.getNS(), m_last_prefetch_time.getNS(), t_start.getNS());
+   MYLOG ("processPrefetchFromCore(): m_prefetch_next = %ld, last_prefetch_time = %ld ns, t_start = %ld ns", 
+      m_master->m_prefetch_next.getNS(), 
+      m_last_prefetch_time.getNS(), 
+      t_start.getNS());
 
    if (m_last_prefetch_time < t_start) {
       // Call Prefetch on next-level caches (but not for atomic instructions as that causes a locking mess)
@@ -726,7 +752,7 @@ CacheCntlr::copyDataFromNextLevel(Core::mem_op_t mem_op_type, IntPtr address, bo
    // TODO: what if it's already gone? someone else may invalitate it between the time it arrived an when we get here...
    LOG_ASSERT_ERROR(m_next_cache_cntlr->operationPermissibleinCache(address, mem_op_type),
       "Tried to read from next-level cache, but data is already gone");
-MYLOG("copyDataFromNextLevel l%d", m_mem_component);
+COND_MYLOG(0, address, "copyDataFromNextLevel l%d", m_mem_component);
 
    Byte data_buf[m_next_cache_cntlr->getCacheBlockSize()];
    m_next_cache_cntlr->retrieveCacheBlock(address, data_buf, ShmemPerfModel::_USER_THREAD, false);
@@ -750,13 +776,13 @@ MYLOG("copyDataFromNextLevel l%d", m_mem_component);
    {
       // Block already present (upgrade): don't insert, but update
       updateCacheBlock(address, cstate, Transition::UPGRADE, NULL, ShmemPerfModel::_SIM_THREAD);
-      MYLOG("copyDataFromNextLevel l%d done (updated)", m_mem_component);
+      COND_MYLOG(0, address, "copyDataFromNextLevel l%d done (updated)", m_mem_component);
    }
    else
    {
       // Insert the Cache Block in our own cache
       insertCacheBlock(address, cstate, data_buf, m_core_id, ShmemPerfModel::_USER_THREAD);
-      MYLOG("copyDataFromNextLevel l%d done (inserted)", m_mem_component);
+      COND_MYLOG(0, address, "copyDataFromNextLevel l%d done (inserted)", m_mem_component);
    }
 }
 
@@ -764,7 +790,12 @@ void
 CacheCntlr::trainPrefetcher(IntPtr address, Core::mem_op_t mem_op_type, bool cache_hit, bool prefetch_hit, bool prefetch_own, SubsecondTime t_issue,
                             IntPtr access_pc, uint64_t uop_idx)
 {
-   if (access_pc == 0) {
+   MYLOG ("trainPrefetcher: pc = %08lx, address = %08lx", access_pc, address);
+   if (prefetch_own) {
+      // Prefetcherが生成したメモリアクセスリクエスト自体からは、トレーニングをしない
+      return;
+   }
+   if (m_configName == "l1_dcache" && access_pc == 0) {
       return;
    }
 
@@ -825,6 +856,8 @@ bool
 CacheCntlr::VecPrefetch(SubsecondTime t_now)
 {
    bool result = false;
+   MYLOG ("VecPrefetch: m_master->m_prefetch_next=%ld, m_master->m_prefetch_list.size()=%ld",
+         m_master->m_prefetch_next.getNS(), m_master->m_prefetch_list.size());
    {
       // ScopedLock sl(getLock());
       if (m_master->m_prefetch_next <= t_now && !m_master->m_prefetch_list.empty()) {
@@ -879,6 +912,8 @@ CacheCntlr::VecPrefetch(SubsecondTime t_now)
 void
 CacheCntlr::Prefetch(SubsecondTime t_now)
 {
+   MYLOG ("Prefetch");
+
    // MYLOG("CacheCntlr::Prefetch() called");
    // MYLOG("m_prefetch_list.size = %ld", m_master->m_prefetch_list.size());
    // MYLOG("time = %ld m_prefetch_next = %ld", t_now.getNS(), m_master->m_prefetch_next.getNS());
@@ -926,7 +961,7 @@ void
 CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, SubsecondTime t_start)
 {
    ++stats.prefetches;
-   MYLOG("prefetching %lx", prefetch_address);
+   COND_MYLOG(0, prefetch_address, "prefetching %lx", prefetch_address);
    SubsecondTime t_before = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
    getShmemPerfModel()->setElapsedTime(ShmemPerfModel::_USER_THREAD, t_start); // Start the prefetch at the same time as the original miss
 
@@ -1072,7 +1107,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
                sibling_hit |= res.second;
             }
          }
-         MYLOG("add latency %s, sibling_hit(%u)", itostr(latency).c_str(), sibling_hit);
+         COND_MYLOG(0, address, "add latency %s, sibling_hit(%u)", itostr(latency).c_str(), sibling_hit);
          getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
          atomic_add_subsecondtime(stats.snoop_latency, latency);
          #ifdef ENABLE_TRACK_SHARING_PREVCACHES
@@ -1081,7 +1116,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
       }
       else if (cache_block_info->getCState() == CacheState::MODIFIED) // reading MODIFIED data
       {
-         MYLOG("reading MODIFIED data");
+         COND_MYLOG(0, address, "reading MODIFIED data");
          /* Writeback in previous levels */
          SubsecondTime latency = SubsecondTime::Zero();
          for(CacheCntlrList::iterator it = m_master->m_prev_cache_cntlrs.begin(); it != m_master->m_prev_cache_cntlrs.end(); it++) {
@@ -1091,13 +1126,13 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
                sibling_hit |= res.second;
             }
          }
-         MYLOG("add latency %s, sibling_hit(%u)", itostr(latency).c_str(), sibling_hit);
+         COND_MYLOG(0, address, "add latency %s, sibling_hit(%u)", itostr(latency).c_str(), sibling_hit);
          getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
          atomic_add_subsecondtime(stats.snoop_latency, latency);
       }
       else if (cache_block_info->getCState() == CacheState::EXCLUSIVE) // reading EXCLUSIVE data
       {
-         MYLOG("reading EXCLUSIVE data");
+         COND_MYLOG(0, address, "reading EXCLUSIVE data");
          // will have shared state
          SubsecondTime latency = SubsecondTime::Zero();
          for(CacheCntlrList::iterator it = m_master->m_prev_cache_cntlrs.begin(); it != m_master->m_prev_cache_cntlrs.end(); it++) {
@@ -1108,7 +1143,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
             }
          }
 
-         MYLOG("add latency %s, sibling_hit(%u)", itostr(latency).c_str(), sibling_hit);
+         COND_MYLOG(0, address, "add latency %s, sibling_hit(%u)", itostr(latency).c_str(), sibling_hit);
          getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
          atomic_add_subsecondtime(stats.snoop_latency, latency);
       }
@@ -1126,7 +1161,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
    else // !cache_hit: either data is not here, or operation on data is not permitted
    {
       // Increment shared mem perf model cycle counts
-      MYLOG("%lx not hit. calling next cache", address);
+      COND_MYLOG(0, address, "%lx not hit. calling next cache", address);
       if (modeled)
          getMemoryManager()->incrElapsedTime(m_mem_component, CachePerfModel::ACCESS_CACHE_TAGS, ShmemPerfModel::_USER_THREAD);
 
@@ -1139,7 +1174,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
                latency = getMax<SubsecondTime>(latency, (*it)->updateCacheBlock(address, CacheState::INVALID, Transition::UPGRADE, NULL, ShmemPerfModel::_USER_THREAD).first);
          getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
 
-         MYLOG("latency increased0 : %ld", latency.getNS());
+         COND_MYLOG(0, address, "latency increased0 : %ld", latency.getNS());
 
          atomic_add_subsecondtime(stats.snoop_latency, latency);
          #ifdef ENABLE_TRACK_SHARING_PREVCACHES
@@ -1188,14 +1223,14 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
                   latency = getMax<SubsecondTime>(latency, (*it)->updateCacheBlock(address, CacheState::INVALID, Transition::UPGRADE, NULL, ShmemPerfModel::_USER_THREAD).first);
             getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
             atomic_add_subsecondtime(stats.snoop_latency, latency);
-            MYLOG("latency increased1 : %ld", latency.getNS());
+            COND_MYLOG(0, address, "latency increased1 : %ld", latency.getNS());
             #ifdef ENABLE_TRACK_SHARING_PREVCACHES
             assert(! cache_block_info->hasCachedLoc());
             #endif
 
             cache_hit = true;
             hit_where = HitWhere::where_t(m_mem_component);
-            MYLOG("Silent upgrade from E -> M for address %lx", address);
+            COND_MYLOG(0, address, "Silent upgrade from E -> M for address %lx", address);
             cache_block_info->setCState(CacheState::MODIFIED);
          }
          else if (m_master->m_dram_cntlr)
@@ -1219,7 +1254,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
                // Do the DRAM access and increment local time
                boost::tie<HitWhere::where_t, SubsecondTime>(hit_where, latency) = accessDRAM(Core::READ, address, isPrefetch != Prefetch::NONE, data_buf);
                getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
-               MYLOG("latency increased : %ld", latency.getNS());
+               COND_MYLOG(0, address, "latency increased : %ld", latency.getNS());
 
                // Insert the line. Be sure to use SHARED/MODIFIED as appropriate (upgrades are free anyway), we don't want to have to write back clean lines
                insertCacheBlock(address, mem_op_type == Core::READ ? CacheState::SHARED : CacheState::MODIFIED, data_buf, m_core_id, ShmemPerfModel::_USER_THREAD);
@@ -1238,7 +1273,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
 
    if (cache_hit)
    {
-      MYLOG("Yay, hit!!");
+      COND_MYLOG(0, address, "Yay, hit!!");
       Byte data_buf[getCacheBlockSize()];
       retrieveCacheBlock(address, data_buf, ShmemPerfModel::_USER_THREAD, first_hit && count);
       /* Store completion time so we can detect overlapping accesses */
@@ -1249,7 +1284,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
          cleanupMshr();
       }
    } else {
-     MYLOG("Oh, miss...");
+     COND_MYLOG(0, address, "Oh, miss...");
    }
 
    if (modeled && m_master->m_prefetcher)
@@ -1266,7 +1301,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
    #else
    #endif
 
-   MYLOG("returning %s", HitWhereString(hit_where));
+   COND_MYLOG(0, address, "returning %s", HitWhereString(hit_where));
    return hit_where;
 }
 
@@ -1284,9 +1319,9 @@ CacheCntlr::notifyPrevLevelInsert(core_id_t core_id, MemComponent::component_t m
 void
 CacheCntlr::notifyPrevLevelEvict(core_id_t core_id, MemComponent::component_t mem_component, IntPtr address)
 {
-MYLOG("@%lx", address);
+COND_MYLOG(0, address, "@%lx", address);
    if (m_master->m_evicting_buf && address == m_master->m_evicting_address) {
-MYLOG("here being evicted");
+COND_MYLOG(0, address, "here being evicted");
    } else {
       #ifdef ENABLE_TRACK_SHARING_PREVCACHES
       SharedCacheBlockInfo* cache_block_info = getCacheBlockInfo(address);
@@ -1419,7 +1454,7 @@ CacheCntlr::initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr address, 
    else
    {
       // Someone else is busy with this cache line, they'll do everything for us
-      MYLOG("%u previous waiters", m_master->m_directory_waiters.size(address));
+      COND_MYLOG(0, address, "%u previous waiters", m_master->m_directory_waiters.size(address));
    }
 }
 
@@ -1515,7 +1550,7 @@ CacheCntlr::operationPermissibleinCache(
          break;
    }
 
-   MYLOG("address %lx state %c: permissible %d", address, CStateString(cstate), cache_hit);
+   COND_MYLOG(0, address, "address %lx state %c: permissible %d", address, CStateString(cstate), cache_hit);
    return cache_hit;
 }
 
@@ -1542,9 +1577,9 @@ CacheCntlr::accessCache(
          // Write-through cache - Write the next level cache also
          if (m_cache_writethrough) {
             LOG_ASSERT_ERROR(m_next_cache_cntlr, "Writethrough enabled on last-level cache !?");
-MYLOG("writethrough start");
+COND_MYLOG(0, ca_address, "writethrough start");
             m_next_cache_cntlr->writeCacheBlock(ca_address, offset, data_buf, data_length, ShmemPerfModel::_USER_THREAD);
-MYLOG("writethrough done");
+COND_MYLOG(0, ca_address, "writethrough done");
          }
          break;
 
@@ -1600,7 +1635,7 @@ CacheCntlr::invalidateCacheBlock(IntPtr address)
    if (m_next_cache_cntlr)
       m_next_cache_cntlr->notifyPrevLevelEvict(m_core_id_master, m_mem_component, address);
 
-   MYLOG("%lx %c > %c", address, CStateString(old_cstate), CStateString(getCacheState(address)));
+   COND_MYLOG(0, address, "%lx %c > %c", address, CStateString(old_cstate), CStateString(getCacheState(address)));
 }
 
 void
@@ -1619,7 +1654,7 @@ CacheCntlr::retrieveCacheBlock(IntPtr address, Byte* data_buf, ShmemPerfModel::T
 SharedCacheBlockInfo*
 CacheCntlr::insertCacheBlock(IntPtr address, CacheState::cstate_t cstate, Byte* data_buf, core_id_t requester, ShmemPerfModel::Thread_t thread_num)
 {
-MYLOG("insertCacheBlock l%d @ %lx as %c (now %c)", m_mem_component, address, CStateString(cstate), CStateString(getCacheState(address)));
+COND_MYLOG(0, address, "insertCacheBlock l%d @ %lx as %c (now %c)", m_mem_component, address, CStateString(cstate), CStateString(getCacheState(address)));
    bool eviction;
    IntPtr evict_address;
    SharedCacheBlockInfo evict_block_info;
@@ -1640,12 +1675,12 @@ MYLOG("insertCacheBlock l%d @ %lx as %c (now %c)", m_mem_component, address, CSt
 
    if (m_next_cache_cntlr && !m_perfect)
       m_next_cache_cntlr->notifyPrevLevelInsert(m_core_id_master, m_mem_component, address);
-MYLOG("insertCacheBlock l%d local done", m_mem_component);
+COND_MYLOG(0, address, "insertCacheBlock l%d local done", m_mem_component);
 
 
    if (eviction)
    {
-MYLOG("evicting @%lx", evict_address);
+COND_MYLOG(0, address, "evicting @%lx", evict_address);
 
       if (
          !m_next_cache_cntlr // Track at LLC
@@ -1657,7 +1692,7 @@ MYLOG("evicting @%lx", evict_address);
       }
 
       CacheState::cstate_t old_state = evict_block_info.getCState();
-      MYLOG("evicting @%lx (state %c)", evict_address, CStateString(old_state));
+      COND_MYLOG(0, address, "evicting @%lx (state %c)", evict_address, CStateString(old_state));
       {
          ScopedLock sl(getLock());
          transition(
@@ -1753,7 +1788,7 @@ MYLOG("evicting @%lx", evict_address);
          if (evict_block_info.getCState() == CacheState::MODIFIED)
          {
             // Send back the data also
-MYLOG("evict FLUSH %lx", evict_address);
+COND_MYLOG(0, address, "evict FLUSH %lx", evict_address);
             getMemoryManager()->sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::FLUSH_REP,
                   MemComponent::LAST_LEVEL_CACHE, MemComponent::TAG_DIR,
                   m_core_id /* requester */,
@@ -1764,7 +1799,7 @@ MYLOG("evict FLUSH %lx", evict_address);
          }
          else
          {
-MYLOG("evict INV %lx", evict_address);
+COND_MYLOG(0, address, "evict INV %lx", evict_address);
             LOG_ASSERT_ERROR(evict_block_info.getCState() == CacheState::SHARED || evict_block_info.getCState() == CacheState::EXCLUSIVE,
                   "evict_address(0x%x), evict_state(%u)",
                   evict_address, evict_block_info.getCState());
@@ -1779,17 +1814,17 @@ MYLOG("evict INV %lx", evict_address);
       }
 
       LOG_ASSERT_ERROR(getCacheState(evict_address) == CacheState::INVALID, "Evicted address did not become invalid, now in state %s", CStateString(getCacheState(evict_address)));
-      MYLOG("insertCacheBlock l%d evict done", m_mem_component);
+      COND_MYLOG(0, address, "insertCacheBlock l%d evict done", m_mem_component);
    }
 
-   MYLOG("insertCacheBlock l%d end", m_mem_component);
+   COND_MYLOG(0, address, "insertCacheBlock l%d end", m_mem_component);
    return cache_block_info;
 }
 
 std::pair<SubsecondTime, bool>
 CacheCntlr::updateCacheBlock(IntPtr address, CacheState::cstate_t new_cstate, Transition::reason_t reason, Byte* out_buf, ShmemPerfModel::Thread_t thread_num)
 {
-   MYLOG("updateCacheBlock");
+   COND_MYLOG(0, address, "updateCacheBlock");
    LOG_ASSERT_ERROR(new_cstate < CacheState::NUM_CSTATE_STATES, "Invalid new cstate %u", new_cstate);
 
    /* first, propagate the update to the previous levels. they will write modified data back to us when needed */
@@ -1925,7 +1960,7 @@ CacheCntlr::updateCacheBlock(IntPtr address, CacheState::cstate_t new_cstate, Tr
       }
    }
 
-   MYLOG("@%lx  %c > %c (req: %c)", address, CStateString(old_cstate),
+   COND_MYLOG(0, address, "@%lx  %c > %c (req: %c)", address, CStateString(old_cstate),
                                      CStateString(cache_block_info ? cache_block_info->getCState() : CacheState::INVALID),
                                      CStateString(new_cstate));
 
@@ -1938,8 +1973,8 @@ CacheCntlr::updateCacheBlock(IntPtr address, CacheState::cstate_t new_cstate, Tr
          "state didn't change as we wanted: %c instead of %c", CStateString(current_cstate), CStateString(new_cstate));
    if (out_buf && !buf_written)
    {
-      MYLOG("cache_block_info: %c", cache_block_info ? 'y' : 'n');
-      MYLOG("@%lx  %c > %c (req: %c)", address, CStateString(old_cstate),
+      COND_MYLOG(0, address, "cache_block_info: %c", cache_block_info ? 'y' : 'n');
+      COND_MYLOG(0, address, "@%lx  %c > %c (req: %c)", address, CStateString(old_cstate),
                                            CStateString(cache_block_info ? cache_block_info->getCState() : CacheState::INVALID),
                                            CStateString(new_cstate));
    }
@@ -1954,12 +1989,12 @@ CacheCntlr::updateCacheBlock(IntPtr address, CacheState::cstate_t new_cstate, Tr
 void
 CacheCntlr::writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf, UInt32 data_length, ShmemPerfModel::Thread_t thread_num)
 {
-MYLOG(" ");
+COND_MYLOG(0, address, " ");
 
    // TODO: should we update access counter?
 
    if (m_master->m_evicting_buf && (address == m_master->m_evicting_address)) {
-      MYLOG("writing to evict buffer %lx", address);
+      COND_MYLOG(0, address, "writing to evict buffer %lx", address);
 assert(offset==0);
 assert(data_length==getCacheBlockSize());
       if (data_buf)
@@ -2471,7 +2506,7 @@ CacheCntlr::updateUncoreStatistics(HitWhere::where_t hit_where, SubsecondTime no
 void
 CacheCntlr::acquireLock(UInt64 address)
 {
-MYLOG("cache lock acquire %u # %u @ %lx", m_mem_component, m_core_id, address);
+COND_MYLOG(0, address, "cache lock acquire %u # %u @ %lx", m_mem_component, m_core_id, address);
    assert(isFirstLevel());
    // Lock this L1 cache for the set containing <address>.
    lastLevelCache()->m_master->getSetLock(address)->acquire_shared(m_core_id);
@@ -2480,7 +2515,7 @@ MYLOG("cache lock acquire %u # %u @ %lx", m_mem_component, m_core_id, address);
 void
 CacheCntlr::releaseLock(UInt64 address)
 {
-MYLOG("cache lock release %u # %u @ %lx", m_mem_component, m_core_id, address);
+COND_MYLOG(0, address, "cache lock release %u # %u @ %lx", m_mem_component, m_core_id, address);
    assert(isFirstLevel());
    lastLevelCache()->m_master->getSetLock(address)->release_shared(m_core_id);
 }
@@ -2488,7 +2523,7 @@ MYLOG("cache lock release %u # %u @ %lx", m_mem_component, m_core_id, address);
 void
 CacheCntlr::acquireStackLock(UInt64 address, bool this_is_locked)
 {
-MYLOG("stack lock acquire %u # %u @ %lx", m_mem_component, m_core_id, address);
+COND_MYLOG(0, address, "stack lock acquire %u # %u @ %lx", m_mem_component, m_core_id, address);
    // Lock the complete stack for the set containing <address>
    if (this_is_locked)
       // If two threads decide to upgrade at the same time, we could deadlock.
@@ -2501,7 +2536,7 @@ MYLOG("stack lock acquire %u # %u @ %lx", m_mem_component, m_core_id, address);
 void
 CacheCntlr::releaseStackLock(UInt64 address, bool this_is_locked)
 {
-MYLOG("stack lock release %u # %u @ %lx", m_mem_component, m_core_id, address);
+COND_MYLOG(0, address, "stack lock release %u # %u @ %lx", m_mem_component, m_core_id, address);
    if (this_is_locked)
       lastLevelCache()->m_master->getSetLock(address)->downgrade(m_core_id);
    else

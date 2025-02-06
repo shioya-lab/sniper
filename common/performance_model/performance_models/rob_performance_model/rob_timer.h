@@ -384,8 +384,6 @@ private:
    void preloadInstruction (uint64_t idx);
 
    RegisterManager *m_reg_manager;
-   bool m_full_phyreg_mode;
-   UInt64 m_full_phyreg_mode_start;
 
    bool ReserveVSTQ (uint64_t rob_idx);
    void releaseLPIQ ();
