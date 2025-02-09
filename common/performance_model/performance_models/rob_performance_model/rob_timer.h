@@ -290,9 +290,7 @@ private:
    void issueInstruction(uint64_t idx, SubsecondTime &next_event);
 
    // Physical Register: Freelist
-   bool m_vec_late_phyreg_allocation;
-   bool m_vec_reserved_allocation;
-   bool m_enable_vec_priority_alloc; // Gather命令は常に予約に回すオプション
+   vec_reserve_policy_t m_vec_reserve_policy;
 
    std::list<UInt64> m_lpiq_fifo;
    UInt64 m_lpiq_inserted;   // LPIQに挿入された回数
@@ -405,6 +403,10 @@ private:
    bool m_show_rob;
 
    PriorityManager *m_priority_manager; 
+   void manageInstructionReserve (RobEntry *entry);
+   void manageInstructionReserveVecPriority(RobEntry *entry);
+   void manageInstructionReserveVecAll(RobEntry *entry);
+
 
 public:
 

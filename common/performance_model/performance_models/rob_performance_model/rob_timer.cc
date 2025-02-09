@@ -88,8 +88,10 @@ RobTimer::RobTimer(
       , m_cpiCurrentFrontEndStall(NULL)
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
-      , m_vec_reserved_allocation (Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/reserved_allocation", core->getId()))
-      , m_enable_vec_priority_alloc (Sim()->getCfg()->getBoolArray("research_option/enable_vec_priority_alloc", core->getId()))
+      , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull : 
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_dynamic"   ? VecReserveDynamic :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_stacic"    ? VecReserveStatic :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways : VecReserveNone)
       , m_last_committed_time(core->getDvfsDomain())
       , m_app(Sim()->getCfg()->getString("general/app"))
       , m_pref_target_log(strtol(Sim()->getCfg()->getStringArray("log/vec_pref_target_pc", core->getId()).c_str(), NULL, 16))
@@ -315,9 +317,9 @@ RobTimer::RobTimer(
 
    m_mem_stats = new MemStatsManager(&now, &enable_rob_timer_log, &rob_start_cycle);
 
-   m_reg_manager = new RegisterManager (core->getId());
-   // if (m_enable_vec_priority_alloc) {
-   m_priority_manager = new PriorityManager (&now);
+   m_reg_manager = new RegisterManager (core->getId(), m_vec_reserve_policy);
+   // if (isUseNonpriVector (m_vec_reserve_policy)) {
+   m_priority_manager = new PriorityManager (&now, m_vec_reserve_policy);
    // } else {
    //    m_priority_manager = NULL;
    // }
@@ -560,83 +562,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       setVSETDependencies (*entry->uop, lowestValidSequenceNumber);
 
-      LOG_ASSERT_ERROR(!entry->uop->isReserveInst() && !entry->uop->isStrongPriorityInst(), "Priority must not allocate before execution");
-      if (m_enable_vec_priority_alloc) {
-         auto priority_remove_queue_it = m_priority_manager->getPriorityRemoveQueue();
-         auto remove_it = std::find(priority_remove_queue_it->begin(), priority_remove_queue_it->end(),
-                                    entry->uop->getMicroOp()->getInstruction()->getAddress());
-         if (remove_it != priority_remove_queue_it->end()) {
-            m_priority_manager->removePriority (entry->uop->getMicroOp()->getInstruction()->getAddress());
-            priority_remove_queue_it->erase(remove_it);
-            ROB_DEBUG_PRINTF ("%ld: Priority remove propagation phase: PC=%08lx\n", 
-                     now.getCycleCount(),
-                     entry->uop->getMicroOp()->getInstruction()->getAddress());
-
-            for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-
-               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-               if (is_waiting_entry_vector_dest_reg) {
-                  UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-                  priority_remove_queue_it->push_back (wait_entry_pc);
-                  ROB_DEBUG_PRINTF ("Priority Remove Candidate: PC=%08lx\n", wait_entry_pc);
-               }
-            }
-         }
-
-         PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry->uop->getMicroOp()->getInstruction()->getAddress());
-
-         if (priority == PriorityManager::inst_priority_t::High) {
-            entry->uop->setStrongPriorityInst ();
-
-            // fprintf (stderr, "simulate(): pc=%08lx Priority instruction\n", 
-            //          entry->uop->getMicroOp()->getInstruction()->getAddress());
-
-            // if (entry->uop->getMicroOp()->getInstruction()->getAddress() == 0x149ac) {
-            //    printRob();
-            // }
-
-            // 優先度の伝搬: 自分が即時割り当ての命令であれば、自分が依存している命令も即時割り当ての命令でなければならない
-            for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-
-               // fprintf (stderr, "  dependency(%ld) = %ld\n", idx, entry->uop->getDependency(idx));
-
-               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-               if (is_waiting_entry_vector_dest_reg) {
-                  UInt64 wait_entry_pc = waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-                  if (m_priority_manager->getPriority(wait_entry_pc) != PriorityManager::inst_priority_t::High) {
-                     m_priority_manager->setPriority (wait_entry_pc, PriorityManager::inst_priority_t::High);
-
-                     ROB_DEBUG_PRINTF ("%ld: Priority backpropagation: Strong propagated from PC=%08lx to PC=%08lx\n", 
-                              now.getCycleCount(), 
-                              entry->uop->getMicroOp()->getInstruction()->getAddress(),
-                              waiting_entry->uop->getMicroOp()->getInstruction()->getAddress());
-                  }
-               }
-            }
-
-         } else if (priority == PriorityManager::inst_priority_t::Reserve) {
-            entry->uop->setReserveInst ();
-         } else {
-            // 低優先度の命令に依存している or 高優先度の命令に依存している
-            for(size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
-               RobEntry *waiting_entry = this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-
-               bool is_waiting_entry_vector_dest_reg = waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-                     Sim()->getDecoder()->is_reg_vector(waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-               if (is_waiting_entry_vector_dest_reg &&
-                   (waiting_entry->uop->isReserveInst() ||         // 低優先度の命令に依存する命令はLPIQに入れる
-                    waiting_entry->uop->isStrongPriorityInst())) {  // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
-                  entry->uop->setReserveInst();
-                  ROB_DEBUG_PRINTF ("Set Reserve Priority uop_idx=%ld %s\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
-                  break;
-               }
-            }
-         }
-      }
+      manageInstructionReserve(entry); // 命令の予約を制御する
 
       if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad() &&
           !entry->uop->getMicroOp()->isVector()) // In Vector, remove dependency for forwarding not support.
@@ -858,7 +784,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uops_dispatched == dispatchWidth)
             break;
 
-         if (m_enable_vec_priority_alloc) {
+         if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveDynamic) {
             if (entry->uop->isStrongPriorityInst() || entry->uop->isReserveInst()) {
                // 後続の依存している命令にLow Priorityを伝える
                for(size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
@@ -1089,7 +1015,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          }
 
          if (uop.getMicroOp()->getDestinationRegistersLength() != 0) {
-            if (m_enable_vec_priority_alloc) {
+            if (isUseNonpriVector (m_vec_reserve_policy)) {
                RegisterManager::AllocResult_t alloc_result = m_reg_manager->AllocateRegister (&uop);
                dl::Decoder *dec = Sim()->getDecoder();
                dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
@@ -1150,7 +1076,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                      }
                   }
                }
-            } else if (m_vec_reserved_allocation) {
+            } else if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveWhenFull) {
                // 物理レジスタの確保試行
                if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
                   dl::Decoder *dec = Sim()->getDecoder();
@@ -1279,7 +1205,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.getMicroOp()->isVector()) {
             KANATA_PRINTF ("L\t%ld\t%d\tPhyReg(%ld),\n", entry->global_sequence_id, 1,
                            m_reg_manager->getAllocVectorRegister());
-            if (m_enable_vec_priority_alloc) {
+            if (isUseNonpriVector (m_vec_reserve_policy)) {
                KANATA_PRINTF ("L\t%ld\t%d\tResReg(%ld,%ld),\n", entry->global_sequence_id, 1,
                      m_reg_manager->getNonPriVectorRegisters(),
                      m_reg_manager->getNonPriVectorRegisters() < m_reg_manager->getNonPriMaxVectorRegisters() ? m_reg_manager->getNonPriVectorRegisters() : m_reg_manager->getNonPriMaxVectorRegisters());
@@ -1319,14 +1245,14 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          ROB_DEBUG_PRINTF ("DISPATCH uop_idx=%ld %s", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
 
-         if (m_enable_vec_priority_alloc) {
+         if (isUseNonpriVector (m_vec_reserve_policy)) {
             ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" : entry->uop->isStrongPriorityInst() ? "STRONG" : "NORMAL");
          } else {
             ROB_DEBUG_PRINTF ("\n");
          }
 
-         // if (m_vec_reserved_allocation &&
-         //     m_enable_vec_priority_alloc &&
+         // if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveWhenFull &&
+         //     isUseNonpriVector (m_vec_reserve_policy) &&
          //     uop.getMicroOp()->isVecLoad() &&
          //     !uop.getMicroOp()->canVecSquash()) { // Gather
          //    AddPriInsts(uop.getMicroOp()->getInstruction()->getAddress());
@@ -1421,11 +1347,11 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       m_previous_latency = latency;
       m_previous_hit_where = res.hit_where;
 
-      if (uop.getMicroOp()->isLoad()) {
+      if (uop.getMicroOp()->isVecLoad()) {
          UpdateVecDCacheStats(&uop, res.hit_where);
       }
 
-      if (m_enable_vec_priority_alloc) {
+      if (isUseNonpriVector (m_vec_reserve_policy)) {
          // if (uop.getMicroOp()->isVecLoad()) {
           if (uop.getMicroOp()->isLoad()) {
             DynamicMicroOp *last_uop = &uop;
@@ -1713,7 +1639,7 @@ SubsecondTime RobTimer::doIssue()
 
       if (entry->ready > now) {
          canIssue = false;          // blocked by dependency
-         vector_someone_cant_be_issued = dyn_vector_inorder;
+         // vector_someone_cant_be_issued = dyn_vector_inorder;
       }
       else if ((no_more_load && uop->getMicroOp()->isLoad()) || (no_more_store && uop->getMicroOp()->isStore()))
          canIssue = false;          // blocked by mfence
@@ -1905,7 +1831,7 @@ SubsecondTime RobTimer::doIssue()
 
       // If Vector and can't be issued, try to preload
       if (uop->isInLPIQ() &&
-          m_vec_reserved_allocation &&
+          m_vec_reserve_policy == vec_reserve_policy_t::VecReserveWhenFull &&
           m_vec_preload &&
           uop->getMicroOp()->isVecMem() && /* uop->getMicroOp()->isLoad() && */
           !uop->isPreloadDone()) {
@@ -2173,7 +2099,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       //    }
       // }
 
-      if (m_enable_vec_priority_alloc) {
+      if (isUseNonpriVector (m_vec_reserve_policy)) {
          // 非優先命令の持っているレジスタは解放時に、LPIQ内のレジスタを渡す
          dl::Decoder *dec = Sim()->getDecoder();
          if (entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
@@ -2452,7 +2378,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
    DEBUG_COUT_IF (std::cout, "   Int Regs  : "<< std::dec << m_reg_manager->getAllocIntRegister()    << std::endl);
    DEBUG_COUT_IF (std::cout, "   Float Regs: "<< std::dec << m_reg_manager->getAllocFloatRegister()  << std::endl);
    DEBUG_COUT_IF (std::cout, "   Vec Regs  : "<< std::dec << m_reg_manager->getAllocVectorRegister() << std::endl);
-   if (m_enable_vec_priority_alloc) {
+   if (m_vec_reserve_policy != VecReserveNone) {
       DEBUG_COUT_IF (std::cout, "     Low Priority  : "<< std::dec << m_reg_manager->getNonPriVectorRegisters() << std::endl);
    }
    DEBUG_COUT_IF (std::cout, "   LPIQ entries: "<< m_lpiq_fifo.size() << " ");
@@ -2496,15 +2422,15 @@ void RobTimer::printRob(bool is_output, bool enable_check)
           e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
           dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))
       ) {
-         if (m_enable_vec_priority_alloc) {
+         if (isUseNonpriVector (m_vec_reserve_policy)) {
             if (e->uop->isUseNormalRegisterGroup()) {
-               ++vecreg_normal_alloc_count;
+               vecreg_normal_alloc_count++;
                DEBUG_COUT_IF (state, std::setw(3) << (vecreg_normal_alloc_count) << ' ');
                normal_decided = true;
             } else {
                DEBUG_COUT_IF (state, "    ");
             }
-         } else if (m_vec_reserved_allocation) {
+         } else if (m_vec_reserve_policy == VecReserveWhenFull) {
             if (!e->uop->isInLPIQ() ||
                 (e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESOLVED)) {
                vecreg_normal_alloc_count++;
@@ -2529,7 +2455,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
           e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
           dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))
       ) {
-         if (m_enable_vec_priority_alloc) {
+         if (isUseNonpriVector (m_vec_reserve_policy)) {
             if (e->uop->isUseReserveRegisterGroup() &&
                 (e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESOLVED ||
                  e->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::CHAIN)) {
@@ -2630,6 +2556,11 @@ void RobTimer::printRob(bool is_output, bool enable_check)
          DEBUG_COUT_IF (std::cout, "F");
       } else if (e->uop->isLast()) {
          DEBUG_COUT_IF (std::cout, "L");
+      } else {
+         DEBUG_COUT_IF (std::cout, " ");
+      }
+      if (e->uop->isVirtuallyIssued()) {
+         DEBUG_COUT_IF (std::cout, "V");
       } else {
          DEBUG_COUT_IF (std::cout, " ");
       }
@@ -2801,8 +2732,6 @@ bool RobTimer::InsertLPIQ (DynamicMicroOp *uop, DynamicMicroOp::lpiq_t reason)
 // ----------------------------------------------------
 bool RobTimer::ReserveVSTQ (uint64_t rob_idx)
 {
-   // LOG_ASSERT_ERROR(!m_vec_late_phyreg_allocation, "This function must be called only when regular_binding mode");
-
    RobEntry *entry = &rob.at(rob_idx);
    DynamicMicroOp *uop = entry->uop;
 
@@ -2814,7 +2743,7 @@ bool RobTimer::ReserveVSTQ (uint64_t rob_idx)
       // fprintf (stderr, "ReserveVSTQ seqId=%ld, ", uop->getSequenceNumber());
       if (vec_store_queue == 0) {
          // ここに到達したということは、ベクトル命令のベクトル資源が枯渇したことを意味するので、FIFOに格納する。
-         if (m_vec_reserved_allocation && m_lpiq_fifo.size() < LPIQ_SIZE) {
+         if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveWhenFull && m_lpiq_fifo.size() < LPIQ_SIZE) {
             // if (m_lpiq_fifo.size() > 0) {
             //    LOG_ASSERT_ERROR(m_lpiq_fifo.back() < uop->getSequenceNumber(),
             //                     "0. inserted FIFO age should be larger than last entry");

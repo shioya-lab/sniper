@@ -4,6 +4,21 @@
 #include <list>
 
 #include "config.hpp"
+
+typedef enum {
+   VecReserveWhenFull,
+   VecReserveDynamic,
+   VecReserveStatic,
+   VecReserveAlways,
+   VecReserveNone
+} vec_reserve_policy_t;
+
+inline bool isUseNonpriVector(vec_reserve_policy_t res) {
+   return res == VecReserveDynamic || 
+             res == VecReserveStatic ||
+             res == VecReserveAlways;
+}
+
 class PriorityManager {
 
 public:
@@ -14,7 +29,7 @@ public:
    } inst_priority_t;
 
 private:
-   const String m_methodology;  // static / dynamic
+   vec_reserve_policy_t m_vec_reserve_policy;
    const String m_app;
 
    ComponentTime *m_now;
@@ -26,8 +41,8 @@ private:
    size_t inst_counter;
 
    public:
-      PriorityManager(ComponentTime *now)
-      : m_methodology(Sim()->getCfg()->getString("perf_model/core/rob_timer/priority_methodology"))
+      PriorityManager(ComponentTime *now, vec_reserve_policy_t vec_reserve_policy)
+      : m_vec_reserve_policy (vec_reserve_policy)
       , m_app(Sim()->getCfg()->getString("general/app"))
       {
          m_now = now;
@@ -74,7 +89,7 @@ private:
    }
 
    inst_priority_t getPriority (UInt64 pc) {
-      if (m_methodology == "static") {
+      if (m_vec_reserve_policy == VecReserveStatic) {
          return getPriority_Static(pc);
       } else {
          // マップにキー(pc)がある場合はその値を返す

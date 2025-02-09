@@ -8,10 +8,11 @@
 #include <deque>
 #include <list>
 
-#include "config.hpp"
 #include "stats.h"
 
-#define REG_DEBUG_PRINTF(...) { if (false && m_enable_rob_timer_log /* && now.getCycleCount() >= m_rob_start_cycle */) { fprintf(stderr, __VA_ARGS__); }}
+#include "priority_manager.hpp"
+
+#define REG_DEBUG_PRINTF(...) { if (m_enable_rob_timer_log /* && now.getCycleCount() >= m_rob_start_cycle */) { fprintf(stderr, __VA_ARGS__); }}
 
 class RegisterManager
 {
@@ -22,7 +23,7 @@ class RegisterManager
    };
 
    UInt64 m_core_id;
-   bool m_enable_vec_priority_alloc;
+   vec_reserve_policy_t m_vec_reserve_policy;
 
    UInt64 m_phy_registers[3];  // 3-types of registers defined: Int/Float/Vector
    UInt64 m_res_reserv_registers;  // 資源予約リスト内の命令の数
@@ -45,9 +46,9 @@ class RegisterManager
       AllocChain   = 3
    };
 
-   RegisterManager (UInt64 core_id) {
+   RegisterManager (UInt64 core_id, vec_reserve_policy_t vec_reserve_policy) {
       m_core_id = core_id;
-      m_enable_vec_priority_alloc = Sim()->getCfg()->getBoolArray("research_option/enable_vec_priority_alloc", core_id);
+      m_vec_reserve_policy = vec_reserve_policy;
 
       m_phy_registers[IntRegister   ] = 32;
       m_phy_registers[FloatRegister ] = 32;
@@ -70,7 +71,9 @@ class RegisterManager
       m_total_vec_phy_registers = 0;
       m_total_vec_phy_count = 0;
       float vec_phy_rate = Sim()->getCfg()->getFloat("perf_model/core/rob_timer/nonpri_max_vec_phy_rate");
-      if (vec_phy_rate == 0.0) {
+      if (vec_reserve_policy == VecReserveAlways) {
+         m_nonpri_max_vec_phy_registers = m_max_phy_registers[VectorRegister] - 32;
+      } else if (vec_phy_rate == 0.0) {
          m_nonpri_max_vec_phy_registers = Sim()->getCfg()->getInt("perf_model/core/rob_timer/nonpri_max_vec_phy_registers");
       } else {
          m_nonpri_max_vec_phy_registers = (m_max_phy_registers[VectorRegister] - 32) * vec_phy_rate;
@@ -118,7 +121,7 @@ class RegisterManager
    }
 
    AllocResult_t AllocateVectorRegister (DynamicMicroOp *uop) {
-      if (m_enable_vec_priority_alloc) {
+      if (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone) {
          // 優先度付き予約
          if (uop->isUseNormalRegisterGroup()) {
             // 通常のレジスタグループから割り当てを行う命令
@@ -216,7 +219,7 @@ class RegisterManager
    }
 
    void ReleaseVectorRegister (DynamicMicroOp *uop) {
-      if (m_enable_vec_priority_alloc) {
+      if (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone) {
          // 優先度付き予約手法の場合
          if (uop->isUseNormalRegisterGroup()) {
             m_phy_registers[VectorRegister] --;
@@ -264,7 +267,7 @@ class RegisterManager
    }
 
    void ForceReleaseVoctorRegister () {
-      LOG_ASSERT_ERROR (m_enable_vec_priority_alloc, "This function is only valid in m_enable_vec_priority_alloc.");
+      LOG_ASSERT_ERROR (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone, "This function is only valid in m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone.");
       m_phy_registers[VectorRegister] --;
    }
 
