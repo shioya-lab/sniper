@@ -95,6 +95,7 @@ class DynamicMicroOp
 
       bool preload_done;
       uint64_t initial_intraInstructionDependencies;
+      uint64_t initial_dependenciesLength;
       uint64_t initial_dependencies[MAXIMUM_NUMBER_OF_DEPENDENCIES];
 
       bool reserve_inst;
@@ -136,6 +137,9 @@ class DynamicMicroOp
       uint64_t getDependency(uint32_t index) const;
       void addDependency(uint64_t sequenceNumber);
       void removeDependency(uint64_t sequenceNumber);
+
+      uint32_t getInitialDependenciesLength() const { return this->initial_intraInstructionDependencies + this->initial_dependenciesLength; }
+      uint64_t getInitialDependency(uint32_t index) const;
 
       // オペランドの解決のみを判定するために，もう一つdependency listを作った
       void addRegDependency(uint64_t sequenceNumber);
@@ -217,6 +221,14 @@ class DynamicMicroOp
 
       UInt64 getMemMaxLatency() const { return this->memMaxLatency; }
       void setMemMaxLatency(uint32_t latency) { this->memMaxLatency = latency; }
+
+      bool m_is_cache_hit_last = true;  // この変数はlastの要素のみ有効
+      // 全てのuopがHitであるときだけHitとなるように
+      void setCacheLastHitAnd (bool hit) {
+         // LOG_ASSERT_ERROR (this->isLast(), "this value should be read / write only last element");
+         m_is_cache_hit_last &= hit;
+      }
+      inline bool getCacheLastHitAnd () { return m_is_cache_hit_last; }
 
       void setAddress(const Memory::Access& loadAccess) { this->address = loadAccess; }
       const Memory::Access& getAddress(void) const { return this->address; }

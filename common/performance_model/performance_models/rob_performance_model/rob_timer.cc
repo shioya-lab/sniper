@@ -310,6 +310,9 @@ RobTimer::RobTimer(
    m_lpiq_inserted = 0;
    m_lpiq_overflow = 0;
 
+   registerStatsMetric("rob_timer", core->getId(), "num_vecload", &m_num_vecload);
+   registerStatsMetric("rob_timer", core->getId(), "num_vecload_l1d_hit", &m_num_vecload_hit);
+
    registerStatsMetric ("rob_timer", core->getId(), "preload_count", &m_preload_count);
    m_preload_count = 0;
 
@@ -392,12 +395,12 @@ RobTimer::~RobTimer()
       std::cout << " : " << (it->second)->assembly << '\n';
    }
 
-   std::cout << "-------------------\n";
-   std::cout << "Preload usage\n";
-   std::cout << "-------------------\n";
-   for (auto it = m_preload_stats.begin(); it != m_preload_stats.end(); it++) {
-      std::cout << std::hex << it->first << ", " << std::dec << (it->second).first << " : " << (it->second).second << '\n';
-   }
+   // std::cout << "-------------------\n";
+   // std::cout << "Preload usage\n";
+   // std::cout << "-------------------\n";
+   // for (auto it = m_preload_stats.begin(); it != m_preload_stats.end(); it++) {
+   //    std::cout << std::hex << it->first << ", " << std::dec << (it->second).first << " : " << (it->second).second << '\n';
+   // }
 
    std::cout << "-------------------------------\n";
    std::cout << "Vector Instruction Statistics\n";
@@ -1251,17 +1254,6 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ROB_DEBUG_PRINTF ("\n");
          }
 
-         // if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveWhenFull &&
-         //     isUseNonpriVector (m_vec_reserve_policy) &&
-         //     uop.getMicroOp()->isVecLoad() &&
-         //     !uop.getMicroOp()->canVecSquash()) { // Gather
-         //    AddPriInsts(uop.getMicroOp()->getInstruction()->getAddress());
-         // }
-         // if (isPriInst (uop)) {
-         //    PropagatePriInsts (uop);
-         // }
-         // UpdateProdRegister (uop);
-
          #ifdef ASSERT_SKIP
             LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
          #endif
@@ -1351,9 +1343,28 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          UpdateVecDCacheStats(&uop, res.hit_where);
       }
 
+      if (uop.getMicroOp()->isVecLoad()) {
+         DynamicMicroOp *last_uop = &uop;
+         last_uop->setCacheLastHitAnd (res.hit_where != HitWhere::where_t::DRAM);
+         if (!uop.isLast()) {
+            // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
+            //         uop.getSequenceNumber(), uop.getMicroOp()->UopIdx(), uop.getMicroOp()->NumUop());
+            size_t last_offset = 1;
+            RobEntry *uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
+            last_uop = uop_last_entry->uop;
+            while (!last_uop->isLast()) {
+               last_offset++;
+               uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
+               last_uop = uop_last_entry->uop;
+            };
+         } else {
+            // Last uop
+            UpdateVecLoadHit (uop.getCacheLastHitAnd());
+         }
+      }
+
       if (isUseNonpriVector (m_vec_reserve_policy)) {
-         // if (uop.getMicroOp()->isVecLoad()) {
-          if (uop.getMicroOp()->isLoad()) {
+         if (uop.getMicroOp()->isVecLoad()) {
             DynamicMicroOp *last_uop = &uop;
             if (!uop.isLast()) {
                // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
@@ -1387,11 +1398,11 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                      uop.getMemMaxLatency());
                UInt64 average_latency = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
                
-               if (uop.getMicroOp()->getInstruction()->getAddress() == 0x149ac) {
-                  m_mem_stats->dumpMemStats (uop.getMicroOp()->getInstruction()->getAddress());
-               }
                // 命令の属性を変更させるかどうかをチェックする
-               m_priority_manager->UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
+               /* pri_upd_result_t upd_result = */m_priority_manager->UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
+               // if (upd_result != pri_upd_result_t::None) {
+               //    propagatePriInst(entry, upd_result);
+               // }
             }
          }
       }
@@ -2792,10 +2803,10 @@ void RobTimer::releaseLPIQ ()
          lpiq_front_entry->lpiq_released = now.getCycleCount();
          UpdateVectorLPIQStats (lpiq_front_entry->uop,
                                 lpiq_front_entry->lpiq_released - lpiq_front_entry->lpiq_inserted);
-         if (lpiq_front_entry->uop->getMicroOp()->getInstruction()->getAddress() == 0x149a8) {
-            fprintf (stderr, "0x149a8 LPIQ latency = %ld\n",
-                     lpiq_front_entry->lpiq_released - lpiq_front_entry->lpiq_inserted);
-         }
+         // if (lpiq_front_entry->uop->getMicroOp()->getInstruction()->getAddress() == 0x149a8) {
+         //    fprintf (stderr, "0x149a8 LPIQ latency = %ld\n",
+         //             lpiq_front_entry->lpiq_released - lpiq_front_entry->lpiq_inserted);
+         // }
          ROB_DEBUG_PRINTF ("RobTimer::releaseLPIQ succeeded : uop_idx=%ld %s\n",
                            lpiq_front_entry->uop->getSequenceNumber(),
                            lpiq_front_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());

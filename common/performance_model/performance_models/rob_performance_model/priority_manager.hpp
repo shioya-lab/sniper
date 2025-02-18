@@ -13,6 +13,12 @@ typedef enum {
    VecReserveNone
 } vec_reserve_policy_t;
 
+typedef enum {
+   None,
+   Added,
+   Removed
+} pri_upd_result_t;
+
 inline bool isUseNonpriVector(vec_reserve_policy_t res) {
    return res == VecReserveDynamic || 
              res == VecReserveStatic ||
@@ -23,9 +29,10 @@ class PriorityManager {
 
 public:
    typedef enum {
-      Normal = 0,
+      Normal  = 0,
       Reserve = 1,
-      High    = 2
+      High    = 2,
+      HighOrigin = 3
    } inst_priority_t;
 
 private:
@@ -63,28 +70,28 @@ private:
    }
    
    // priorityがRemoveされれば、trueを返す
-   bool UpdateInstPriority (UInt64 pc, UInt64 latency)
+   pri_upd_result_t UpdateInstPriority (UInt64 pc, UInt64 latency)
    {
       auto it = m_priority_map.find(pc);
       if (it == m_priority_map.end()) {
-         if (latency > 100) {
-            m_priority_map[pc] = inst_priority_t::High;
+         if (latency > 10) {
+            m_priority_map[pc] = inst_priority_t::HighOrigin;
             fprintf (stderr, "%ld: pc=%08lx : Set Priority High (latency=%ld)\n", m_now->getCycleCount(), pc, latency);
-            // dumpPriorityMap();
+            return pri_upd_result_t::Added;
          }
-         return false;
+         return pri_upd_result_t::None;
       } else {
          inst_priority_t priority = it->second;
-         if (priority == High) {
-            if (latency < 30) {
+         if (priority == inst_priority_t::HighOrigin) {
+            if (latency < 5) {
                m_priority_map.erase(pc);
                fprintf (stderr, "%ld: pc=%08lx : Remove Priority (latency=%ld) \n", m_now->getCycleCount(), pc, latency);
                // dumpPriorityMap();
                m_priority_remove_queue.push_back (pc);
-               return true;
+               return pri_upd_result_t::Removed;
             }
          }
-         return false;
+         return pri_upd_result_t::None;
       }
    }
 
@@ -95,16 +102,20 @@ private:
          // マップにキー(pc)がある場合はその値を返す
          auto it = m_priority_map.find(pc);
          if (it != m_priority_map.end()) {
-            return it->second;
+            return it->second == HighOrigin ? High : it->second;
          }
          // ない場合はデフォルト値
-         return Normal;
+         if (m_vec_reserve_policy == VecReserveDynamic) {
+            return Reserve;
+         } else {
+            return Normal;
+         }
       }
    }
 
    void setPriority (UInt64 pc, inst_priority_t priority) {
       // マップにキー(pc)がない場合は新規エントリが作られる
-      fprintf (stderr, "%ld: pc=%08lx setPriority as %d\n", m_now->getCycleCount(), pc, priority);
+      // fprintf (stderr, "%ld: pc=%08lx setPriority as %s\n", m_now->getCycleCount(), pc, priority == 0 ? "Normal" : priority == 1 ? "Reserve" : "High");
       m_priority_map[pc] = priority;
       // dumpPriorityMap();
    }

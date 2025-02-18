@@ -348,6 +348,13 @@ private:
       }
    }
 
+   size_t m_num_vecload = 0;
+   size_t m_num_vecload_hit = 0;
+   inline void UpdateVecLoadHit (bool is_cache_hit) {
+      m_num_vecload++;
+      m_num_vecload_hit = m_num_vecload_hit + is_cache_hit;
+   }
+
    // 統計情報 : プリロードがどれくらい発行されたか
    std::unordered_map<UInt64, std::pair<UInt64, String>> m_preload_stats;  // first: PC, second: <Count, assembly>
    inline void UpdatePreloadStats(DynamicMicroOp *uop) {
@@ -450,31 +457,7 @@ public:
       return 0;
    }
 
-   UInt64 m_prod_pc_vregs[32];
-   void UpdateProdRegister (DynamicMicroOp &uop) {
-      if (uop.getMicroOp()->isVector() &&
-          uop.getMicroOp()->getDestinationRegistersLength() != 0 && uop.isLast()) {
-         dl::Decoder *dec = Sim()->getDecoder();
-         if (dec->is_reg_vector(uop.getMicroOp()->getDestinationRegister(0))) {
-            dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-            UInt64 pc = uop.getMicroOp()->getInstruction()->getAddress();
-            m_prod_pc_vregs[dest_reg - 64] = pc;
-         }
-      }
-   }
-
-   void PropagatePriInsts (DynamicMicroOp &uop) {
-      // fprintf (stderr, "PropagatePriInsts start:\n");
-      for(unsigned int i = 0; i < uop.getMicroOp()->getSourceRegistersLength(); ++i) {
-         dl::Decoder::decoder_reg sourceRegister = uop.getMicroOp()->getSourceRegister(i);
-         // fprintf (stderr, "  source %d\n", sourceRegister);
-         dl::Decoder *dec = Sim()->getDecoder();
-         if (dec->is_reg_vector(sourceRegister)) {
-            // fprintf (stderr, "    AddPriInsts %08lx\n", m_prod_pc_vregs[sourceRegister - 64]);
-            AddPriInsts (m_prod_pc_vregs[sourceRegister - 64]);
-         }
-      }
-   }
+   void propagatePriInst (RobEntry *entry, pri_upd_result_t result);
 
    bool isPriInst (UInt64 pc) {
       return std::find (pri_insts.begin(), pri_insts.end(), pc) != pri_insts.end();

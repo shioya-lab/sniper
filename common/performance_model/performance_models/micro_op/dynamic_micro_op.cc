@@ -159,6 +159,15 @@ void DynamicMicroOp::removeRegDependency(uint64_t sequenceNumber)
    regDependenciesLength--;
 }
 
+uint64_t DynamicMicroOp::getInitialDependency(uint32_t index) const
+{
+   if (index < this->initial_intraInstructionDependencies) {
+      return this->sequenceNumber - this->microOpTypeOffset - this->initial_intraInstructionDependencies + index;
+   } else {
+      assert((index >= this->initial_intraInstructionDependencies) && ((index - this->initial_intraInstructionDependencies) < this->initial_dependenciesLength));
+      return this->initial_dependencies[index - this->initial_intraInstructionDependencies];
+   }
+}
 
 const Memory::Access& DynamicMicroOp::getLoadAccess() const
 {
@@ -189,6 +198,7 @@ void DynamicMicroOp::backupInitialDependencies()
    for (uint64_t i = 0; i < dependenciesLength; i++) {
       initial_dependencies[i] = dependencies[i];
    }
+   initial_dependenciesLength = dependenciesLength;
    initial_intraInstructionDependencies = intraInstructionDependencies;
 
    return;
