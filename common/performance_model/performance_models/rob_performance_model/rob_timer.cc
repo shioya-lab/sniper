@@ -848,55 +848,6 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
            missed_icache = now;
          }
 
-         // if (m_rs_entries_used == rsEntries)
-         // {
-         //    cpiFrontEnd = &m_cpiRSFull;
-         //    break;
-         // }
-
-         // 長いレイテンシの命令に依存する命令を探すモード中
-         // for(size_t idx = 0; idx < uop.getDependenciesLength(); ++idx) {
-         //    RobEntry *depend_entry = this->findEntryBySequenceNumber(uop.getDependency(idx));
-         //    UInt64 depend_pc_address = depend_entry->uop->getMicroOp()->getInstruction()->getAddress();
-         //
-         //    // 陽に優先命令に依存する命令は、非優先命令となる
-         //    if (isPriInst(depend_pc_address)) {
-         //       uop.setReserveInst (false);
-         //       break;
-         //    }
-         //    // fprintf (stderr, "%ld :   Find instruction wait_pc_address = %08lx\n",
-         //    //          now.getCycleCount(), wait_pc_address);
-         //    // if (m_long_latency_pc == wait_pc_address) {
-         //    //    AddNonPriInsts (uop.getMicroOp()->getInstruction()->getAddress());
-         //    //    fprintf (stderr, "%ld : Find instruction Mode, %08lx -> %08lx. Set %08lx as non-priority instruction\n",
-         //    //             now.getCycleCount(),
-         //    //             m_long_latency_pc,
-         //    //             uop.getMicroOp()->getInstruction()->getAddress(),
-         //    //             uop.getMicroOp()->getInstruction()->getAddress());
-         //    //    uop.setReserveInst (false);
-         //    //    m_lowpri_inst_find_mode = false;
-         //    //    break;
-         //    // }
-         // }
-         // if (now.getCycleCount() > m_lowpri_inst_find_mode_start + 5000) {
-         //    // Timeout
-         //    m_lowpri_inst_find_mode = false;
-         // }
-         // }
-         // メモリの統計をチェックして、レイテンシが短くなったものはPriInstsから除去する
-         // for (auto mem: m_mem_stats) {
-         //    UInt64 pc = mem.first;
-         //    float latency = static_cast<float>(mem.second.second) / mem.second.first;
-         //    if (latency <= 100) {
-         //       if (isPriInst (pc)) {
-         //          pri_insts.erase(std::remove(pri_insts.begin(), pri_insts.end(), pc),
-         //                          pri_insts.end());
-         //          fprintf (stderr, "%ld : Unprioritize instruction = %08lx\n",
-         //                   now.getCycleCount(), pc);
-         //       }
-         //    }
-         // }
-
          if (m_active_kanata_gen && m_konata_count < m_konata_count_max && !entry->kanata_registered) {
             entry->kanata_registered = true;
             entry->global_sequence_id = m_core->getGlobalSequenceIdAndInc();
@@ -906,114 +857,8 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                            uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
          }
 
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
-            m_fpu_num_in_rs > m_fpu_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : FPU Instruction Window Overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiFPURSFull;
-            m_frontstall_idx = frontstall_t::FPURsFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "FPU Instruction Window Overflow");
-            }
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
-              m_alu_num_in_rs > m_alu_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : ALU Instruction Window Overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiALURSFull;
-            m_frontstall_idx = frontstall_t::ALURsFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "ALU Instruction Window Overflow");
-            }
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE) &&
-             m_lsu_num_in_rs > m_lsu_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : LSU Instruction Window Overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiLSURSFull;
-            m_frontstall_idx = frontstall_t::LSURsFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "LSU Instruction Window Overflow");
-            }
-            break;
-         }
-         if ((uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
-              uop.getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
-             m_vec_num_in_rs > m_vec_window_size) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiVECRSFull;
-            m_frontstall_idx = frontstall_t::VECRsFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "Vec Arith Instruction Window Overflow");
-            }
-            break;
-         }
-
-         // VLDQ full
-         if (uop.getMicroOp()->isVecLoad() && vec_load_queue == 0) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiVLDQFull;
-            m_frontstall_idx = frontstall_t::VLDQFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "VLDQ Instruction Window Overflow");
-            }
-            break;
-         }
-         // VSTQ full
-         if (uop.getMicroOp()->isVecStore() && vec_store_queue == 0) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Store Queue overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiVSTQFull;
-            m_frontstall_idx = frontstall_t::VSTQFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "VSTQ Instruction Window Overflow");
-            }
-            break;
-         }
-         // Scalar LDQ full
-         if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad() && scalar_load_queue == 0) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Load Queue overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiLDQFull;
-            m_frontstall_idx = frontstall_t::LDQFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "SLDQ Instruction Window Overflow");
-            }
-            break;
-         }
-         // Scalar STQ full
-         if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isStore() && scalar_store_queue == 0) {
-            ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Store Queue overflow\n", uop.getSequenceNumber());
-            cpiFrontEnd = &m_cpiSTQFull;
-            m_frontstall_idx = frontstall_t::STQFull;
-            if (!entry->front_stall_now) {
-               // stall start
-               entry->front_stall_now = true;
-               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "SSTQ Instruction Window Overflow");
-            }
+         // フロントエンドの資源不足によるストールをチェック
+         if (checkFrontendStall (entry, cpiFrontEnd)) {
             break;
          }
 
@@ -1307,6 +1152,156 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
       return next_event; // front-end is effectively stalled so wait for another event
    else
       return std::min(frontend_stalled_until, next_event);
+}
+
+// Check if the front-end is stalled
+// true: stall, false: not stall
+bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
+{
+   auto uop = entry->uop;
+
+   if ((uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_ADDSUB ||
+        uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_FP_MULDIV) &&
+       m_fpu_num_in_rs > m_fpu_window_size) {
+      ROB_DEBUG_PRINTF(
+          "doDispatch : seqId=%ld : FPU Instruction Window Overflow\n",
+          uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiFPURSFull;
+      m_frontstall_idx = frontstall_t::FPURsFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "FPU Instruction Window Overflow");
+      }
+      return true;
+   }
+   if ((uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_GENERIC ||
+        uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_BRANCH) &&
+       m_alu_num_in_rs > m_alu_window_size) {
+      ROB_DEBUG_PRINTF(
+          "doDispatch : seqId=%ld : ALU Instruction Window Overflow\n",
+          uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiALURSFull;
+      m_frontstall_idx = frontstall_t::ALURsFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "ALU Instruction Window Overflow");
+      }
+      return true;
+   }
+   if ((uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_LOAD ||
+        uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_STORE) &&
+       m_lsu_num_in_rs > m_lsu_window_size) {
+      ROB_DEBUG_PRINTF(
+          "doDispatch : seqId=%ld : LSU Instruction Window Overflow\n",
+          uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiLSURSFull;
+      m_frontstall_idx = frontstall_t::LSURsFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "LSU Instruction Window Overflow");
+      }
+      return true;
+   }
+   if ((uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
+        uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
+        uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
+       m_vec_num_in_rs > m_vec_window_size) {
+      ROB_DEBUG_PRINTF(
+          "doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n",
+          uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiVECRSFull;
+      m_frontstall_idx = frontstall_t::VECRsFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "Vec Arith Instruction Window Overflow");
+      }
+      return true;
+   }
+
+   // VLDQ full
+   if (uop->getMicroOp()->isVecLoad() && vec_load_queue == 0) {
+      ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n",
+                       uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiVLDQFull;
+      m_frontstall_idx = frontstall_t::VLDQFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "VLDQ Instruction Window Overflow");
+      }
+      return true;
+   }
+   // VSTQ full
+   if (uop->getMicroOp()->isVecStore() && vec_store_queue == 0) {
+      ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Store Queue overflow\n",
+                       uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiVSTQFull;
+      m_frontstall_idx = frontstall_t::VSTQFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "VSTQ Instruction Window Overflow");
+      }
+      return true;
+   }
+   // Scalar LDQ full
+   if (!uop->getMicroOp()->isVector() && uop->getMicroOp()->isLoad() &&
+       scalar_load_queue == 0) {
+      ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Load Queue overflow\n",
+                       uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiLDQFull;
+      m_frontstall_idx = frontstall_t::LDQFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "SLDQ Instruction Window Overflow");
+      }
+      return true;
+   }
+   // Scalar STQ full
+   if (!uop->getMicroOp()->isVector() && uop->getMicroOp()->isStore() &&
+       scalar_store_queue == 0) {
+      ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Store Queue overflow\n",
+                       uop->getSequenceNumber());
+      cpiFrontEnd = &m_cpiSTQFull;
+      m_frontstall_idx = frontstall_t::STQFull;
+      if (!entry->front_stall_now) {
+         // stall start
+         entry->front_stall_now = true;
+         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                       "RF"); // Resource Full
+         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                       "SSTQ Instruction Window Overflow");
+      }
+      return true;
+   }
+
+   return false;
 }
 
 void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)

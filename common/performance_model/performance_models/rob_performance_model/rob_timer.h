@@ -284,6 +284,7 @@ private:
 
    void execute(uint64_t& instructionsExecuted, SubsecondTime& latency);
    SubsecondTime doDispatch(SubsecondTime **cpiComponent);
+   bool checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd);  // true: stall, false: not stall
    SubsecondTime doIssue();
    SubsecondTime doCommit(uint64_t& instructionsExecuted);
 
