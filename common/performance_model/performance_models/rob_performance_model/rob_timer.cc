@@ -861,116 +861,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (checkFrontendStall (entry, cpiFrontEnd)) {
             break;
          }
-
-         if (uop.getMicroOp()->getDestinationRegistersLength() != 0) {
-            if (isUseNonpriVector (m_vec_reserve_policy)) {
-               RegisterManager::AllocResult_t alloc_result = m_reg_manager->AllocateRegister (&uop);
-               dl::Decoder *dec = Sim()->getDecoder();
-               dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-               // 予約に回る命令であれば、LPIQに格納する
-               if (uop.isReserveInst()) {
-                  // LPIQに入れるべき命令の場合
-                  if (!dec->is_reg_vector(dest_reg)) {
-                     // 整数・浮動小数点レジスタ確保
-                     if (alloc_result != RegisterManager::AllocSuccess) {
-                        if (!entry->front_stall_now) {
-                           // stall start
-                           entry->front_stall_now = true;
-                           KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-                           KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "INT/FP Register Full");
-                        }
-                        break;
-                     // } else {
-                     //    InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
-                     }
-                  } else if (alloc_result == RegisterManager::AllocSuccess) {
-                     // 予約用のレジスタの確保に成功した場合: 確保したうえでLPIQに入る
-                     InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::RESOLVED);
-                  } else if (alloc_result == RegisterManager::AllocChain) {
-                     // Firstではない命令は、Firstの命令の結果に依存している
-                     InsertLPIQ(&uop, DynamicMicroOp::lpiq_t::CHAIN);
-                  } else if (alloc_result == RegisterManager::AllocReserve) {
-                     // 予約用のレジスタを確保した場合
-                     InsertResRegLPIQ (&uop);
-                  } else {
-                     // 物理レジスタを確保し転向を期待する場合
-                     InsertTransRegLPIQ (&uop);
-                  }
-               } else {
-                  if (alloc_result == RegisterManager::AllocFull) {
-                     if (!dec->is_reg_vector(dest_reg)) {
-                        if (!entry->front_stall_now) {
-                           // stall start
-                           entry->front_stall_now = true;
-                           KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-                           KANATA_PRINTF ("L\t%ld\t%d\t%s Normal Priority Register Full\n", entry->global_sequence_id, 2, 
-                                 dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
-                        }
-                        break;
-                     } else {
-                        uop.setReserveInst();
-                        break;
-                     }
-                  } else if (alloc_result == RegisterManager::AllocChain) {
-                     // fprintf (stderr, "Chain Entry check: %ld, %d\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->UopIdx());
-                     UInt64 index = 1;
-                     RobEntry *firstEntry = findEntryBySequenceNumber(entry->uop->getSequenceNumber() - index);
-                     while (!firstEntry->uop->isFirst()) {
-                        index++;
-                        firstEntry = findEntryBySequenceNumber(entry->uop->getSequenceNumber() - index);
-                     } 
-                     if (firstEntry->uop->isReserveInst()) {
-                        uop.setReserveInst();
-                     }
-                  }
-               }
-            } else if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveWhenFull) {
-               // 物理レジスタの確保試行
-               if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
-                  dl::Decoder *dec = Sim()->getDecoder();
-                  dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-                  if (dec->is_reg_int(dest_reg)) {
-                     m_frontstall_idx = frontstall_t::IPhyRegFull;
-                  } else if(dec->is_reg_float(dest_reg)) {
-                     m_frontstall_idx = frontstall_t::FPhyRegFull;
-                  } else if (dec->is_reg_vector(dest_reg)){
-                     m_frontstall_idx = frontstall_t::VPhyRegFull;
-                  } else {
-                     LOG_ASSERT_ERROR (false, "Unknown register type.");
-                  }
-                  if (!entry->front_stall_now) {
-                     // stall start
-                     entry->front_stall_now = true;
-                     KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-                     KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
-                           dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
-                  }
-                  break;
-               }
-            } else {
-               // 物理レジスタの確保試行
-               if (m_reg_manager->AllocateRegister (&uop) == RegisterManager::AllocFull) {
-                  dl::Decoder *dec = Sim()->getDecoder();
-                  dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-                  if (dec->is_reg_int(dest_reg)) {
-                     m_frontstall_idx = frontstall_t::IPhyRegFull;
-                  } else if(dec->is_reg_float(dest_reg)) {
-                     m_frontstall_idx = frontstall_t::FPhyRegFull;
-                  } else if (dec->is_reg_vector(dest_reg)){
-                     m_frontstall_idx = frontstall_t::VPhyRegFull;
-                  } else {
-                     LOG_ASSERT_ERROR (false, "Unknown register type.");
-                  }
-                  if (!entry->front_stall_now) {
-                        // stall start
-                        entry->front_stall_now = true;
-                        KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-                        KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
-                              dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
-                  }
-                  break;
-               }
-            }
+         // 物理レジスタの確保試行
+         if (allocateRegister (entry)) {
+            break;
          }
 
          if (entry->front_stall_now) {
@@ -1303,6 +1196,118 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
 
    return false;
 }
+
+
+bool RobTimer::allocateRegister (RobEntry *entry)
+{
+   DynamicMicroOp *uop = entry->uop;
+   if (uop->getMicroOp()->getDestinationRegistersLength() == 0) {
+      return false;
+   }
+
+   bool allocate_fail = false;
+   dl::Decoder *dec = Sim()->getDecoder();
+   dl::Decoder::decoder_reg dest_reg = uop->getMicroOp()->getDestinationRegister(0);
+
+   RegisterManager::AllocResult_t alloc_result = m_reg_manager->AllocateRegister (uop);
+   if (!dec->is_reg_vector(dest_reg)) {
+      // 整数・浮動小数点レジスタ確保
+      if (alloc_result != RegisterManager::AllocSuccess) {
+         if (!entry->front_stall_now) {
+            // stall start
+            entry->front_stall_now = true;
+            KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+            KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "INT/FP Register Full");
+         }
+         allocate_fail = true;
+         if (dec->is_reg_int(dest_reg)) {
+            m_frontstall_idx = frontstall_t::IPhyRegFull;
+         } else if(dec->is_reg_float(dest_reg)) {
+            m_frontstall_idx = frontstall_t::FPhyRegFull;
+         } else {
+            LOG_ASSERT_ERROR (false, "Should Int or float register type.");
+         }
+      }
+      return allocate_fail;
+   }
+
+   if (isUseNonpriVector (m_vec_reserve_policy)) {
+      // 予約に回る命令であれば、LPIQに格納する
+      if (uop->isReserveInst()) {
+         // LPIQに入れるべき命令の場合
+         if (alloc_result == RegisterManager::AllocSuccess) {
+            // 予約用のレジスタの確保に成功した場合: 確保したうえでLPIQに入る
+            InsertLPIQ (uop, DynamicMicroOp::lpiq_t::RESOLVED);
+         } else if (alloc_result == RegisterManager::AllocChain) {
+            // Firstではない命令は、Firstの命令の結果に依存している
+            InsertLPIQ (uop, DynamicMicroOp::lpiq_t::CHAIN);
+         } else if (alloc_result == RegisterManager::AllocReserve) {
+            // 予約用のレジスタを確保した場合
+            InsertResRegLPIQ (uop);
+         } else {
+            // 物理レジスタを確保し転向を期待する場合
+            InsertTransRegLPIQ (uop);
+         }
+      } else {
+         if (alloc_result == RegisterManager::AllocFull) {
+            uop->setReserveInst();
+            allocate_fail = true;
+         } else if (alloc_result == RegisterManager::AllocChain) {
+            // fprintf (stderr, "Chain Entry check: %ld, %d\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->UopIdx());
+            UInt64 index = 1;
+            RobEntry *firstEntry = findEntryBySequenceNumber(entry->uop->getSequenceNumber() - index);
+            while (!firstEntry->uop->isFirst()) {
+               index++;
+               firstEntry = findEntryBySequenceNumber(entry->uop->getSequenceNumber() - index);
+            } 
+            if (firstEntry->uop->isReserveInst()) {
+               uop->setReserveInst();
+            }
+         }
+      }
+   } else if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveWhenFull) {
+      // 物理レジスタの確保試行
+      if (alloc_result == RegisterManager::AllocFull) {
+         dl::Decoder *dec = Sim()->getDecoder();
+         dl::Decoder::decoder_reg dest_reg = uop->getMicroOp()->getDestinationRegister(0);
+         if (dec->is_reg_vector(dest_reg)){
+            m_frontstall_idx = frontstall_t::VPhyRegFull;
+         } else {
+            LOG_ASSERT_ERROR (false, "Unknown register type.");
+         }
+         if (!entry->front_stall_now) {
+            // stall start
+            entry->front_stall_now = true;
+            KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+            KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
+                  dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
+         }
+         allocate_fail = true;
+      }
+   } else {
+      // 物理レジスタの確保試行
+      if (alloc_result == RegisterManager::AllocFull) {
+         dl::Decoder *dec = Sim()->getDecoder();
+         dl::Decoder::decoder_reg dest_reg = uop->getMicroOp()->getDestinationRegister(0);
+         if (dec->is_reg_vector(dest_reg)){
+            m_frontstall_idx = frontstall_t::VPhyRegFull;
+         } else {
+            LOG_ASSERT_ERROR (false, "Unknown register type.");
+         }
+         if (!entry->front_stall_now) {
+               // stall start
+               entry->front_stall_now = true;
+               KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
+               KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
+                     dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
+         }
+         allocate_fail = true;
+      }
+   }
+
+   return allocate_fail;
+}
+
 
 void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 {
