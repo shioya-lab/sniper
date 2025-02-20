@@ -40,7 +40,7 @@ class ShmemPerf;
 
 // Maximum size of the list of addresses to prefetch
 // #define PREFETCH_MAX_QUEUE_LENGTH (256)
-#define PREFETCH_MAX_QUEUE_LENGTH (2048)
+#define PREFETCH_MAX_QUEUE_LENGTH (32)
 
 // Time between prefetches
 #define PREFETCH_INTERVAL SubsecondTime::PS(500)
