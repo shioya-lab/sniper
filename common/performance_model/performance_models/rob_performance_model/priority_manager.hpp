@@ -6,11 +6,12 @@
 #include "config.hpp"
 
 typedef enum {
-   VecReserveWhenFull,
-   VecReserveDynamic,
-   VecReserveStatic,
-   VecReserveAlways,
-   VecReserveNone
+   VecReserveWhenFull,  // ベクトルレジスタがいっぱいになったらReserve
+   VecReserveDynamic,   // ベクトルレジスタの割り当てポリシは動的に決める
+   VecReserveStatic,    // ベクトルレジスタの割り当てはPCにより静的に決まる
+   VecReserveAlways,    // ベクトルレジスタは常にReserve
+   VecReserveInorder,   // 予約に回ったベクトルレジスタはインオーダ
+   VecReserveNone       // 予約なし
 } vec_reserve_policy_t;
 
 typedef enum {
@@ -19,10 +20,14 @@ typedef enum {
    Removed
 } pri_upd_result_t;
 
+// ------------------------------------------------------------
+// 予約機構を使うポリシかどうか
+// ------------------------------------------------------------
 inline bool isUseNonpriVector(vec_reserve_policy_t res) {
    return res == VecReserveDynamic || 
-             res == VecReserveStatic ||
-             res == VecReserveAlways;
+          res == VecReserveInorder ||
+          res == VecReserveStatic  ||
+          res == VecReserveAlways;
 }
 
 class PriorityManager {

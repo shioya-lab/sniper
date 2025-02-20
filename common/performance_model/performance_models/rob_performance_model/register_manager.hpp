@@ -121,7 +121,14 @@ class RegisterManager
    }
 
    AllocResult_t AllocateVectorRegister (DynamicMicroOp *uop) {
-      if (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone) {
+      if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveInorder) {
+         if (uop->isUseNormalRegisterGroup()) {
+            return AllocateNormalVecRegister(uop);
+         } else {
+            // 予約の時はそもそも確保しない
+            return AllocResult_t::AllocSuccess;
+         }
+      } else if (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone) {
          // 優先度付き予約
          if (uop->isUseNormalRegisterGroup()) {
             // 通常のレジスタグループから割り当てを行う命令
@@ -129,15 +136,6 @@ class RegisterManager
          } else {
             return AllocNonpriVecRegisters (uop);
          }
-      // } else if (m_vec_reserved_allocation) {
-      //    // 優先度無し予約
-      //    alloc_success = AllocateNormalVecRegister();
-      //    if (!alloc_success) {
-      //       // 予約に失敗すると、WFIFOに入れる
-      //       uop->setCommitDependency (DynamicMicroOp::wfifo_t::PHYREG);
-      //       InsertPhyRegWFIFO (uop, dest_reg);
-      //    }
-      //    return AllocSuccess;
       } else {
          // 予約なし
          return AllocateNormalVecRegister(uop);

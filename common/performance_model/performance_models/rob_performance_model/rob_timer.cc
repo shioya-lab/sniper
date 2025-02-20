@@ -1308,6 +1308,75 @@ bool RobTimer::allocateRegister (RobEntry *entry)
    return allocate_fail;
 }
 
+void RobTimer::releaseRegister (RobEntry *entry)
+{
+   if (!isUseNonpriVector (m_vec_reserve_policy)) {
+      m_reg_manager->ReleaseRegister (entry->uop);
+      return;
+   }
+                                                                                     
+   // 非優先命令の持っているレジスタは解放時に、LPIQ内のレジスタを渡す                                                           
+   dl::Decoder *dec = Sim()->getDecoder();
+   bool hasVecDestRegister = entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+       entry->uop->isLast() &&
+       dec->is_reg_vector(entry->uop->getMicroOp()->getDestinationRegister(0));
+   if (!hasVecDestRegister) {
+      m_reg_manager->ReleaseRegister (entry->uop);
+      return;
+   }
+
+   if (entry->uop->isUseReserveRegisterGroup()) {
+      m_reg_manager->ReleaseRegister (entry->uop);
+      bool lowpri_reg_pass_succeeded = false;
+      for (auto &f : m_lpiq_fifo) {
+         RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
+         if (lpiq_entry->uop->isInLPIQ() &&
+             lpiq_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+             dec->is_reg_vector(lpiq_entry->uop->getMicroOp()->getDestinationRegister(0)) &&
+             lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESREG) {
+            lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
+            ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
+                              lpiq_entry->uop->getSequenceNumber(),
+                              lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+            lowpri_reg_pass_succeeded = true;
+            KANATA_PRINTF ("W\t%ld\t%ld\t%d\n",
+                     entry->global_sequence_id,
+                     lpiq_entry->global_sequence_id, 0);
+            break;
+         }
+      }
+      if (!lowpri_reg_pass_succeeded) {
+         // 渡す予約命令が無いので、物理レジスタに戻す
+         m_reg_manager->ForceReleaseVoctorRegister();
+      }
+   } else {
+      // isUseNormalRegisterGroup()
+      // 通常の命令ではあるが、LPIQ内に通常物理レジスタの予約転向を待っている命令が存在している場合
+      bool lowpri_reg_pass_succeeded = false;
+      for (auto &f : m_lpiq_fifo) {
+         RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
+         if (lpiq_entry->uop->isInLPIQ() &&
+             lpiq_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
+             dec->is_reg_vector(lpiq_entry->uop->getMicroOp()->getDestinationRegister(0)) &&
+             lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::TRANSREG) {
+            lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
+            ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
+                              lpiq_entry->uop->getSequenceNumber(),
+                              lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+            KANATA_PRINTF ("W\t%ld\t%ld\t%d\n",
+                     entry->global_sequence_id,
+                     lpiq_entry->global_sequence_id, 0);
+            lowpri_reg_pass_succeeded = true;
+            break;
+         }
+      }
+      if (!lowpri_reg_pass_succeeded) {
+         // 渡す予約命令が無いので、物理レジスタに戻す
+         m_reg_manager->ForceReleaseVoctorRegister();
+      }
+   }
+}
+
 
 void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 {
@@ -2092,86 +2161,8 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (!m_vec_store_inorder && entry->uop->getMicroOp()->isVecStore()) {
          vec_store_queue++;
       }
-      // if (entry->uop->getMicroOp()->isVecStore()) {
-      //    vec_store_queue += 1;
-      //    // fprintf (stderr, "vector Store queue increased : %ld\n", vec_store_queue);
-      //    static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
-      //    LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value.");
 
-      //    // VSQ資源が解決されれば，m_lpiq_fifo内の先頭SQハザードをRESOLVEDに変更する
-      //    for (auto &f : m_lpiq_fifo) {
-      //       RobEntry *lpiq_entry = this->findEntryBySequenceNumber(f);
-      //       if (lpiq_entry->uop->isInLPIQ() &&
-      //           lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::SQ) {
-      //          lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
-      //          vec_store_queue -= 1;
-      //          break;
-      //       }
-      //    }
-      // }
-
-      if (isUseNonpriVector (m_vec_reserve_policy)) {
-         // 非優先命令の持っているレジスタは解放時に、LPIQ内のレジスタを渡す
-         dl::Decoder *dec = Sim()->getDecoder();
-         if (entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
-             entry->uop->isLast() &&
-             dec->is_reg_vector(entry->uop->getMicroOp()->getDestinationRegister(0))) {
-            if (entry->uop->isUseReserveRegisterGroup()) {
-               m_reg_manager->ReleaseRegister (entry->uop);
-               bool lowpri_reg_pass_succeeded = false;
-               for (auto &f : m_lpiq_fifo) {
-                  RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
-                  if (lpiq_entry->uop->isInLPIQ() &&
-                      lpiq_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
-                      dec->is_reg_vector(lpiq_entry->uop->getMicroOp()->getDestinationRegister(0)) &&
-                      lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESREG) {
-                     lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
-                     ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
-                                       lpiq_entry->uop->getSequenceNumber(),
-                                       lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-                     lowpri_reg_pass_succeeded = true;
-                     KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", 
-                              entry->global_sequence_id, 
-                              lpiq_entry->global_sequence_id, 0);
-                     break;
-                  }
-               }
-               if (!lowpri_reg_pass_succeeded) {
-                  // 渡す予約命令が無いので、物理レジスタに戻す
-                  m_reg_manager->ForceReleaseVoctorRegister();
-               }
-            } else {
-               // isUseNormalRegisterGroup()
-               // 通常の命令ではあるが、LPIQ内に通常物理レジスタの予約転向を待っている命令が存在している場合
-               bool lowpri_reg_pass_succeeded = false;
-               for (auto &f : m_lpiq_fifo) {
-                  RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
-                  if (lpiq_entry->uop->isInLPIQ() &&
-                      lpiq_entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
-                      dec->is_reg_vector(lpiq_entry->uop->getMicroOp()->getDestinationRegister(0)) &&
-                      lpiq_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::TRANSREG) {
-                     lpiq_entry->uop->setCommitDependency(DynamicMicroOp::lpiq_t::RESOLVED);
-                     ROB_DEBUG_PRINTF (" LPIQ physical register obtained : uop_idx=%ld %s\n",
-                                       lpiq_entry->uop->getSequenceNumber(),
-                                       lpiq_entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
-                     KANATA_PRINTF ("W\t%ld\t%ld\t%d\n", 
-                              entry->global_sequence_id, 
-                              lpiq_entry->global_sequence_id, 0);
-                     lowpri_reg_pass_succeeded = true;
-                     break;
-                  }
-               }
-               if (!lowpri_reg_pass_succeeded) {
-                  // 渡す予約命令が無いので、物理レジスタに戻す
-                  m_reg_manager->ForceReleaseVoctorRegister();
-               }
-            }
-         } else {
-            m_reg_manager->ReleaseRegister (entry->uop);
-         }
-      } else {
-         m_reg_manager->ReleaseRegister (entry->uop);
-      }
+      releaseRegister (entry);
 
       if (entry->kanata_registered) {
          KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Cm");
