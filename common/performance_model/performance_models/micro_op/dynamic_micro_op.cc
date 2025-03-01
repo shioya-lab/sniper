@@ -56,6 +56,7 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
    this->m_is_in_lpiq = false;
 
    this->memMaxLatency = 0;
+   this->m_register_allocated = false;
 }
 
 DynamicMicroOp::~DynamicMicroOp()

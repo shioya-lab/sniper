@@ -73,6 +73,8 @@ class RegisterManager
       float vec_phy_rate = Sim()->getCfg()->getFloat("perf_model/core/rob_timer/nonpri_max_vec_phy_rate");
       if (vec_reserve_policy == VecReserveAlways) {
          m_nonpri_max_vec_phy_registers = m_max_phy_registers[VectorRegister] - 32;
+      } else if (vec_reserve_policy == VecReserveParOOO) {
+         m_nonpri_max_vec_phy_registers = 0;
       } else if (vec_phy_rate == 0.0) {
          m_nonpri_max_vec_phy_registers = Sim()->getCfg()->getInt("perf_model/core/rob_timer/nonpri_max_vec_phy_registers");
       } else {
@@ -121,7 +123,7 @@ class RegisterManager
    }
 
    AllocResult_t AllocateVectorRegister (DynamicMicroOp *uop) {
-      if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveInorder) {
+      if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveParOOO) {
          if (uop->isUseNormalRegisterGroup()) {
             return AllocateNormalVecRegister(uop);
          } else {

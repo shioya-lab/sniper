@@ -4,7 +4,7 @@ MemoryDependencies::MemoryDependencies()
     : m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", 0)),
       m_l1d_block_size(Sim()->getCfg()->getInt("perf_model/l1_dcache/cache_block_size")),
       m_vlen(Sim()->getCfg()->getInt("general/vlen")),
-      producers(1024) // Maximum size should be one ROB worth of instructions
+      producers(Sim()->getCfg()->getInt("perf_model/core/interval_timer/window_size")) // Maximum size should be one ROB worth of instructions
 {
    clear();
 }

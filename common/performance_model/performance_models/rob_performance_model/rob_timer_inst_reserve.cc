@@ -5,7 +5,8 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
   LOG_ASSERT_ERROR(!entry->uop->isReserveInst() &&
                        !entry->uop->isStrongPriorityInst(),
                    "Priority must not allocate before execution");
-  if (m_vec_reserve_policy == VecReserveDynamic) {
+  if (m_vec_reserve_policy == VecReserveDynamic ||
+      m_vec_reserve_policy == VecReserveParOOO) {
     // 優先度に応じてベクトル命令を予約に回す方針
     manageInstructionReserveVecPriority(entry);
   } else if (m_vec_reserve_policy == VecReserveAlways) {

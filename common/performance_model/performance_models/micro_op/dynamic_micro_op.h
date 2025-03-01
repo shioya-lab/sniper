@@ -105,6 +105,7 @@ class DynamicMicroOp
 
       UInt64 memMaxLatency;
 
+      bool m_register_allocated;
    public:
 
       DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, ComponentPeriod period);
@@ -253,6 +254,9 @@ class DynamicMicroOp
 
       void backupInitialDependencies();
       void rollbackDependencies(uint64_t sequenceNumber);
+
+      inline void setRegisterAllocated () { this->m_register_allocated = true; }
+      inline bool getRegisterAllocated () { return m_register_allocated; }
 };
 
 #endif // __DYNAMIC_MICRO_OP_INFO_H

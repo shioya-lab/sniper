@@ -37,6 +37,7 @@ RobTimer::RobTimer(
       : dispatchWidth(dispatch_width)
       , commitWidth(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/commit_width", core->getId()))
       , windowSize(window_size) // windowSize = ROB length = 96 for Core2
+      , robHwSize (Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/rob_hw_size", core->getId()))
       , rsEntries(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/rs_entries", core->getId()))
       , misprediction_penalty(misprediction_penalty)
       , m_store_to_load_forwarding(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/store_to_load_forwarding", core->getId()))
@@ -78,6 +79,7 @@ RobTimer::RobTimer(
       , time_skipped(SubsecondTime::Zero())
       , enable_rob_timer_log(Sim()->getCfg()->getBoolArray("log/enable_rob_timer_log", core->getId()))
       , rob_start_cycle(Sim()->getCfg()->getIntArray("log/rob_debug_start_cycle", core->getId()))
+      , rob_debug_seqnumber (Sim()->getCfg()->getIntArray("log/rob_debug_seqnumber", core->getId()))
       , enable_gatherscatter_log(Sim()->getCfg()->getBoolArray("log/enable_gatherscatter_log", core->getId()))
       , registerDependencies(new RegisterDependencies())
       , memoryDependencies(new MemoryDependencies())
@@ -88,10 +90,12 @@ RobTimer::RobTimer(
       , m_cpiCurrentFrontEndStall(NULL)
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
-      , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull : 
-                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_dynamic"   ? VecReserveDynamic :
-                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_stacic"    ? VecReserveStatic :
-                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways : VecReserveNone)
+      , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull   : 
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_dynamic"   ? VecReserveDynamic    :
+			                     Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_vecparooo" ? VecReserveParOOO     :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_stacic"    ? VecReserveStatic     :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways     : 
+			      VecReserveNone)
       , m_last_committed_time(core->getDvfsDomain())
       , m_app(Sim()->getCfg()->getString("general/app"))
       , m_pref_target_log(strtol(Sim()->getCfg()->getStringArray("log/vec_pref_target_pc", core->getId()).c_str(), NULL, 16))
@@ -524,6 +528,18 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       // Add = calculate dependencies, add yourself to list of depenants
       // If no dependants in window: set ready = now()
       uint64_t lowestValidSequenceNumber = this->rob.size() > 0 ? this->rob.front().uop->getSequenceNumber() : 0;
+
+      if (rob_debug_seqnumber != 0 && lowestValidSequenceNumber > 0)
+      {
+         if (entry->uop->getSequenceNumber() > rob_debug_seqnumber && 
+             entry->uop->getSequenceNumber() < rob_debug_seqnumber + 100) {
+            fprintf (stderr, "Debug SequenceNuber (%ld) enable.\n", entry->uop->getSequenceNumber());
+            enable_rob_debug_seqnumber = true;
+         } else {
+            enable_rob_debug_seqnumber = false;
+         }
+      }
+
       if (entry->uop->getMicroOp()->isStore())
       {
          for(unsigned int i = 0; i < entry->uop->getMicroOp()->getAddressRegistersLength(); ++i)
@@ -769,9 +785,21 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
       if (m_num_in_rob == windowSize) {
          m_frontstall_idx = frontstall_t::RobFull;
       }
+      if (m_num_in_rob_head >= robHwSize) {
+         m_frontstall_idx = frontstall_t::RobFullHead;
+         printRob(true, false);
+         // exit (EXIT_FAILURE);
+      }
 
-      while(m_num_in_rob < windowSize)
+      // while(m_num_in_rob < windowSize)
+      while (m_num_in_rob_head < robHwSize)
       {
+         // if (m_num_in_rob >= rob.size()) {
+         //    fprintf (stderr, "ROB overflow, m_num_in_rob = %ld, rob.size() = %d, m_num_in_rob_head = %ld, windowSize = %ld\n",
+         //             m_num_in_rob, rob.size(), m_num_in_rob_head, windowSize);
+         //    printRob(true, false);
+         //    exit (EXIT_FAILURE);
+         // }
          LOG_ASSERT_ERROR(m_num_in_rob < rob.size(), "Expected sufficient uops for dispatching in pre-ROB buffer, but didn't find them");
          RobEntry *entry = &rob.at(m_num_in_rob);
          DynamicMicroOp &uop = *entry->uop;
@@ -857,12 +885,13 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
                            uop.getMicroOp()->getInstruction()->getDisassembly().c_str());
          }
 
-         // フロントエンドの資源不足によるストールをチェック
-         if (checkFrontendStall (entry, cpiFrontEnd)) {
+         // 物理レジスタの確保試行
+         if (!entry->uop->getRegisterAllocated() && allocateRegister (entry)) {
             break;
          }
-         // 物理レジスタの確保試行
-         if (allocateRegister (entry)) {
+         entry->uop->setRegisterAllocated();
+         // フロントエンドの資源不足によるストールをチェック
+         if (checkFrontendStall (entry, cpiFrontEnd)) {
             break;
          }
 
@@ -900,6 +929,10 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          ++m_num_in_rob;
          ++m_rs_entries_used;
 
+         if (uop.isFirst()) {
+            ++m_num_in_rob_head;
+         }
+
          if (uop.getMicroOp()->isVecLoad()) {
             --vec_load_queue;
          }
@@ -932,8 +965,10 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
             case MicroOp::UOP_SUBTYPE_VEC_LOAD :
             case MicroOp::UOP_SUBTYPE_VEC_STORE :
-               m_vec_num_in_rs++;
-               m_statsVECRSMax = std::max(m_statsVECRSMax, m_vec_num_in_rs);
+               if (uop.isFirst() && !uop.isReserveInst()) {
+                  m_vec_num_in_rs++;
+                  m_statsVECRSMax = std::max(m_statsVECRSMax, m_vec_num_in_rs);
+               }
                break;
             default :
                LOG_ASSERT_ERROR(false, "Not expected to this point");
@@ -1109,22 +1144,26 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
    }
    if ((uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
         uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
-        uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE) &&
-       m_vec_num_in_rs > m_vec_window_size) {
-      ROB_DEBUG_PRINTF(
-          "doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n",
-          uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiVECRSFull;
-      m_frontstall_idx = frontstall_t::VECRsFull;
-      if (!entry->front_stall_now) {
-         // stall start
-         entry->front_stall_now = true;
-         KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
-                       "RF"); // Resource Full
-         KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
-                       "Vec Arith Instruction Window Overflow");
+        uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE)) {
+      if (uop->isReserveInst()) {
+         return false;
+      } else if (m_vec_num_in_rs > m_vec_window_size) {
+         ROB_DEBUG_PRINTF(
+            "doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n",
+            uop->getSequenceNumber());
+         cpiFrontEnd = &m_cpiVECRSFull;
+         m_frontstall_idx = frontstall_t::VECRsFull;
+         if (!entry->front_stall_now) {
+            // stall start
+            entry->front_stall_now = true;
+            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                        "RF"); // Resource Full
+            KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
+                        "Vec Arith Instruction Window Overflow");
+         }
+         printRob(true, false);
+         return true;
       }
-      return true;
    }
 
    // VLDQ full
@@ -1250,7 +1289,7 @@ bool RobTimer::allocateRegister (RobEntry *entry)
          }
       } else {
          if (alloc_result == RegisterManager::AllocFull) {
-            uop->setReserveInst();
+            // uop->setReserveInst();
             allocate_fail = true;
          } else if (alloc_result == RegisterManager::AllocChain) {
             // fprintf (stderr, "Chain Entry check: %ld, %d\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->UopIdx());
@@ -1322,6 +1361,12 @@ void RobTimer::releaseRegister (RobEntry *entry)
        dec->is_reg_vector(entry->uop->getMicroOp()->getDestinationRegister(0));
    if (!hasVecDestRegister) {
       m_reg_manager->ReleaseRegister (entry->uop);
+      return;
+   }
+
+   if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveParOOO &&
+         entry->uop->isUseReserveRegisterGroup()) {
+      // 予約命令の場合
       return;
    }
 
@@ -1575,7 +1620,9 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       case MicroOp::UOP_SUBTYPE_VEC_ARITH :
       case MicroOp::UOP_SUBTYPE_VEC_LOAD :
       case MicroOp::UOP_SUBTYPE_VEC_STORE :
-         m_vec_num_in_rs--;
+         if (uop.isLast() && !uop.isReserveInst()) {
+            m_vec_num_in_rs--;
+         }
          break;
       default :
          LOG_ASSERT_ERROR(false, "Not expected to this point");
@@ -1669,10 +1716,6 @@ SubsecondTime RobTimer::doIssue()
    SubsecondTime next_event = SubsecondTime::MaxTime();
    bool head_of_queue = true, no_more_load = false, no_more_store = false, have_unresolved_store = false;
 
-   // Vector Inorder Protocol:
-   // vector_inorder=true : Arith/Mem Vector issued in-order
-   // lsu_inorder: Mem Vector issued in-order
-   bool dyn_vector_inorder = vector_inorder;
    // Vec/Scalar Inorder Protocl
    // inorder : Whole instruction inorder
    // dyn_vector_inorder
@@ -1701,6 +1744,16 @@ SubsecondTime RobTimer::doIssue()
    {
       RobEntry *entry = &rob.at(i);
       DynamicMicroOp *uop = entry->uop;
+
+      // Vector Inorder Protocol:
+      // vector_inorder=true : Arith/Mem Vector issued in-order
+      // lsu_inorder: Mem Vector issued in-order
+      bool dyn_vector_inorder = vector_inorder;
+      if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveParOOO &&
+          uop->isUseReserveRegisterGroup()) {
+         // ReserveInorderモードで、Inorder指定された命令は強制的にインオーダモードになる
+         dyn_vector_inorder = true;
+      }
 
       inhead_vecmem_existed |= uop->getMicroOp()->isVecMem();
 
@@ -2170,9 +2223,14 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          m_kanata_generated_in_this_region = true;
       }
 
+      if (entry->uop->isLast()) {
+         m_num_in_rob_head--;
+      }
+
       entry->free();
       rob.pop();
       m_num_in_rob--;
+
 
       #ifdef ASSERT_SKIP
          LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
@@ -2261,7 +2319,7 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
          if (! will_skip)
          {
       #endif
-           printRob((enable_rob_timer_log || m_show_rob) && now.getCycleCount() >= rob_start_cycle);
+           printRob(enable_rob_debug_seqnumber || ((enable_rob_timer_log || m_show_rob) && now.getCycleCount() >= rob_start_cycle));
       #ifdef ASSERT_SKIP
          }
       #endif
@@ -2397,6 +2455,22 @@ void RobTimer::printRob(bool is_output, bool enable_check)
    DEBUG_COUT_IF (std::cout, "   Outstanding loads: "<<load_queue.getNumUsed(now)<<"  stores: "<<store_queue.getNumUsed(now)<<std::endl);
    DEBUG_COUT_IF (std::cout, "   VLDQ entries remained: "<< vec_load_queue << "  VSTQ entries remained: "<< vec_store_queue << std::endl);
 
+   std::unordered_map<UInt64, PriorityManager::inst_priority_t> *priority_map = m_priority_manager->getPriorityMap();
+   DEBUG_COUT_IF (std::cout, "   Priority Manager High   : ");
+   for (auto it = priority_map->begin(); it != priority_map->end(); it++) {
+      if (it->second == PriorityManager::inst_priority_t::High) {
+         DEBUG_COUT_IF (std::cout, std::hex << it->first << ",");
+      }
+   }
+   DEBUG_COUT_IF (std::cout, "\n");
+   DEBUG_COUT_IF (std::cout, "   Priority Manager Reserve: ");
+   for (auto it = priority_map->begin(); it != priority_map->end(); it++) {
+      if (it->second == PriorityManager::inst_priority_t::Reserve) {
+         DEBUG_COUT_IF (std::cout, std::hex << it->first << ",");
+      }
+   }
+   DEBUG_COUT_IF (std::cout, "\n");
+
    static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
    LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value. %ld <= %ld",
                      vec_store_queue, vec_store_queue_max);
@@ -2418,13 +2492,15 @@ void RobTimer::printRob(bool is_output, bool enable_check)
       std::ostringstream state;
 
       dl::Decoder *dec = Sim()->getDecoder();
-      if (i < m_num_in_rob &&
+      if (/* i < m_num_in_rob && */
           !normal_decided &&
           e->uop->getMicroOp()->isVector() &&
           e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
           dec->is_reg_vector(e->uop->getMicroOp()->getDestinationRegister(0))
       ) {
-         if (isUseNonpriVector (m_vec_reserve_policy)) {
+         if (!e->uop->getRegisterAllocated()) {
+            DEBUG_COUT_IF (state, "    ");
+         } else if (isUseNonpriVector (m_vec_reserve_policy)) {
             if (e->uop->isUseNormalRegisterGroup()) {
                vecreg_normal_alloc_count++;
                DEBUG_COUT_IF (state, std::setw(3) << (vecreg_normal_alloc_count) << ' ');
@@ -2450,8 +2526,9 @@ void RobTimer::printRob(bool is_output, bool enable_check)
          DEBUG_COUT_IF (state, "    ");
       }
 
-
-      if (i < m_num_in_rob &&
+      if (m_vec_reserve_policy == VecReserveParOOO) {
+         // Inorderの場合は，予約はカウントしない
+      } else if (i < m_num_in_rob &&
           !lowpri_decided &&
           e->uop->getMicroOp()->isVector() &&
           e->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&

@@ -18,7 +18,7 @@
 #include <deque>
 #include <list>
 
-#define ROB_DEBUG_PRINTF(...) { if (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle) { fprintf(stderr, __VA_ARGS__); }}
+#define ROB_DEBUG_PRINTF(...) { if (enable_rob_debug_seqnumber || (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle)) { fprintf(stderr, __VA_ARGS__); }}
 #define KANATA_PRINTF(...) { if (m_active_kanata_gen && m_konata_count < m_konata_count_max) { fprintf(m_core->getKanataFp(), __VA_ARGS__); }}
 class RobTimer
 {
@@ -71,6 +71,7 @@ private:
    const uint64_t dispatchWidth;
    const uint64_t commitWidth;
    const uint64_t windowSize;
+   const uint64_t robHwSize;
    const uint64_t rsEntries;
    const uint64_t misprediction_penalty;
    const bool m_store_to_load_forwarding;
@@ -92,6 +93,7 @@ private:
    uint64_t m_num_in_rob;
    uint64_t m_rs_entries_used;
    RobContention *m_rob_contention;
+   uint64_t m_num_in_rob_head;
 
    bool m_roi_started; // due to record roi_start time
    bool m_enable_o3;
@@ -122,6 +124,8 @@ private:
 
    bool enable_rob_timer_log;
    UInt64 rob_start_cycle;
+   UInt64 rob_debug_seqnumber;
+   bool enable_rob_debug_seqnumber = false;
    bool enable_gatherscatter_log;
 
    RegisterDependencies* const registerDependencies;
@@ -239,6 +243,7 @@ private:
       FPhyRegFull,
       VPhyRegFull,
       RobFull,
+      RobFullHead,
       FrontStall_Max
    } frontstall_t;
 
@@ -258,6 +263,7 @@ private:
          case frontstall_t::FPhyRegFull:   return "FloatPhyRegFull";
          case frontstall_t::VPhyRegFull:   return "VecPhyRegFull";
          case frontstall_t::RobFull:       return "RobFull";
+         case frontstall_t::RobFullHead:   return "RobFullHead";
          case frontstall_t::FrontStall_Max:return "FrontStall_Ma";
          default                        : return "?????";
       }

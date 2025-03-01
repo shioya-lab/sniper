@@ -10,7 +10,7 @@ typedef enum {
    VecReserveDynamic,   // ベクトルレジスタの割り当てポリシは動的に決める
    VecReserveStatic,    // ベクトルレジスタの割り当てはPCにより静的に決まる
    VecReserveAlways,    // ベクトルレジスタは常にReserve
-   VecReserveInorder,   // 予約に回ったベクトルレジスタはインオーダ
+   VecReserveParOOO,   // 予約に回ったベクトルレジスタはインオーダ
    VecReserveNone       // 予約なし
 } vec_reserve_policy_t;
 
@@ -25,7 +25,7 @@ typedef enum {
 // ------------------------------------------------------------
 inline bool isUseNonpriVector(vec_reserve_policy_t res) {
    return res == VecReserveDynamic || 
-          res == VecReserveInorder ||
+          res == VecReserveParOOO  ||
           res == VecReserveStatic  ||
           res == VecReserveAlways;
 }
@@ -73,7 +73,11 @@ private:
          fprintf (stderr, "  pc=%08lx : %s\n", it->first, it->second == 0 ? "Normal" : it->second == 1 ? "Reserve" : "High");
       }
    }
-   
+
+   std::unordered_map<UInt64, inst_priority_t>* getPriorityMap () {
+      return &m_priority_map;
+   }
+
    // priorityがRemoveされれば、trueを返す
    pri_upd_result_t UpdateInstPriority (UInt64 pc, UInt64 latency)
    {
@@ -110,7 +114,8 @@ private:
             return it->second == HighOrigin ? High : it->second;
          }
          // ない場合はデフォルト値
-         if (m_vec_reserve_policy == VecReserveDynamic) {
+         if (m_vec_reserve_policy == VecReserveDynamic ||
+             m_vec_reserve_policy == VecReserveParOOO) {
             return Reserve;
          } else {
             return Normal;
