@@ -423,6 +423,11 @@ private:
    void manageInstructionReserveVecPriority(RobEntry *entry);
    void manageInstructionReserveVecAll(RobEntry *entry);
 
+   void RemovePriorityQueue (RobEntry *entry);
+   void PropagateHighPriorityBackward (RobEntry *entry);
+   void PropagatePriorityFromForward (RobEntry *entry);
+
+   void manageInstructionParOOO(RobEntry *entry);
 
 public:
 
@@ -645,6 +650,7 @@ public:
                              uop->getMicroOp()->getInstruction()->getDisassembly());
    }
 
+   void generateVectorStats ();
 
 };
 

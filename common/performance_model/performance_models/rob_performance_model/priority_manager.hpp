@@ -79,22 +79,25 @@ private:
    }
 
    // priorityがRemoveされれば、trueを返す
-   pri_upd_result_t UpdateInstPriority (UInt64 pc, UInt64 latency)
+   pri_upd_result_t UpdateInstPriority (const MicroOp *uop, bool vec_miss)
    {
+      auto pc = uop->getInstruction()->getAddress();
+      auto assembly = uop->getInstruction()->getDisassembly();
+
       auto it = m_priority_map.find(pc);
       if (it == m_priority_map.end()) {
-         if (latency > 10) {
+         if (vec_miss) {
             m_priority_map[pc] = inst_priority_t::HighOrigin;
-            fprintf (stderr, "%ld: pc=%08lx : Set Priority High (latency=%ld)\n", m_now->getCycleCount(), pc, latency);
+            fprintf (stderr, "%ld: pc=%08lx : Set Priority High. %s\n", m_now->getCycleCount(), pc, assembly.c_str());
             return pri_upd_result_t::Added;
          }
          return pri_upd_result_t::None;
       } else {
          inst_priority_t priority = it->second;
          if (priority == inst_priority_t::HighOrigin) {
-            if (latency < 5) {
+            if (!vec_miss) {
                m_priority_map.erase(pc);
-               fprintf (stderr, "%ld: pc=%08lx : Remove Priority (latency=%ld) \n", m_now->getCycleCount(), pc, latency);
+               fprintf (stderr, "%ld: pc=%08lx : Remove Priority. %s\n", m_now->getCycleCount(), pc, assembly.c_str());
                // dumpPriorityMap();
                m_priority_remove_queue.push_back (pc);
                return pri_upd_result_t::Removed;
@@ -114,8 +117,7 @@ private:
             return it->second == HighOrigin ? High : it->second;
          }
          // ない場合はデフォルト値
-         if (m_vec_reserve_policy == VecReserveDynamic ||
-             m_vec_reserve_policy == VecReserveParOOO) {
+         if (m_vec_reserve_policy == VecReserveDynamic) {
             return Reserve;
          } else {
             return Normal;

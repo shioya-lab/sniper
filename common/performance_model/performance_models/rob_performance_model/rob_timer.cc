@@ -337,20 +337,6 @@ RobTimer::~RobTimer()
    for(Rob::iterator it = this->rob.begin(); it != this->rob.end(); ++it)
       it->free();
 
-   std::cout << "-----------\n";
-   std::cout << "Pri Insts\n";
-   std::cout << "-----------\n";
-   for (auto it: pri_insts) {
-      std::cout << "PC = " << std::hex << it << '\n';
-   }
-
-   std::cout << "-----------\n";
-   std::cout << "NonPri Insts\n";
-   std::cout << "-----------\n";
-   for (auto it: nonpri_insts) {
-      std::cout << "PC = " << std::hex << it << '\n';
-   }
-
    // W-FIFOを使用した命令の頻度順でソートして出力する
    std::vector<std::pair<UInt64, std::pair<UInt64, String>>> v;
    for (auto it = m_lpiq_stats.begin(); it != m_lpiq_stats.end(); it++) {
@@ -406,30 +392,132 @@ RobTimer::~RobTimer()
    //    std::cout << std::hex << it->first << ", " << std::dec << (it->second).first << " : " << (it->second).second << '\n';
    // }
 
-   std::cout << "-------------------------------\n";
-   std::cout << "Vector Instruction Statistics\n";
-   std::cout << "-------------------------------\n";
-   for (auto& entry : m_vec_stats_list) {
-      fprintf(stderr, "PC=%08lx, %s, %10d, average = %7.2lf",
-            std::get<0>(entry),
-            std::get<1>(entry) == PriorityManager::inst_priority_t::Reserve ? "Reserve" :
-            std::get<1>(entry) == PriorityManager::inst_priority_t::High    ? "High   " : "Normal ",
-            std::get<3>(entry),
-            static_cast<double>(std::get<2>(entry)) / static_cast<double>(std::get<3>(entry)));
+   generateVectorStats();
+   // std::cout << "-------------------------------\n";
+   // std::cout << "Vector Instruction Statistics\n";
+   // std::cout << "-------------------------------\n";
+   // for (auto& entry : m_vec_stats_list) {
+   //    fprintf(stderr, "PC=%08lx, %s, %10d, average = %7.2lf",
+   //          std::get<0>(entry),
+   //          std::get<1>(entry) == PriorityManager::inst_priority_t::Reserve ? "Reserve" :
+   //          std::get<1>(entry) == PriorityManager::inst_priority_t::High    ? "High   " : "Normal ",
+   //          std::get<3>(entry),
+   //          static_cast<double>(std::get<2>(entry)) / static_cast<double>(std::get<3>(entry)));
 
-      if (std::get<5>(entry) != 0) {
-         fprintf(stderr, ", %10d, lpiq_average = %7.2lf",
-                 std::get<5>(entry),
-                 static_cast<double>(std::get<4>(entry)) / static_cast<double>(std::get<5>(entry)));
-      } else {
-         fprintf(stderr, ",           ,                  ");
-      }
+   //    if (std::get<5>(entry) != 0) {
+   //       fprintf(stderr, ", %10d, lpiq_average = %7.2lf",
+   //               std::get<5>(entry),
+   //               static_cast<double>(std::get<4>(entry)) / static_cast<double>(std::get<5>(entry)));
+   //    } else {
+   //       fprintf(stderr, ",           ,                  ");
+   //    }
 
-      fprintf(stderr, ", %s\n", std::get<6>(entry).c_str());
-   }
+   //    fprintf(stderr, ", %s\n", std::get<6>(entry).c_str());
+   // }
 
    delete m_mem_stats;
 
+}
+
+void RobTimer::generateVectorStats ()
+{
+   // 例：m_vec_stats_listは以下のような型のコンテナと仮定する
+   // std::vector<std::tuple<unsigned long, PriorityManager::inst_priority_t, int, int, int, int, std::string>> m_vec_stats_list;
+
+   // 集計用の構造体（各優先度ごと）
+   struct PriorityAggregated {
+      int total_cycles = 0;
+      int inst_count = 0;
+      int total_lpiq_cycles = 0;
+      int lpiq_count = 0;
+      std::string comments;
+   };
+
+   // 各PCごとの集計情報
+   struct PCAggregated {
+      unsigned long pc;
+      int total_inst_count = 0; // このPCの全優先度の命令数の合計（ソート用）
+      // 出力順は：0 = High, 1 = Normal, 2 = Reserve
+      PriorityAggregated prio[3];
+   };
+
+   //  std::vector<std::tuple<unsigned long, PriorityManager::inst_priority_t, int, int, int, int, std::string>> m_vec_stats_list;
+   // ※ここに m_vec_stats_list のデータが入っていると仮定
+
+   // PCごとの集計用マップ
+   std::map<unsigned long, PCAggregated> aggregated;
+
+   // 各レコードをPCで集計
+   for (auto& entry : m_vec_stats_list) {
+      unsigned long pc         = std::get<0>(entry);
+      PriorityManager::inst_priority_t prio_enum = std::get<1>(entry);
+      int cycles               = std::get<2>(entry);
+      int count                = std::get<3>(entry);
+      int lpiq_cycles          = std::get<4>(entry);
+      int lpiq_count           = std::get<5>(entry);
+      const auto &comment      = std::get<6>(entry);
+      // 優先度を出力順に合わせる：High→Normal→Reserve
+
+      int index;
+      if (prio_enum == PriorityManager::inst_priority_t::High)
+          index = 0;
+      else if (prio_enum == PriorityManager::inst_priority_t::Reserve)
+          index = 2;
+      else
+          index = 1; // Normal（それ以外の場合）
+
+      if (aggregated.find(pc) == aggregated.end()) {
+         PCAggregated agg;
+         agg.pc = pc;
+         aggregated[pc] = agg;
+      }
+      aggregated[pc].total_inst_count += count;
+      PriorityAggregated &pagg = aggregated[pc].prio[index];
+      pagg.total_cycles       += cycles;
+      pagg.inst_count         += count;
+      pagg.total_lpiq_cycles  += lpiq_cycles;
+      pagg.lpiq_count         += lpiq_count;
+      if (!comment.empty()) {
+         if (!pagg.comments.empty())
+            pagg.comments += " | ";
+         pagg.comments += comment.c_str();
+      }
+   }
+
+   // マップをvectorに移して、命令出現頻度（命令数合計）順にソート（降順）
+   std::vector<PCAggregated> sorted;
+   for (auto &pair : aggregated) {
+       sorted.push_back(pair.second);
+   }
+   std::sort(sorted.begin(), sorted.end(), [](const PCAggregated &a, const PCAggregated &b) {
+       return a.total_inst_count > b.total_inst_count;
+   });
+
+   // ヘッダ出力
+   std::cout << "------------------------------------------------------------\n";
+   std::cout << "Aggregated Vector Instruction Statistics\n";
+   std::cout << "------------------------------------------------------------\n";
+
+   // 各PCについて出力
+   // 各ブロックは固定フォーマットで出力し、各優先度ごとの情報がなるべく同じ位置に揃うようにする
+   const char* prio_names[3] = {"High   ", "Normal ", "Reserve"};
+   for (auto &entry : sorted) {
+      // 各優先度ごとに出力（固定のカラム幅）
+      for (int i = 0; i < 3; i++) {
+         PriorityAggregated &p = entry.prio[i];
+         if (p.inst_count > 0) {
+            double avg = static_cast<double>(p.total_cycles) / p.inst_count;
+            if (p.lpiq_count != 0) {
+                double lpiq_avg = static_cast<double>(p.total_lpiq_cycles) / p.lpiq_count;
+                fprintf(stderr, "PC=%08lx | %s: %10d, avg = %7.2lf, %10d, lpiq_avg = %7.2lf, %s\n",
+                        entry.pc, prio_names[i], p.inst_count, avg, p.lpiq_count, lpiq_avg, p.comments.c_str());
+            } else {
+                fprintf(stderr, "PC=%08lx | %s: %10d, avg = %7.2lf, %10s, lpiq_avg = %7s, %s\n",
+                        entry.pc, prio_names[i], p.inst_count, avg, "", "", p.comments.c_str());
+            }
+         }
+      }
+   }
 }
 
 void RobTimer::RobEntry::init(DynamicMicroOp *_uop, UInt64 sequenceNumber)
@@ -787,7 +875,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
       }
       if (m_num_in_rob_head >= robHwSize) {
          m_frontstall_idx = frontstall_t::RobFullHead;
-         printRob(true, false);
+         // printRob(true, false);
+         // fprintf (stderr, "ROB head overflow, m_num_in_rob = %ld, rob.size() = %d, m_num_in_rob_head = %ld, windowSize = %ld\n",
+         //          m_num_in_rob, rob.size(), m_num_in_rob_head, windowSize);
          // exit (EXIT_FAILURE);
       }
 
@@ -937,6 +1027,10 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             --vec_load_queue;
          }
          if (!m_vec_store_inorder && uop.getMicroOp()->isVecStore()) {
+            if (vec_store_queue == 0) {
+               fprintf (stderr, "vec_store_queue is negative\n");
+               printRob(true, false);
+            }
             --vec_store_queue;
          }
          if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad()) {
@@ -1142,12 +1236,11 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
       }
       return true;
    }
-   if ((uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
+   if (uop->isFirst() &&
+       (uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
         uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
         uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE)) {
-      if (uop->isReserveInst()) {
-         return false;
-      } else if (m_vec_num_in_rs > m_vec_window_size) {
+      if (m_vec_num_in_rs > m_vec_window_size) {
          ROB_DEBUG_PRINTF(
             "doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n",
             uop->getSequenceNumber());
@@ -1161,13 +1254,15 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
             KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
                         "Vec Arith Instruction Window Overflow");
          }
-         printRob(true, false);
+         // fprintf(stderr, "doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n",
+         //         uop->getSequenceNumber());
+         // printRob(true, false);
          return true;
       }
    }
 
    // VLDQ full
-   if (uop->getMicroOp()->isVecLoad() && vec_load_queue == 0) {
+   if (!uop->isReserveInst() && uop->getMicroOp()->isVecLoad() && vec_load_queue == 0) {
       ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n",
                        uop->getSequenceNumber());
       cpiFrontEnd = &m_cpiVLDQFull;
@@ -1183,7 +1278,7 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
       return true;
    }
    // VSTQ full
-   if (uop->getMicroOp()->isVecStore() && vec_store_queue == 0) {
+   if (!uop->isReserveInst() && uop->getMicroOp()->isVecStore() && vec_store_queue == 0) {
       ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Store Queue overflow\n",
                        uop->getSequenceNumber());
       cpiFrontEnd = &m_cpiVSTQFull;
@@ -1271,8 +1366,9 @@ bool RobTimer::allocateRegister (RobEntry *entry)
    }
 
    if (isUseNonpriVector (m_vec_reserve_policy)) {
-      // 予約に回る命令であれば、LPIQに格納する
-      if (uop->isReserveInst()) {
+      if (m_vec_reserve_policy != VecReserveParOOO && uop->isReserveInst()) {
+         // ParOOOの場合は物理レジスタを確保しない
+         // 予約に回る命令であれば、LPIQに格納する
          // LPIQに入れるべき命令の場合
          if (alloc_result == RegisterManager::AllocSuccess) {
             // 予約用のレジスタの確保に成功した場合: 確保したうえでLPIQに入る
@@ -1510,13 +1606,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                      uop.getMicroOp()->getInstruction()->getAddress(),
                      uop.getSequenceNumber(),
                      uop.getMemMaxLatency());
-               UInt64 average_latency = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency());
+               bool vec_miss;
+               bool update = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
                
-               // 命令の属性を変更させるかどうかをチェックする
-               /* pri_upd_result_t upd_result = */m_priority_manager->UpdateInstPriority (uop.getMicroOp()->getInstruction()->getAddress(), average_latency);
-               // if (upd_result != pri_upd_result_t::None) {
-               //    propagatePriInst(entry, upd_result);
-               // }
+               if (update) {
+                  // 命令の属性を変更させるかどうかをチェックする
+                  m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss);
+               }
             }
          }
       }
@@ -2668,8 +2764,8 @@ void RobTimer::printRob(bool is_output, bool enable_check)
       DEBUG_COUT_IF (std::cout, std::endl);
 
       if (i < m_num_in_rob &&
-          e->uop->isInLPIQ() &&
-          e->uop->getCommitDependency() != DynamicMicroOp::lpiq_t::SQ &&
+         //  e->uop->isInLPIQ() &&
+          !e->uop->isReserveInst() &&  // In-Orderの命令はVSTQに入れない
           e->uop->getMicroOp()->isVecStore()) {
          // fprintf (stderr, "inflight Vector Store %ld\n", e->uop->getSequenceNumber());
          vecstore_count += 1;
@@ -2688,9 +2784,13 @@ void RobTimer::printRob(bool is_output, bool enable_check)
                         m_reg_manager->getAllocVectorRegister());
    }
 
-   // LOG_ASSERT_ERROR(vec_store_queue_max - vec_store_queue == vecstore_count,
-   //                  "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
-   //                  vec_store_queue, vecstore_count);
+   if (enable_check && !m_vec_store_inorder &&
+      (vec_store_queue_max - vec_store_queue != vecstore_count)) {
+      printRob(true, false);
+      LOG_ASSERT_ERROR(false,
+                    "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
+                    vec_store_queue, vecstore_count);
+   }
 }
 
 
