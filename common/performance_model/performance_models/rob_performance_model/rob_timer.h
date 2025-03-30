@@ -429,6 +429,21 @@ private:
 
    void manageInstructionParOOO(RobEntry *entry);
 
+   // Find First Instruction
+   uint64_t findFirstUopSeqNumber (DynamicMicroOp *uop) {
+      UInt64 seqnum = uop->getSequenceNumber();
+      if (uop->isFirst()) {
+         return seqnum;
+      }
+      seqnum --;
+      RobEntry *firstEntry = findEntryBySequenceNumber(seqnum);
+      while (!firstEntry->uop->isFirst()) {
+         seqnum--;
+         firstEntry = findEntryBySequenceNumber(seqnum);
+      } 
+      return seqnum;
+   }
+
 public:
 
    RobTimer(Core *core, PerformanceModel *perf, const CoreModel *core_model, int misprediction_penalty, int dispatch_width, int window_size);

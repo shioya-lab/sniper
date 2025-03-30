@@ -664,7 +664,8 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       }
 
       this->registerDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
-      this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
+      UInt64 firstUopSeqNum = findFirstUopSeqNumber(entry->uop);
+      this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber, firstUopSeqNum);
       this->vectorDependencies->setDependencies(*entry->uop);
 
       setVSETDependencies (*entry->uop, lowestValidSequenceNumber);
@@ -1023,7 +1024,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ++m_num_in_rob_head;
          }
 
-         if (uop.getMicroOp()->isVecLoad()) {
+         if (uop.getMicroOp()->isVecLoad() && uop.isFirst()) {
             --vec_load_queue;
          }
          if (!m_vec_store_inorder && uop.getMicroOp()->isVecStore()) {
@@ -1262,7 +1263,7 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
    }
 
    // VLDQ full
-   if (!uop->isReserveInst() && uop->getMicroOp()->isVecLoad() && vec_load_queue == 0) {
+   if (!uop->isReserveInst() && uop->getMicroOp()->isVecLoad() && uop->isFirst() && vec_load_queue == 0) {
       ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n",
                        uop->getSequenceNumber());
       cpiFrontEnd = &m_cpiVLDQFull;
@@ -2304,7 +2305,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (!entry->uop->getMicroOp()->isVector() && entry->uop->getMicroOp()->isStore()) {
          scalar_store_queue++;
       }
-      if (entry->uop->getMicroOp()->isVecLoad()) {
+      if (entry->uop->getMicroOp()->isVecLoad() && entry->uop->isLast()) {
          vec_load_queue++;
       }
       if (!m_vec_store_inorder && entry->uop->getMicroOp()->isVecStore()) {
