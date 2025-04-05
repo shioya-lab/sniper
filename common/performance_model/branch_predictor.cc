@@ -3,6 +3,7 @@
 #include "one_bit_branch_predictor.h"
 #include "pentium_m_branch_predictor.h"
 #include "a53branchpredictor.h"
+#include "tage_sc_l_64kb.h"
 #include "config.hpp"
 #include "stats.h"
 
@@ -50,6 +51,9 @@ BranchPredictor* BranchPredictor::create(core_id_t core_id)
       }
       else if (type == "a53") {
           return new A53BranchPredictor("branch_predictor", core_id);
+      }
+      else if (type == "tage_sc_l_64kb") {
+         return new TageScL64kb("branch_predictor", core_id);
       }
       else
       {

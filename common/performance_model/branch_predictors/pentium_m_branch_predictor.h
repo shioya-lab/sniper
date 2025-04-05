@@ -39,6 +39,8 @@ private:
    bool m_last_bm_pred;
    bool m_last_lpb_hit;
 
+   std::unordered_map<IntPtr, uint64_t> m_incorrect_per_ip;
+
 };
 
 #endif
