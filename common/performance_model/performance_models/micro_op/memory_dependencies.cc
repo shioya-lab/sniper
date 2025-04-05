@@ -32,18 +32,18 @@ void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowes
                vldq_base_address = physicalAddress;
                vldq_base_size    = memorySize;
                vldq_base_mask    = ~(memorySize-1);
-               fprintf (stderr, "VLDQ Alloc: PC=%08lx %s: 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
-                        microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
-                        physicalAddress, memorySize);
+               // fprintf (stderr, "VLDQ Alloc: PC=%08lx %s: 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+               //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+               //          physicalAddress, memorySize);
             } else {
                uint64_t aligned_base, aligned_size;
                calculate_aligned_base_and_power2_size (physicalAddress, memorySize, vldq_base_address, vldq_base_size, &aligned_base, &aligned_size);
                vldq_base_address = aligned_base;
                vldq_base_size    = aligned_size;
                vldq_base_mask    = vldq_base_mask & ~(physicalAddress ^ vldq_base_address);
-               fprintf (stderr, "VLDQ Merge: PC=%08lx %s: 0x%08lx,%lx -> 0x%08lx,%lx,%08lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
-                        microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
-                        physicalAddress, memorySize, aligned_base, aligned_size, vldq_base_mask);
+               // fprintf (stderr, "VLDQ Merge: PC=%08lx %s: 0x%08lx,%lx -> 0x%08lx,%lx,%08lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+               //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+               //          physicalAddress, memorySize, aligned_base, aligned_size, vldq_base_mask);
                physicalAddress = vldq_base_address;
                memorySize      = vldq_base_size;
             }
@@ -54,9 +54,9 @@ void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowes
       uint64_t producerSequenceNumber = find(physicalAddress, memorySize, found_st_idx);
       if (producerSequenceNumber != INVALID_SEQNR) /* producer found */
       {
-         fprintf (stderr, "  Producer found: PC=%08lx %s: 0x%08lx, %lx -> 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
-                  microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
-                  physicalAddress, memorySize, producers.at(found_st_idx).address, producers.at(found_st_idx).size);
+         // fprintf (stderr, "  Producer found: PC=%08lx %s: 0x%08lx, %lx -> 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+         //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+         //          physicalAddress, memorySize, producers.at(found_st_idx).address, producers.at(found_st_idx).size);
          microOp.addDependency(producerSequenceNumber);
       }
 
@@ -75,9 +75,9 @@ void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowes
         memorySize = m_vlen / 8;
       }
       add(microOp.getSequenceNumber(), physicalAddress, memorySize);
-      fprintf (stderr, "Store Register: PC=0x%08lx %s: 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
-               microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
-                        physicalAddress, memorySize);
+      // fprintf (stderr, "Store Register: PC=0x%08lx %s: 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+      //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+      //                   physicalAddress, memorySize);
 
       // Stores are also dependent on membars
       if ((membar != INVALID_SEQNR) && (membar > lowestValidSequenceNumber))
