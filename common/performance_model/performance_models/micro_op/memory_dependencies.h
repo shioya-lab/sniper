@@ -10,10 +10,11 @@
 class MemoryDependencies
 {
    private:
-  bool m_gather_scatter_merge;
-  bool m_cfg_vldq_merge;
-  UInt64 m_l1d_block_size;
-  UInt64 m_vlen;
+   bool m_gather_scatter_merge;
+   bool m_cfg_vldq_merge;
+   unsigned int m_vldq_merge_slots;
+   UInt64 m_l1d_block_size;
+   UInt64 m_vlen;
 
   struct Producer
       {
@@ -39,16 +40,24 @@ class MemoryDependencies
 
       void findAddress(UInt64 seqNumber, UInt64 &address, UInt64 &size);
 
-      uint64_t vldq_base_address = 0;
-      uint64_t vldq_base_size    = 0;
-      uint64_t vldq_base_mask    = 0;
+      // uint64_t vldq_base_address = 0;
+      // uint64_t vldq_base_size    = 0;
+      // uint64_t vldq_base_mask    = 0;
       
+      std::vector<uint64_t> vldq_base_addresses;
+      std::vector<uint64_t> vldq_base_sizes;
+      std::vector<uint64_t> vldq_base_masks;
+      std::vector<bool>     vldq_slots_used;
+
    public:
       MemoryDependencies();
       ~MemoryDependencies();
 
       void setDependencies(DynamicMicroOp &microOp, uint64_t lowestValidSequenceNumber, uint64_t first_uop_seqnum = INVALID_SEQNR);
       void clear();
+
+      void mergeVLDQAddress(DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
+      void mergeVLDQAddressMultiSlot(DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
 
    private:
       // 最小の2のべき乗を返す（例: 130 -> 256）
