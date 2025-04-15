@@ -13,6 +13,10 @@ class MemoryDependencies
    bool m_gather_scatter_merge;
    bool m_cfg_vldq_merge;
    unsigned int m_vldq_merge_slots;
+   bool m_cfg_bloom_filter;
+   uint64_t m_cfg_bloom_filter_len;
+   uint64_t m_cfg_bloom_filter_addr_lsb;
+   
    UInt64 m_l1d_block_size;
    UInt64 m_vlen;
 
@@ -49,6 +53,9 @@ class MemoryDependencies
       std::vector<uint64_t> vldq_base_masks;
       std::vector<bool>     vldq_slots_used;
 
+      // Bloom Filter向けの実装
+      std::set<uint64_t> bloom_filter_list;
+
    public:
       MemoryDependencies();
       ~MemoryDependencies();
@@ -58,6 +65,8 @@ class MemoryDependencies
 
       void mergeVLDQAddress(DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
       void mergeVLDQAddressMultiSlot(DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
+
+      void RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
 
    private:
       // 最小の2のべき乗を返す（例: 130 -> 256）
