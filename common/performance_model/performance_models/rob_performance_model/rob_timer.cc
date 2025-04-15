@@ -1060,7 +1060,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
             case MicroOp::UOP_SUBTYPE_VEC_LOAD :
             case MicroOp::UOP_SUBTYPE_VEC_STORE :
-               if (uop.isFirst() && !uop.isReserveInst()) {
+               if (uop.isFirst() /* && !uop.isReserveInst() */) {
                   m_vec_num_in_rs++;
                   m_statsVECRSMax = std::max(m_statsVECRSMax, m_vec_num_in_rs);
                }
@@ -1717,7 +1717,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       case MicroOp::UOP_SUBTYPE_VEC_ARITH :
       case MicroOp::UOP_SUBTYPE_VEC_LOAD :
       case MicroOp::UOP_SUBTYPE_VEC_STORE :
-         if (uop.isLast() && !uop.isReserveInst()) {
+         if (uop.isLast() /* && !uop.isReserveInst() */) {
             m_vec_num_in_rs--;
          }
          break;
