@@ -14,8 +14,9 @@ class MemoryDependencies
    bool m_cfg_vldq_merge;
    unsigned int m_vldq_merge_slots;
    bool m_cfg_bloom_filter;
-   uint64_t m_cfg_bloom_filter_len;
-   uint64_t m_cfg_bloom_filter_addr_lsb;
+   uint64_t m_cfg_bloom_filter_len[3];
+   uint64_t m_cfg_bloom_filter_split[2];
+   // uint64_t m_cfg_bloom_filter_addr_lsb;
    
    UInt64 m_l1d_block_size;
    UInt64 m_vlen;
@@ -54,7 +55,7 @@ class MemoryDependencies
       std::vector<bool>     vldq_slots_used;
 
       // Bloom Filter向けの実装
-      std::set<uint64_t> bloom_filter_list;
+      std::set<uint64_t> bf_list[3];  // 0:low, 1:mid, 2:high
 
    public:
       MemoryDependencies();
@@ -66,6 +67,9 @@ class MemoryDependencies
       void mergeVLDQAddress(DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
       void mergeVLDQAddressMultiSlot(DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
 
+      void get_bf_hash_list (uint64_t physicalAddress, 
+                              uint64_t &offset_low, uint64_t &offset_mid, uint64_t &offset_high,
+                              uint64_t &hash_low, uint64_t &hash_mid, uint64_t &hash_high);
       void RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
 
    private:
