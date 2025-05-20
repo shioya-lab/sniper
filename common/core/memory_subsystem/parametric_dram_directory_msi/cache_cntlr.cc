@@ -990,11 +990,12 @@ CacheCntlr::doPrefetch(SubsecondTime core_time, IntPtr prefetch_address, Subseco
    }
 
    if (m_enable_kanata_log) {
-      UInt64 global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
-      fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
-      
+      // UInt64 global_id = getMemoryManager()->getCore()->getGlobalSequenceIdAndInc();
+      // fprintf (getMemoryManager()->getCore()->getKanataFp(), "I\t%ld\t%d\t%d\n",             global_id, 0, 1);
+      // fprintf (getMemoryManager()->getCore()->getKanataFp(), "L\t%ld\t%d\tPrefetch:%08lx\n", global_id, 0, prefetch_address);
+      // fprintf (getMemoryManager()->getCore()->getKanataFp(), "S\t%ld\t%d\tP\n",              global_id, 0);
+      UInt64 global_id = getMemoryManager()->getCore()->getGlobalSequenceId();
+
       SubsecondTime t_prefetch_end = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
 
       getMemoryManager()->getCore()->prefetch_arrive_list.insert(std::make_pair(global_id, t_prefetch_end.getNS()));

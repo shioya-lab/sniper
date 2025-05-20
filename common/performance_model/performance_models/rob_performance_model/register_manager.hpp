@@ -218,15 +218,24 @@ class RegisterManager
       m_phy_registers[FloatRegister] --;
    }
 
-   void ReleaseVectorRegister (DynamicMicroOp *uop) {
+   // ------------------
+   // True: 失敗
+   // False: 成功
+   // ------------------
+   bool ReleaseVectorRegister (DynamicMicroOp *uop) {
       if (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone) {
          // 優先度付き予約手法の場合
          if (uop->isUseNormalRegisterGroup()) {
+            LOG_ASSERT_ERROR (m_phy_registers[VectorRegister] != 32, "m_phy_registers[VectorRegister] should be larger or qual than 0");
             m_phy_registers[VectorRegister] --;
             REG_DEBUG_PRINTF ("physical register return: %ld PC=%08lx %s\n", m_phy_registers[VectorRegister],
                               uop->getMicroOp()->getInstruction()->getAddress(),
                               uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
          } else {
+            if (unlikely(m_res_reserv_registers == 0)) {
+               fprintf (stderr, "m_res_reserve_registers should be larger or qual than 0");
+               return true;
+            }
             m_res_reserv_registers --;
             REG_DEBUG_PRINTF ("physical register low priority return: %ld PC=%08lx %s\n", m_res_reserv_registers,
                               uop->getMicroOp()->getInstruction()->getAddress(),
@@ -262,16 +271,22 @@ class RegisterManager
       //    }
       } else {
          // 予約なしの方法
+         LOG_ASSERT_ERROR (m_phy_registers[VectorRegister] != 0, "m_phy_registers[VectorRegister] should be larger or qual than 0");
          m_phy_registers[VectorRegister]--;
       }
+      return false;
    }
 
-   void ForceReleaseVoctorRegister () {
+   bool ForceReleaseVoctorRegister () {
       LOG_ASSERT_ERROR (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone, "This function is only valid in m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone.");
+      if (unlikely(m_phy_registers[VectorRegister] == 32)) {
+         return true;
+      }
       m_phy_registers[VectorRegister] --;
+      return false;
    }
 
-   void ReleaseRegister (DynamicMicroOp *uop) {
+   bool ReleaseRegister (DynamicMicroOp *uop) {
       if (uop->getMicroOp()->getDestinationRegistersLength() != 0 && uop->isLast()) {
          dl::Decoder *dec = Sim()->getDecoder();
          if (dec->is_reg_int(uop->getMicroOp()->getDestinationRegister(0))) {
@@ -279,11 +294,12 @@ class RegisterManager
          } else if(dec->is_reg_float(uop->getMicroOp()->getDestinationRegister(0))) {
             ReleaseFloatRegister ();
          } else if (dec->is_reg_vector(uop->getMicroOp()->getDestinationRegister(0))){
-            ReleaseVectorRegister (uop);
+            return ReleaseVectorRegister (uop);
          } else {
             LOG_ASSERT_ERROR (false, "Unknown register type.");
          }
       }
+      return false;
    }
 
    void UpdateRegisterStats () {

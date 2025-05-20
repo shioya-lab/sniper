@@ -117,7 +117,9 @@ private:
    UInt64 vec_store_queue;
    UInt64 scalar_load_queue;
    UInt64 scalar_store_queue;
-
+   bool m_cfg_bloom_filter;
+   UInt64 m_vlen;
+   
    uint64_t nextSequenceNumber;
    bool will_skip;
    SubsecondTime time_skipped;
@@ -181,6 +183,8 @@ private:
    uint64_t vec_ooo_issue_count;
    uint64_t scalar_ooo_issue_count;
 
+   uint64_t m_inst_vec_reserve_count;
+
    uint64_t vector_overtake_vector_issue_count;
    uint64_t vector_overtake_scalar_issue_count;
    uint64_t scalar_overtake_vector_issue_count;
@@ -213,6 +217,7 @@ private:
    SubsecondTime m_cpiFPURSFull;
    SubsecondTime m_cpiLSURSFull;
    SubsecondTime m_cpiVECRSFull;
+   SubsecondTime m_cpiSPhyRegFull;
    SubsecondTime m_cpiVPhyRegFull;
 
    UInt64 m_statsALURSMax;
@@ -290,8 +295,8 @@ private:
 
    void execute(uint64_t& instructionsExecuted, SubsecondTime& latency);
    SubsecondTime doDispatch(SubsecondTime **cpiComponent);
-   bool checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd);  // true: stall, false: not stall
-   bool allocateRegister (RobEntry *entry);
+   bool checkFrontendStall(RobEntry *entry, SubsecondTime **cpiFrontEnd);  // true: stall, false: not stall
+   bool allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd);
    void releaseRegister (RobEntry *entry);
    SubsecondTime doIssue();
    SubsecondTime doCommit(uint64_t& instructionsExecuted);
@@ -319,6 +324,28 @@ private:
                                              std::make_pair(1, uop->getMicroOp()->getInstruction()->getDisassembly()))); // Not found
       } else {
          (lpiq_it->second).first++; // Found
+      }
+   }
+
+   inline bool is_vldq_assign (DynamicMicroOp *uop) {
+      if (!uop->getMicroOp()->isVecLoad()) {
+         return false;
+      } else if (m_cfg_bloom_filter) {
+         // Bloom Filter
+         return uop->isFirst();
+      } else {
+         return true;
+      }
+   }
+
+   inline bool is_vldq_release (DynamicMicroOp *uop) {
+      if (!uop->getMicroOp()->isVecLoad()) {
+         return false;
+      } else if (m_cfg_bloom_filter) {
+         // Bloom Filter
+         return uop->isLast();
+      } else {
+         return true;
       }
    }
 

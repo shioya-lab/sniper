@@ -4,6 +4,7 @@
 
 #include "rob_timer.h"
 
+#include "priority_manager.hpp"
 #include "tools.h"
 #include "stats.h"
 #include "config.hpp"
@@ -18,7 +19,7 @@
 #include <sstream>
 #include <iomanip>
 
-#define LPIQ_SIZE  (1024)
+#define LPIQ_SIZE  (1024) * 8
 
 // Define to get per-cycle printout of dispatch, issue, writeback stages
 // #define DEBUG_PERCYCLE
@@ -74,6 +75,8 @@ RobTimer::RobTimer(
       , vec_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"))
       , scalar_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_loads"))
       , scalar_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_stores"))
+      , m_cfg_bloom_filter(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/bloom_filter", 0))
+      , m_vlen(Sim()->getCfg()->getIntArray("general/vlen", core->getId()))
       , nextSequenceNumber(0)
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
@@ -145,6 +148,7 @@ RobTimer::RobTimer(
    m_cpiFPURSFull = SubsecondTime::Zero();
    m_cpiLSURSFull = SubsecondTime::Zero();
    m_cpiVECRSFull = SubsecondTime::Zero();
+   m_cpiSPhyRegFull = SubsecondTime::Zero();
    m_cpiVPhyRegFull = SubsecondTime::Zero();
 
    m_cpiLDQFull  = SubsecondTime::Zero();
@@ -159,6 +163,7 @@ RobTimer::RobTimer(
    registerStatsMetric("rob_timer", core->getId(), "cpiFPURSFull", &m_cpiFPURSFull);
    registerStatsMetric("rob_timer", core->getId(), "cpiLSURSFull", &m_cpiLSURSFull);
    registerStatsMetric("rob_timer", core->getId(), "cpiVECRSFull", &m_cpiVECRSFull);
+   registerStatsMetric("rob_timer", core->getId(), "cpiSPhyRegFull", &m_cpiSPhyRegFull);
    registerStatsMetric("rob_timer", core->getId(), "cpiVPhyRegFull", &m_cpiVPhyRegFull);
 
    registerStatsMetric("rob_timer", core->getId(), "cpiLDQFull",  &m_cpiLDQFull);
@@ -288,6 +293,8 @@ RobTimer::RobTimer(
 
    registerStatsMetric("rob_timer", core->getId(), "vec-ooo-issue",    &vec_ooo_issue_count);
    registerStatsMetric("rob_timer", core->getId(), "scalar-ooo-issue", &scalar_ooo_issue_count);
+
+   registerStatsMetric("rob_timer", core->getId(), "inst-vec-reserve-count",    &m_inst_vec_reserve_count);
 
    registerStatsMetric("rob_timer", core->getId(), "vec-vec-ooo-issue",       &vector_overtake_vector_issue_count);
    registerStatsMetric("rob_timer", core->getId(), "scalar-vec-ooo-issue",    &scalar_overtake_vector_issue_count);
@@ -977,12 +984,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          }
 
          // 物理レジスタの確保試行
-         if (!entry->uop->getRegisterAllocated() && allocateRegister (entry)) {
+         if (!entry->uop->getRegisterAllocated() && allocateRegister (entry, &cpiFrontEnd)) {
             break;
          }
          entry->uop->setRegisterAllocated();
          // フロントエンドの資源不足によるストールをチェック
-         if (checkFrontendStall (entry, cpiFrontEnd)) {
+         if (checkFrontendStall (entry, &cpiFrontEnd)) {
             break;
          }
 
@@ -1024,15 +1031,15 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             ++m_num_in_rob_head;
          }
 
-         if (uop.getMicroOp()->isVecLoad() && uop.isFirst()) {
+         if (is_vldq_assign(&uop)) {
             --vec_load_queue;
+            // fprintf(stderr, "vec_load_queue descrease: idx=%ld VLDQ=%ld %d %s\n",
+            //          entry->uop->getSequenceNumber(), vec_load_queue, entry->uop->isFirst(),
+            //    entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
          }
-         if (!m_vec_store_inorder && uop.getMicroOp()->isVecStore()) {
-            if (vec_store_queue == 0) {
-               fprintf (stderr, "vec_store_queue is negative\n");
-               printRob(true, false);
-            }
-            --vec_store_queue;
+         if (!m_vec_store_inorder && uop.getMicroOp()->isVecStore() && uop.isFirst()) {
+            LOG_ASSERT_ERROR(vec_store_queue >= m_vlen / 64, "vec_store_queue is negative");
+            vec_store_queue -= m_vlen / 64;
          }
          if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad()) {
             --scalar_load_queue;
@@ -1060,8 +1067,10 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
             case MicroOp::UOP_SUBTYPE_VEC_LOAD :
             case MicroOp::UOP_SUBTYPE_VEC_STORE :
-               if (uop.isFirst() /* && !uop.isReserveInst() */) {
+               if ((m_vec_reserve_policy == vec_reserve_policy_t::VecReserveDynamic && !uop.isReserveInst() && uop.isFirst()) || 
+                   (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveDynamic && uop.isFirst())) {
                   m_vec_num_in_rs++;
+                  // fprintf(stderr, "%ld Allocated VecRS   %ld, NumRS=%ld\n", now.getCycleCount(), uop.getSequenceNumber(), m_vec_num_in_rs);
                   m_statsVECRSMax = std::max(m_statsVECRSMax, m_vec_num_in_rs);
                }
                break;
@@ -1096,6 +1105,10 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.isInLPIQ()) {
             KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
                         "Wf"); // Wait in FIFO
+         } else if (uop.getMicroOp()->isVector()) {
+            KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
+                        "Dv"); // Vector
+            KANATA_PRINTF("L\t%ld\t%d\tVecRs=%ld\n", entry->global_sequence_id, 2, m_vec_num_in_rs);
          } else {
             KANATA_PRINTF("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0,
                         "Ds");
@@ -1117,7 +1130,9 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          ROB_DEBUG_PRINTF ("DISPATCH uop_idx=%ld %s", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
 
          if (isUseNonpriVector (m_vec_reserve_policy)) {
-            ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" : entry->uop->isStrongPriorityInst() ? "STRONG" : "NORMAL");
+            ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" : 
+                                                 entry->uop->isStrongPriorityInst() ? "STRONG" : 
+                                                 "NORMAL");
          } else {
             ROB_DEBUG_PRINTF ("\n");
          }
@@ -1179,7 +1194,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
 // Check if the front-end is stalled
 // true: stall, false: not stall
-bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
+bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime **cpiFrontEnd)
 {
    auto uop = entry->uop;
 
@@ -1189,7 +1204,7 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
       ROB_DEBUG_PRINTF(
           "doDispatch : seqId=%ld : FPU Instruction Window Overflow\n",
           uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiFPURSFull;
+      *cpiFrontEnd = &m_cpiFPURSFull;
       m_frontstall_idx = frontstall_t::FPURsFull;
       if (!entry->front_stall_now) {
          // stall start
@@ -1207,7 +1222,7 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
       ROB_DEBUG_PRINTF(
           "doDispatch : seqId=%ld : ALU Instruction Window Overflow\n",
           uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiALURSFull;
+      *cpiFrontEnd = &m_cpiALURSFull;
       m_frontstall_idx = frontstall_t::ALURsFull;
       if (!entry->front_stall_now) {
          // stall start
@@ -1225,7 +1240,7 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
       ROB_DEBUG_PRINTF(
           "doDispatch : seqId=%ld : LSU Instruction Window Overflow\n",
           uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiLSURSFull;
+      *cpiFrontEnd = &m_cpiLSURSFull;
       m_frontstall_idx = frontstall_t::LSURsFull;
       if (!entry->front_stall_now) {
          // stall start
@@ -1241,11 +1256,14 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
        (uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_ARITH ||
         uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD ||
         uop->getMicroOp()->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_STORE)) {
+      if (m_vec_reserve_policy == VecReserveDynamic && uop->isInLPIQ()) {
+         return false;
+      }
       if (m_vec_num_in_rs > m_vec_window_size) {
          ROB_DEBUG_PRINTF(
             "doDispatch : seqId=%ld : VEC_ARITH Instruction Window Overflow\n",
             uop->getSequenceNumber());
-         cpiFrontEnd = &m_cpiVECRSFull;
+         *cpiFrontEnd = &m_cpiVECRSFull;
          m_frontstall_idx = frontstall_t::VECRsFull;
          if (!entry->front_stall_now) {
             // stall start
@@ -1263,10 +1281,10 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
    }
 
    // VLDQ full
-   if (!uop->isReserveInst() && uop->getMicroOp()->isVecLoad() && uop->isFirst() && vec_load_queue == 0) {
+   if (is_vldq_assign(uop) && vec_load_queue == 0) {
       ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Load Queue overflow\n",
                        uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiVLDQFull;
+      *cpiFrontEnd = &m_cpiVLDQFull;
       m_frontstall_idx = frontstall_t::VLDQFull;
       if (!entry->front_stall_now) {
          // stall start
@@ -1275,14 +1293,16 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
                        "RF"); // Resource Full
          KANATA_PRINTF("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2,
                        "VLDQ Instruction Window Overflow");
+         // printRob(true, false);
+         // exit(EXIT_FAILURE);
       }
       return true;
    }
    // VSTQ full
-   if (!uop->isReserveInst() && uop->getMicroOp()->isVecStore() && vec_store_queue == 0) {
+   if (!m_vec_store_inorder && vec_store_queue < m_vlen / 64) {
       ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Vector Store Queue overflow\n",
                        uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiVSTQFull;
+      *cpiFrontEnd = &m_cpiVSTQFull;
       m_frontstall_idx = frontstall_t::VSTQFull;
       if (!entry->front_stall_now) {
          // stall start
@@ -1299,7 +1319,7 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
        scalar_load_queue == 0) {
       ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Load Queue overflow\n",
                        uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiLDQFull;
+      *cpiFrontEnd = &m_cpiLDQFull;
       m_frontstall_idx = frontstall_t::LDQFull;
       if (!entry->front_stall_now) {
          // stall start
@@ -1316,7 +1336,7 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
        scalar_store_queue == 0) {
       ROB_DEBUG_PRINTF("doDispatch : seqId=%ld : Scalar Store Queue overflow\n",
                        uop->getSequenceNumber());
-      cpiFrontEnd = &m_cpiSTQFull;
+      *cpiFrontEnd = &m_cpiSTQFull;
       m_frontstall_idx = frontstall_t::STQFull;
       if (!entry->front_stall_now) {
          // stall start
@@ -1332,11 +1352,33 @@ bool RobTimer::checkFrontendStall(RobEntry *entry, SubsecondTime *cpiFrontEnd)
    return false;
 }
 
-
-bool RobTimer::allocateRegister (RobEntry *entry)
+// --------------------------------
+// 予約に失敗した場合はtrueとなる。
+// --------------------------------
+bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
 {
    DynamicMicroOp *uop = entry->uop;
    if (uop->getMicroOp()->getDestinationRegistersLength() == 0) {
+      // vcpop命令など、書き込み=GPR / 読み込み=物理レジスタの場合もチェックする
+      if (m_vec_reserve_policy == VecReserveDynamic && uop->getMicroOp()->isVector()) {
+         // ベクトル命令で、レジスタを確保しない命令でも、ベクトルストア命令などは予約レジスタを使用しているならば、LPIQに入る。
+
+         UInt64 first_sequence_number = rob[0].uop->getSequenceNumber();
+
+         UInt64 index = 1;
+         if (first_sequence_number > uop->getSequenceNumber() - index) {
+            return false;
+         }
+         RobEntry *firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);
+         while (first_sequence_number > uop->getSequenceNumber() - index && !firstEntry->uop->isFirst()) {
+            index++;
+            firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);
+         } 
+         if (firstEntry->uop->isReserveInst()) {
+            uop->setReserveInst();
+         }
+         InsertLPIQ (uop, DynamicMicroOp::lpiq_t::RESOLVED);
+      }
       return false;
    }
 
@@ -1355,6 +1397,7 @@ bool RobTimer::allocateRegister (RobEntry *entry)
             KANATA_PRINTF ("L\t%ld\t%d\t%s\n", entry->global_sequence_id, 2, "INT/FP Register Full");
          }
          allocate_fail = true;
+         *cpiFrontEnd = &m_cpiSPhyRegFull;
          if (dec->is_reg_int(dest_reg)) {
             m_frontstall_idx = frontstall_t::IPhyRegFull;
          } else if(dec->is_reg_float(dest_reg)) {
@@ -1362,6 +1405,22 @@ bool RobTimer::allocateRegister (RobEntry *entry)
          } else {
             LOG_ASSERT_ERROR (false, "Should Int or float register type.");
          }
+      } else if (uop->getMicroOp()->isVector()) {
+         UInt64 first_sequence_number = rob[0].uop->getSequenceNumber();
+
+         UInt64 index = 1;
+         if (first_sequence_number > uop->getSequenceNumber() - index) {
+            return false;
+         }
+         RobEntry *firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);
+         while (first_sequence_number > uop->getSequenceNumber() - index && !firstEntry->uop->isFirst()) {
+            index++;
+            firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);
+         } 
+         if (firstEntry->uop->isReserveInst()) {
+            uop->setReserveInst();
+         }
+         InsertLPIQ (uop, DynamicMicroOp::lpiq_t::RESOLVED);
       }
       return allocate_fail;
    }
@@ -1388,6 +1447,7 @@ bool RobTimer::allocateRegister (RobEntry *entry)
          if (alloc_result == RegisterManager::AllocFull) {
             // uop->setReserveInst();
             allocate_fail = true;
+            *cpiFrontEnd = &m_cpiVPhyRegFull;
          } else if (alloc_result == RegisterManager::AllocChain) {
             // fprintf (stderr, "Chain Entry check: %ld, %d\n", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->UopIdx());
             UInt64 index = 1;
@@ -1418,6 +1478,7 @@ bool RobTimer::allocateRegister (RobEntry *entry)
             KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
                   dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
          }
+         *cpiFrontEnd = &m_cpiVPhyRegFull;
          allocate_fail = true;
       }
    } else {
@@ -1437,6 +1498,7 @@ bool RobTimer::allocateRegister (RobEntry *entry)
                KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
                      dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
          }
+         *cpiFrontEnd = &m_cpiVPhyRegFull;
          allocate_fail = true;
       }
    }
@@ -1468,7 +1530,10 @@ void RobTimer::releaseRegister (RobEntry *entry)
    }
 
    if (entry->uop->isUseReserveRegisterGroup()) {
-      m_reg_manager->ReleaseRegister (entry->uop);
+      if (unlikely(m_reg_manager->ReleaseRegister (entry->uop))) {
+         printRob(true, false);
+         LOG_ASSERT_ERROR(false, "Cycle=%ld ReleaseRegister failed", now.getCycleCount());
+      }
       bool lowpri_reg_pass_succeeded = false;
       for (auto &f : m_lpiq_fifo) {
          RobEntry *lpiq_entry = findEntryBySequenceNumber(f);
@@ -1489,7 +1554,10 @@ void RobTimer::releaseRegister (RobEntry *entry)
       }
       if (!lowpri_reg_pass_succeeded) {
          // 渡す予約命令が無いので、物理レジスタに戻す
-         m_reg_manager->ForceReleaseVoctorRegister();
+         if (unlikely(m_reg_manager->ForceReleaseVoctorRegister())) {
+            printRob(true, false);
+            LOG_ASSERT_ERROR(false, "ForceReleaseVoctorRegister failed");
+         }
       }
    } else {
       // isUseNormalRegisterGroup()
@@ -1514,7 +1582,10 @@ void RobTimer::releaseRegister (RobEntry *entry)
       }
       if (!lowpri_reg_pass_succeeded) {
          // 渡す予約命令が無いので、物理レジスタに戻す
-         m_reg_manager->ForceReleaseVoctorRegister();
+         if (unlikely(m_reg_manager->ForceReleaseVoctorRegister())) {
+            printRob(true, false);
+            LOG_ASSERT_ERROR(false, "ForceReleaseVoctorRegister failed");
+         }
       }
    }
 }
@@ -1692,7 +1763,12 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       if (uop.isPreloadDone()) {
          KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "P");
       }
-      KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
+      if (uop.getMicroOp()->isVector()) {
+         KANATA_PRINTF ("L\t%ld\t%d\tVecRs=%ld\n", entry->global_sequence_id, 2, m_vec_num_in_rs);
+         KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Dv"); // Vector
+      } else {
+         KANATA_PRINTF ("E\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "Ds");
+      }
       KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "X");
       m_kanata_generated_in_this_region = true;
    }
@@ -1717,7 +1793,9 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       case MicroOp::UOP_SUBTYPE_VEC_ARITH :
       case MicroOp::UOP_SUBTYPE_VEC_LOAD :
       case MicroOp::UOP_SUBTYPE_VEC_STORE :
-         if (uop.isLast() /* && !uop.isReserveInst() */) {
+         if ((m_vec_reserve_policy == vec_reserve_policy_t::VecReserveDynamic && !uop.isReserveInst() && uop.isLast()) || 
+             (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveDynamic && uop.isLast())) {
+            // fprintf(stderr, "%ld Deallocated VecRS %ld, NumRS=%ld\n", now.getCycleCount(), uop.getSequenceNumber(), m_vec_num_in_rs);
             m_vec_num_in_rs--;
          }
          break;
@@ -2143,6 +2221,10 @@ SubsecondTime RobTimer::doIssue()
             }
          }
 
+         if (uop->getMicroOp()->isVector() && uop->isReserveInst() && uop->isFirst()) {
+            m_inst_vec_reserve_count++;
+         }
+
          #ifdef ASSERT_SKIP
             LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
          #endif
@@ -2305,11 +2387,14 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       if (!entry->uop->getMicroOp()->isVector() && entry->uop->getMicroOp()->isStore()) {
          scalar_store_queue++;
       }
-      if (entry->uop->getMicroOp()->isVecLoad() && entry->uop->isLast()) {
+      if (is_vldq_release(entry->uop)) {
          vec_load_queue++;
+         // fprintf(stderr, "vec_load_queue increase: idx=%ld VLDQ=%ld %d %s\n",
+         //          entry->uop->getSequenceNumber(), vec_load_queue, entry->uop->isFirst(),
+         //          entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
       }
-      if (!m_vec_store_inorder && entry->uop->getMicroOp()->isVecStore()) {
-         vec_store_queue++;
+      if (!m_vec_store_inorder && entry->uop->getMicroOp()->isVecStore() && entry->uop->isLast()) {
+         vec_store_queue += m_vlen / 64;
       }
 
       releaseRegister (entry);
@@ -2457,12 +2542,12 @@ void RobTimer::execute(uint64_t& instructionsExecuted, SubsecondTime& latency)
    if (m_enable_kanata) {
       // fprintf (stderr, "prefetch_arrive_list = %ld\n", m_core->prefetch_arrive_list.size());
       for (auto it = m_core->prefetch_arrive_list.begin(); it != m_core->prefetch_arrive_list.end();) {
-         UInt64 global_id = it->first;
+         // UInt64 global_id = it->first;
          UInt64 cycle     = it->second;
          // KANATA_PRINTF ("  // %ld %ld\n", now.getElapsedTime().getNS(), cycle);
          if (now.getElapsedTime().getNS() > cycle) {
-            KANATA_PRINTF ("E\t%ld\t%d\tP\n", global_id, 0);
-            KANATA_PRINTF ("R\t%ld\t%d\t0\n", global_id, 0);
+            // KANATA_PRINTF ("E\t%ld\t%d\tP\n", global_id, 0);
+            // KANATA_PRINTF ("R\t%ld\t%d\t0\n", global_id, 0);
             it = m_core->prefetch_arrive_list.erase(it);
          } else {
             it++;
@@ -2521,7 +2606,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
       return;
    }
 
-   DEBUG_COUT_IF (std::cout, "** ROB state @ "<<SubsecondTime::divideRounded(now, now.getPeriod())<<"  size("<<m_num_in_rob<<") total("<<rob.size()<<")" << std::endl);
+   DEBUG_COUT_IF (std::cout, "** ROB state @ "<<SubsecondTime::divideRounded(now, now.getPeriod())<<"  size("<<m_num_in_rob<<") size_head(" << m_num_in_rob_head <<") total("<<rob.size()<<")" << std::endl);
    if (frontend_stalled_until > now)
    {
       DEBUG_COUT_IF (std::cout, "   Front-end stalled");
@@ -2549,6 +2634,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
    DEBUG_COUT_IF (std::cout,  "\n");
 
    DEBUG_COUT_IF (std::cout, "   RS entries: "<<m_rs_entries_used<<std::endl);
+   DEBUG_COUT_IF (std::cout, "   Vec RS entries : " << m_vec_num_in_rs << ", max = " << m_vec_window_size << std::endl);
    DEBUG_COUT_IF (std::cout, "   Outstanding loads: "<<load_queue.getNumUsed(now)<<"  stores: "<<store_queue.getNumUsed(now)<<std::endl);
    DEBUG_COUT_IF (std::cout, "   VLDQ entries remained: "<< vec_load_queue << "  VSTQ entries remained: "<< vec_store_queue << std::endl);
 
@@ -2785,13 +2871,13 @@ void RobTimer::printRob(bool is_output, bool enable_check)
                         m_reg_manager->getAllocVectorRegister());
    }
 
-   if (enable_check && !m_vec_store_inorder &&
-      (vec_store_queue_max - vec_store_queue != vecstore_count)) {
-      printRob(true, false);
-      LOG_ASSERT_ERROR(false,
-                    "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
-                    vec_store_queue, vecstore_count);
-   }
+   // if (enable_check && !m_vec_store_inorder &&
+   //    (vec_store_queue_max - vec_store_queue != vecstore_count)) {
+   //    printRob(true, false);
+   //    LOG_ASSERT_ERROR(false,
+   //                  "Vec store count mismatch : vec_store_queue = %ld, vecstore_count = %ld\n",
+   //                  vec_store_queue, vecstore_count);
+   // }
 }
 
 
@@ -2863,22 +2949,6 @@ void RobTimer::preloadInstruction(uint64_t rob_idx)
 
 bool RobTimer::InsertLPIQ (DynamicMicroOp *uop, DynamicMicroOp::lpiq_t reason)
 {
-   // if (isPriInst (*uop)) {
-   //    printRob();
-   //    fprintf (stderr, "nonpri insts : ");
-   //    for (auto i: nonpri_insts) {
-   //       fprintf (stderr, "%08lx, ", i);
-   //    }
-   //    fprintf (stderr, "\n");
-   //    fprintf (stderr, "pri insts : ");
-   //    for (auto i: pri_insts) {
-   //       fprintf (stderr, "%08lx, ", i);
-   //    }
-   //    fprintf (stderr, "\n");
-   //    LOG_ASSERT_ERROR (false, "LPIQ must not insert priority instruction : PC = %08lx",
-   //                      uop->getMicroOp()->getInstruction()->getAddress());
-   // }
-
    if (m_lpiq_fifo.size() < LPIQ_SIZE) {
       if (m_lpiq_fifo.size() > 0) {
          LOG_ASSERT_ERROR(m_lpiq_fifo.back() <= uop->getSequenceNumber(), "1. inserted FIFO age should be larger than last entry");
@@ -2901,8 +2971,9 @@ bool RobTimer::InsertLPIQ (DynamicMicroOp *uop, DynamicMicroOp::lpiq_t reason)
 
       return true;
    } else {
-      m_lpiq_overflow++;
-      return false;
+      LOG_ASSERT_ERROR(false, "LPIQ fullfilled. Currently it's not supported. Consired increasing LPIQ_SIZE");
+      // m_lpiq_overflow++;
+      // return false;
    }
 }
 
@@ -2963,6 +3034,7 @@ void RobTimer::releaseLPIQ ()
    if (m_lpiq_fifo.size() > 0) {
       RobEntry *lpiq_front_entry = this->findEntryBySequenceNumber(m_lpiq_fifo.front());
       if (lpiq_front_entry->uop->isInLPIQ() &&
+          lpiq_front_entry->lpiq_inserted > now.getCycleCount() &&
           lpiq_front_entry->uop->getCommitDependency() == DynamicMicroOp::lpiq_t::RESOLVED) {
          lpiq_front_entry->uop->removeCommitDependency();
          m_lpiq_fifo.pop_front();

@@ -117,11 +117,7 @@ private:
             return it->second == HighOrigin ? High : it->second;
          }
          // ない場合はデフォルト値
-         if (m_vec_reserve_policy == VecReserveDynamic) {
-            return Reserve;
-         } else {
-            return Normal;
-         }
+         return Normal;
       }
    }
 

@@ -20,6 +20,10 @@ class MemoryDependencies
    UInt64 m_l1d_block_size;
    UInt64 m_vlen;
 
+   UInt64 m_num_vldq_conflict_check = 0;
+   UInt64 m_num_vldq_conflict = 0;
+   UInt64 m_num_vldq_conflict_false_positive = 0;
+
   struct Producer
       {
          uint64_t seqnr;

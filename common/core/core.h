@@ -151,6 +151,7 @@ class Core
       FILE* getO3Fp() { return m_o3_fp; }
       FILE* getKanataFp() {return m_kanata_fp; }
       uint64_t getGlobalSequenceIdAndInc() { return global_sequence_id++; }
+      uint64_t getGlobalSequenceId () { return global_sequence_id; }
       std::set<std::pair<UInt64, UInt64>> prefetch_arrive_list; // <global_id, cycle>
 
    private:

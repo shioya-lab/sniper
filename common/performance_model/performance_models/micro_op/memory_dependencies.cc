@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "memory_dependencies.h"
 #include "dynamic_micro_op.h"
+#include "stats.h"
 
 MemoryDependencies::MemoryDependencies()
     : m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", 0)),
@@ -16,6 +17,11 @@ MemoryDependencies::MemoryDependencies()
       producers(Sim()->getCfg()->getInt("perf_model/core/interval_timer/window_size")) // Maximum size should be one ROB worth of instructions
 {
    clear();
+
+   registerStatsMetric("memory_access", 0, "num_vldq_conflict_check", &m_num_vldq_conflict_check);
+   registerStatsMetric("memory_access", 0, "num_vldq_conflict",       &m_num_vldq_conflict);
+   registerStatsMetric("memory_access", 0, "num_vldq_conflict_false_positive", &m_num_vldq_conflict_false_positive);
+
 }
 
 MemoryDependencies::~MemoryDependencies()
@@ -187,13 +193,15 @@ void MemoryDependencies::RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t 
    bloom_filter_list.insert (load_hash1);
    bloom_filter_list.insert (load_hash2);
 
-   if (microOp.getMicroOp()->isLast()) {
-      fprintf (stderr, "  Bloom Filter: ");
-      for (auto it = bloom_filter_list.begin(); it != bloom_filter_list.end(); ++it) {
-         fprintf (stderr, "%ld, ", *it);
-      }
-      fprintf (stderr, "\n");
-   }
+   // if (microOp.getMicroOp()->isLast()) {
+   //    fprintf (stderr, "  Bloom Filter: ");
+   //    for (auto it = bloom_filter_list.begin(); it != bloom_filter_list.end(); ++it) {
+   //       fprintf (stderr, "%ld, ", *it);
+   //    }
+   //    fprintf (stderr, "\n");
+   // }
+
+   m_num_vldq_conflict_check ++;
 
    // There may be multiple entries with the same address, we want the latest one so traverse list in reverse order
    for(int i = producers.size() - 1; i >= 0; --i) {
@@ -205,12 +213,22 @@ void MemoryDependencies::RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t 
           (bloom_filter_list.find(store_hash1) != bloom_filter_list.end()) && 
           (bloom_filter_list.find(store_hash2) != bloom_filter_list.end())) {
          // Found a match
-         fprintf (stderr, "  Bloom Filter found: PC=%08lx %s: 0x%08lx, %lx -> 0x%08lx, %lx. ST Hash %ld, %ld, %ld\n", microOp.getMicroOp()->getInstruction()->getAddress(),
-                  microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
-                  physicalAddress, memorySize, producers.at(i).address, producers.at(i).size,
-                  store_hash0, store_hash1, store_hash2);
-         uint64_t found_st_idx = i;
-         microOp.addDependency(producers.at(found_st_idx).seqnr);
+         // fprintf (stderr, "  Bloom Filter found: PC=%08lx %s: 0x%08lx, %lx -> 0x%08lx, %lx. ST Hash %ld, %ld, %ld\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+         //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+         //          physicalAddress, memorySize, producers.at(i).address, producers.at(i).size,
+         //          store_hash0, store_hash1, store_hash2);
+         microOp.addDependency(producers.at(i).seqnr);
+
+         m_num_vldq_conflict ++;
+         uint64_t found_st_idx;
+         uint64_t producerSequenceNumber = find(physicalAddress, memorySize, found_st_idx);
+         if (producerSequenceNumber == INVALID_SEQNR) /* producer not found */
+         {
+            // fprintf (stderr, " False positive found: PC=%08lx %s: 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+            //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+            //          physicalAddress, memorySize);
+            m_num_vldq_conflict_false_positive ++;
+         }
          return;
       }
    }
