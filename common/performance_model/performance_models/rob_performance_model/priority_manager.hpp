@@ -2,6 +2,7 @@
 
 #include <map>
 #include <list>
+#include <cmath>
 
 #include "config.hpp"
 
@@ -24,11 +25,16 @@ typedef enum {
 // 予約機構を使うポリシかどうか
 // ------------------------------------------------------------
 inline bool isUseNonpriVector(vec_reserve_policy_t res) {
-   return res == VecReserveDynamic || 
+   return res == VecReserveDynamic ||
           res == VecReserveParOOO  ||
           res == VecReserveStatic  ||
           res == VecReserveAlways;
 }
+
+extern uint64_t simple_mix_hash(uint64_t key);
+extern uint64_t xor_fold_hash(uint64_t address, unsigned int N);
+
+#define HASH_IDX(pc) (xor_fold_hash(simple_mix_hash(pc >> 2), static_cast<size_t>(std::log2(PRIORITY_MAP_SIZE))))
 
 class PriorityManager {
 
@@ -40,13 +46,23 @@ public:
       HighOrigin = 3
    } inst_priority_t;
 
+   typedef struct {
+      UInt64          pc;
+      inst_priority_t pr;
+   } pri_entry_t;
+
 private:
    vec_reserve_policy_t m_vec_reserve_policy;
    const String m_app;
 
    ComponentTime *m_now;
 
-   std::unordered_map<UInt64, inst_priority_t> m_priority_map;
+   const UInt64 PRIORITY_MAP_SIZE = 64;
+   std::vector<pri_entry_t> m_priority_map;
+   // inline size_t GetPriMapIdx(UInt64 pc) {
+   //     return xor_fold_hash(murmur_hash(pc >> 2), static_cast<size_t>(std::log2(PRIORITY_MAP_SIZE)));
+   // }
+
    std::list<UInt64> m_priority_remove_queue;  // Highが依存する命令の削除候補キュー
 
    size_t target_inst_counter;
@@ -56,6 +72,7 @@ private:
       PriorityManager(ComponentTime *now, vec_reserve_policy_t vec_reserve_policy)
       : m_vec_reserve_policy (vec_reserve_policy)
       , m_app(Sim()->getCfg()->getString("general/app"))
+      , m_priority_map (PRIORITY_MAP_SIZE)
       {
          m_now = now;
          target_inst_counter = 0;
@@ -70,11 +87,11 @@ private:
 
    void dumpPriorityMap () {
       for (auto it = m_priority_map.begin(); it != m_priority_map.end(); it++) {
-         fprintf (stderr, "  pc=%08lx : %s\n", it->first, it->second == 0 ? "Normal" : it->second == 1 ? "Reserve" : "High");
+         fprintf (stderr, "  pc=%08lx : %s\n", (*it).pc, (*it).pr == 0 ? "Normal" : (*it).pr == 1 ? "Reserve" : "High");
       }
    }
 
-   std::unordered_map<UInt64, inst_priority_t>* getPriorityMap () {
+   std::vector<pri_entry_t>* getPriorityMap () {
       return &m_priority_map;
    }
 
@@ -84,19 +101,24 @@ private:
       auto pc = uop->getInstruction()->getAddress();
       auto assembly = uop->getInstruction()->getDisassembly();
 
-      auto it = m_priority_map.find(pc);
-      if (it == m_priority_map.end()) {
+      // auto it = m_priority_map.find(pc);
+      // if (it == m_priority_map.end()) {
+      // m_priority_map[pc] = inst_priority_t::HighOrigin;
+
+      auto it = m_priority_map[HASH_IDX(pc)];
+      if (it.pc != pc) {
          if (vec_miss) {
-            m_priority_map[pc] = inst_priority_t::HighOrigin;
-            fprintf (stderr, "%ld: pc=%08lx : Set Priority High. %s\n", m_now->getCycleCount(), pc, assembly.c_str());
+            m_priority_map[HASH_IDX(pc)].pc = pc;
+            m_priority_map[HASH_IDX(pc)].pr = inst_priority_t::HighOrigin;
+            fprintf (stderr, "%ld: pc=%08lx : Set Priority High. priority_map[%ld] %s\n", m_now->getCycleCount(), pc, HASH_IDX(pc), assembly.c_str());
             return pri_upd_result_t::Added;
          }
          return pri_upd_result_t::None;
       } else {
-         inst_priority_t priority = it->second;
+         inst_priority_t priority = it.pr;
          if (priority == inst_priority_t::HighOrigin) {
             if (!vec_miss) {
-               m_priority_map.erase(pc);
+               m_priority_map[HASH_IDX(pc)].pc = 0; // Removed
                fprintf (stderr, "%ld: pc=%08lx : Remove Priority. %s\n", m_now->getCycleCount(), pc, assembly.c_str());
                // dumpPriorityMap();
                m_priority_remove_queue.push_back (pc);
@@ -112,9 +134,13 @@ private:
          return getPriority_Static(pc);
       } else {
          // マップにキー(pc)がある場合はその値を返す
-         auto it = m_priority_map.find(pc);
-         if (it != m_priority_map.end()) {
-            return it->second == HighOrigin ? High : it->second;
+         // auto it = m_priority_map.find(pc);
+         // if (it != m_priority_map.end()) {
+         //    return it->second == HighOrigin ? High : it->second;
+         // }
+         auto it = m_priority_map[HASH_IDX(pc)];
+         if (it.pc == pc) {
+            return it.pr == inst_priority_t::HighOrigin ? inst_priority_t::High : it.pr;
          }
          // ない場合はデフォルト値
          return Normal;
@@ -123,13 +149,21 @@ private:
 
    void setPriority (UInt64 pc, inst_priority_t priority) {
       // マップにキー(pc)がない場合は新規エントリが作られる
-      // fprintf (stderr, "%ld: pc=%08lx setPriority as %s\n", m_now->getCycleCount(), pc, priority == 0 ? "Normal" : priority == 1 ? "Reserve" : "High");
-      m_priority_map[pc] = priority;
-      // dumpPriorityMap();
+      if (m_priority_map[HASH_IDX(pc)].pc != pc) {
+         if (m_priority_map[HASH_IDX(pc)].pc != 0) {
+            fprintf (stderr, "Priority Map [%ld].pc = %08lx is overwritten into pc=%08lx\n", HASH_IDX(pc), m_priority_map[HASH_IDX(pc)].pc, pc);
+         } else {
+            fprintf (stderr, "Priority Map [%ld] put into pc=%08lx\n", HASH_IDX(pc), pc);
+         }
+      }
+      m_priority_map[HASH_IDX(pc)].pc = pc;
+      m_priority_map[HASH_IDX(pc)].pr = priority;
+      // m_priority_map[pc] = priority;
    }
 
    void removePriority (UInt64 pc) {
-      m_priority_map.erase(pc);
+      // m_priority_map.erase(pc);
+      m_priority_map[HASH_IDX(pc)].pc = 0;
    }
 
    inst_priority_t getPriority_Static (UInt64 pc) {
@@ -249,7 +283,7 @@ private:
             case 0x14484 : // vl1re64.v	v12, (s9)
             case 0x14488 : // vsll.vi	v12, v12, 3
             case 0x1448c : // vluxei64.v	v13, (t6), v12
-            
+
             case 0x14948 : // vle64.v	v8, (a7)
             case 0x14950 : // vsll.vi	v8, v8, 3
             case 0x14954 : // vluxei64.v	v9, (a7), v8

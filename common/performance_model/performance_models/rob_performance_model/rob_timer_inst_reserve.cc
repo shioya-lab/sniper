@@ -16,7 +16,7 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
   }
 }
 
-// 
+//
 // 自分のエントリが優先命令さ削除対象キューに入っていれば、削除する
 //
 void RobTimer::RemovePriorityQueue (RobEntry *entry)
@@ -30,7 +30,7 @@ void RobTimer::RemovePriorityQueue (RobEntry *entry)
   if (remove_it != priority_remove_queue_it->end()) {
     m_priority_manager->removePriority(entry_pc);
     priority_remove_queue_it->erase(remove_it);
-    fprintf (stderr, "size of priority_remove_queue: %ld\n", priority_remove_queue_it->size());
+    // fprintf (stderr, "size of priority_remove_queue: %ld\n", priority_remove_queue_it->size());
     fprintf (stderr, "%ld: Priority remove propagation phase: from PC=%08lx\n",
                      now.getCycleCount(),
                      entry_pc);
@@ -87,7 +87,7 @@ void RobTimer::PropagateHighPriorityBackward (RobEntry *entry)
         m_priority_manager->setPriority(
             wait_entry_pc, PriorityManager::inst_priority_t::High);
 
-        fprintf(stderr, 
+        fprintf(stderr,
             "%ld: Priority backpropagation: Strong propagated from "
             "PC=%08lx to PC=%08lx\n",
             now.getCycleCount(),
@@ -169,6 +169,8 @@ void RobTimer::manageInstructionParOOO(RobEntry *entry)
   // 自分のエントリが優先命令さ削除対象キューに入っていれば、削除する
   RemovePriorityQueue(entry);
 
+  // fprintf (stderr, "manageIsntructionPAROOO() PC=%08lx\n", entry_pc);
+
   PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry_pc);
   if (priority == PriorityManager::inst_priority_t::High) {
     // 優先度の伝搬:
@@ -210,11 +212,11 @@ void RobTimer::propagatePriInst (RobEntry *entry, pri_upd_result_t result)
     if (is_waiting_entry_vector_dest_reg) {
       UInt64 wait_entry_pc =
           waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-      if (result == pri_upd_result_t::Added && 
+      if (result == pri_upd_result_t::Added &&
           m_priority_manager->getPriority(wait_entry_pc) != PriorityManager::inst_priority_t::High) {
         m_priority_manager->setPriority(
             wait_entry_pc, PriorityManager::inst_priority_t::High);
-        fprintf (stderr, 
+        fprintf (stderr,
             "%ld: Priority backpropagation: Strong propagated from "
             "PC=%08lx to PC=%08lx\n",
             now.getCycleCount(),
@@ -225,7 +227,7 @@ void RobTimer::propagatePriInst (RobEntry *entry, pri_upd_result_t result)
                  m_priority_manager->getPriority(wait_entry_pc) == PriorityManager::inst_priority_t::High) {
         m_priority_manager->setPriority(
             wait_entry_pc, PriorityManager::inst_priority_t::High);
-        fprintf (stderr, 
+        fprintf (stderr,
             "%ld: Priority backpropagation: Strong propagated from "
             "PC=%08lx to PC=%08lx\n",
             now.getCycleCount(),

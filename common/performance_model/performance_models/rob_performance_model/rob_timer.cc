@@ -93,11 +93,11 @@ RobTimer::RobTimer(
       , m_cpiCurrentFrontEndStall(NULL)
       , m_mlp_histogram(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/mlp_histogram", core->getId()))
       , m_bank_info(Sim()->getCfg()->getInt("perf_model/l1_dcache/num_banks"))
-      , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull   : 
+      , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull   :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_dynamic"   ? VecReserveDynamic    :
 			                     Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_vecparooo" ? VecReserveParOOO     :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_stacic"    ? VecReserveStatic     :
-                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways     : 
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways     :
 			      VecReserveNone)
       , m_last_committed_time(core->getDvfsDomain())
       , m_app(Sim()->getCfg()->getString("general/app"))
@@ -626,7 +626,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       if (rob_debug_seqnumber != 0 && lowestValidSequenceNumber > 0)
       {
-         if (entry->uop->getSequenceNumber() > rob_debug_seqnumber && 
+         if (entry->uop->getSequenceNumber() > rob_debug_seqnumber &&
              entry->uop->getSequenceNumber() < rob_debug_seqnumber + 100) {
             fprintf (stderr, "Debug SequenceNuber (%ld) enable.\n", entry->uop->getSequenceNumber());
             enable_rob_debug_seqnumber = true;
@@ -1067,7 +1067,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             case MicroOp::UOP_SUBTYPE_VEC_ARITH :
             case MicroOp::UOP_SUBTYPE_VEC_LOAD :
             case MicroOp::UOP_SUBTYPE_VEC_STORE :
-               if ((m_vec_reserve_policy == vec_reserve_policy_t::VecReserveDynamic && !uop.isReserveInst() && uop.isFirst()) || 
+               if ((m_vec_reserve_policy == vec_reserve_policy_t::VecReserveDynamic && !uop.isReserveInst() && uop.isFirst()) ||
                    (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveDynamic && uop.isFirst())) {
                   m_vec_num_in_rs++;
                   // fprintf(stderr, "%ld Allocated VecRS   %ld, NumRS=%ld\n", now.getCycleCount(), uop.getSequenceNumber(), m_vec_num_in_rs);
@@ -1130,8 +1130,8 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          ROB_DEBUG_PRINTF ("DISPATCH uop_idx=%ld %s", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
 
          if (isUseNonpriVector (m_vec_reserve_policy)) {
-            ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" : 
-                                                 entry->uop->isStrongPriorityInst() ? "STRONG" : 
+            ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" :
+                                                 entry->uop->isStrongPriorityInst() ? "STRONG" :
                                                  "NORMAL");
          } else {
             ROB_DEBUG_PRINTF ("\n");
@@ -1373,7 +1373,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
          while (first_sequence_number > uop->getSequenceNumber() - index && !firstEntry->uop->isFirst()) {
             index++;
             firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);
-         } 
+         }
          if (firstEntry->uop->isReserveInst()) {
             uop->setReserveInst();
          }
@@ -1416,7 +1416,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
          while (first_sequence_number > uop->getSequenceNumber() - index && !firstEntry->uop->isFirst()) {
             index++;
             firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);
-         } 
+         }
          if (firstEntry->uop->isReserveInst()) {
             uop->setReserveInst();
          }
@@ -1455,7 +1455,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
             while (!firstEntry->uop->isFirst()) {
                index++;
                firstEntry = findEntryBySequenceNumber(entry->uop->getSequenceNumber() - index);
-            } 
+            }
             if (firstEntry->uop->isReserveInst()) {
                uop->setReserveInst();
             }
@@ -1475,7 +1475,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
             // stall start
             entry->front_stall_now = true;
             KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-            KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
+            KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2,
                   dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
          }
          *cpiFrontEnd = &m_cpiVPhyRegFull;
@@ -1495,7 +1495,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
                // stall start
                entry->front_stall_now = true;
                KANATA_PRINTF ("S\t%ld\t%d\t%s\n", entry->global_sequence_id, 0, "RF"); // Resource Full
-               KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2, 
+               KANATA_PRINTF ("L\t%ld\t%d\t%s Register Full\n", entry->global_sequence_id, 2,
                      dec->is_reg_int(dest_reg) ? "INT" : dec->is_reg_float(dest_reg) ? "FP" : "VEC");
          }
          *cpiFrontEnd = &m_cpiVPhyRegFull;
@@ -1512,8 +1512,8 @@ void RobTimer::releaseRegister (RobEntry *entry)
       m_reg_manager->ReleaseRegister (entry->uop);
       return;
    }
-                                                                                     
-   // 非優先命令の持っているレジスタは解放時に、LPIQ内のレジスタを渡す                                                           
+
+   // 非優先命令の持っているレジスタは解放時に、LPIQ内のレジスタを渡す
    dl::Decoder *dec = Sim()->getDecoder();
    bool hasVecDestRegister = entry->uop->getMicroOp()->getDestinationRegistersLength() != 0 &&
        entry->uop->isLast() &&
@@ -1629,7 +1629,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          DynamicMicroOp *last_uop = &uop;
          last_uop->setCacheLastHitAnd (res.hit_where != HitWhere::where_t::DRAM);
          if (!uop.isLast()) {
-            // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
+            // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n",
             //         uop.getSequenceNumber(), uop.getMicroOp()->UopIdx(), uop.getMicroOp()->NumUop());
             size_t last_offset = 1;
             RobEntry *uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
@@ -1649,7 +1649,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
          if (uop.getMicroOp()->isVecLoad()) {
             DynamicMicroOp *last_uop = &uop;
             if (!uop.isLast()) {
-               // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n", 
+               // fprintf(stderr, "uop_max_latency seq_idx=%ld, uop_idx=%d, num_uop=%d\n",
                //         uop.getSequenceNumber(), uop.getMicroOp()->UopIdx(), uop.getMicroOp()->NumUop());
                size_t last_offset = 1;
                RobEntry *uop_last_entry = this->findEntryBySequenceNumber(uop.getSequenceNumber() + last_offset);
@@ -1661,7 +1661,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                };
             }
 
-            // fprintf(stderr, "uop_max_latency pc = %08lx, uop_idx=%ld, trying to update %ld, max_latency=%ld : ", 
+            // fprintf(stderr, "uop_max_latency pc = %08lx, uop_idx=%ld, trying to update %ld, max_latency=%ld : ",
             //         uop.getMicroOp()->getInstruction()->getAddress(),
             //         uop.getSequenceNumber(),
             //         last_uop->getSequenceNumber(),
@@ -1674,13 +1674,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
             }
 
             if (uop.isLast()) {
-               ROB_DEBUG_PRINTF ("uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n", 
+               ROB_DEBUG_PRINTF ("uop_max_latency: last pc = %08lx, uop_idx=%ld, max_latency=%ld\n",
                      uop.getMicroOp()->getInstruction()->getAddress(),
                      uop.getSequenceNumber(),
                      uop.getMemMaxLatency());
                bool vec_miss;
                bool update = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
-               
+
                if (update) {
                   // 命令の属性を変更させるかどうかをチェックする
                   m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss);
@@ -1793,7 +1793,7 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
       case MicroOp::UOP_SUBTYPE_VEC_ARITH :
       case MicroOp::UOP_SUBTYPE_VEC_LOAD :
       case MicroOp::UOP_SUBTYPE_VEC_STORE :
-         if ((m_vec_reserve_policy == vec_reserve_policy_t::VecReserveDynamic && !uop.isReserveInst() && uop.isLast()) || 
+         if ((m_vec_reserve_policy == vec_reserve_policy_t::VecReserveDynamic && !uop.isReserveInst() && uop.isLast()) ||
              (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveDynamic && uop.isLast())) {
             // fprintf(stderr, "%ld Deallocated VecRS %ld, NumRS=%ld\n", now.getCycleCount(), uop.getSequenceNumber(), m_vec_num_in_rs);
             m_vec_num_in_rs--;
@@ -2020,7 +2020,7 @@ SubsecondTime RobTimer::doIssue()
          if (!uop->getMicroOp()->canVecSquash()) {
             // Gather/Scatter命令の場合：キャッシュラインマージ操作が入る
 
-            if (uop->getMicroOp()->isVecStore() && 
+            if (uop->getMicroOp()->isVecStore() &&
                         m_vec_store_inorder && vector_store_someone_cant_be_issued) {
                // m_vec_store_inorderが有効だと、ベクトルストアはインオーダで実行されなければならい
                canIssue = false;
@@ -2638,18 +2638,18 @@ void RobTimer::printRob(bool is_output, bool enable_check)
    DEBUG_COUT_IF (std::cout, "   Outstanding loads: "<<load_queue.getNumUsed(now)<<"  stores: "<<store_queue.getNumUsed(now)<<std::endl);
    DEBUG_COUT_IF (std::cout, "   VLDQ entries remained: "<< vec_load_queue << "  VSTQ entries remained: "<< vec_store_queue << std::endl);
 
-   std::unordered_map<UInt64, PriorityManager::inst_priority_t> *priority_map = m_priority_manager->getPriorityMap();
+   std::vector<PriorityManager::pri_entry_t> *priority_map = m_priority_manager->getPriorityMap();
    DEBUG_COUT_IF (std::cout, "   Priority Manager High   : ");
    for (auto it = priority_map->begin(); it != priority_map->end(); it++) {
-      if (it->second == PriorityManager::inst_priority_t::High) {
-         DEBUG_COUT_IF (std::cout, std::hex << it->first << ",");
+      if (it->pr == PriorityManager::inst_priority_t::High) {
+         DEBUG_COUT_IF (std::cout, std::hex << it->pc << ",");
       }
    }
    DEBUG_COUT_IF (std::cout, "\n");
    DEBUG_COUT_IF (std::cout, "   Priority Manager Reserve: ");
    for (auto it = priority_map->begin(); it != priority_map->end(); it++) {
-      if (it->second == PriorityManager::inst_priority_t::Reserve) {
-         DEBUG_COUT_IF (std::cout, std::hex << it->first << ",");
+      if (it->pr == PriorityManager::inst_priority_t::Reserve) {
+         DEBUG_COUT_IF (std::cout, std::hex << it->pc << ",");
       }
    }
    DEBUG_COUT_IF (std::cout, "\n");
