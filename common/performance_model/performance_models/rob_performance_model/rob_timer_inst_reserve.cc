@@ -1,4 +1,6 @@
+#include "rob_contention.h"
 #include "rob_timer.h"
+#include <cstdio>
 
 void RobTimer::manageInstructionReserve (RobEntry *entry)
 {
@@ -66,36 +68,67 @@ void RobTimer::RemovePriorityQueue (RobEntry *entry)
  * 優先度の伝搬:
  * 自分が即時割り当ての命令であれば、自分が依存している命令も即時割り当ての命令でなければならない
  */
-void RobTimer::PropagateHighPriorityBackward (RobEntry *entry)
+void RobTimer::PropagateHighPriorityBackward (const MicroOp* uop)
 {
-  UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
 
-  // 優先度の伝搬:
-  // 自分が即時割り当ての命令であれば、自分が依存している命令も即時割り当ての命令でなければならない
-  for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
-    RobEntry *waiting_entry =
-        this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-
-    bool is_waiting_entry_vector_dest_reg =
-        waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-        Sim()->getDecoder()->is_reg_vector(
-            waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-    if (is_waiting_entry_vector_dest_reg) {
-      UInt64 wait_entry_pc =
-          waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-      if (m_priority_manager->getPriority(wait_entry_pc) != PriorityManager::inst_priority_t::High) {
-        m_priority_manager->setPriority(
-            wait_entry_pc, PriorityManager::inst_priority_t::High);
-
-        fprintf(stderr,
-            "%ld: Priority backpropagation: Strong propagated from "
-            "PC=%08lx to PC=%08lx\n",
-            now.getCycleCount(),
-            entry_pc,
-            waiting_entry->uop->getMicroOp()->getInstruction()->getAddress());
+  // ソース・オペランドを生成する命令をm_vec_histから探索して、優先度をHighにする。
+  for (size_t idx = 0; idx < uop->getSourceRegistersLength(); ++idx) {
+    dl::Decoder::decoder_reg src_reg = uop->getSourceRegister(idx);
+    if (Sim()->getDecoder()->is_reg_vector(src_reg)) {
+      // m_vec_histに格納されているもっとも最近のPCを探す
+      // fprintf (stderr, "  src_reg=%d, ", src_reg);
+      // for (auto it = m_vec_reg_hist.rbegin(); it != m_vec_reg_hist.rend(); ++it) {
+      //   fprintf (stderr, "  dest_reg=%d, PC=%08lx\n", it->dest_reg, it->pc);
+      // }
+      // fprintf (stderr, "\n");
+      for (auto it = m_vec_reg_hist.rbegin(); it != m_vec_reg_hist.rend(); ++it) {
+        if (it->dest_reg == src_reg) {
+          UInt64 wait_entry_pc = it->pc;
+          if (m_priority_manager->getPriority(wait_entry_pc) == PriorityManager::inst_priority_t::High) {
+            break;
+          }
+          if (std::find(m_high_inst_candidate.begin(), m_high_inst_candidate.end(), wait_entry_pc) == m_high_inst_candidate.end()) {
+            if (m_high_inst_candidate.size() >= 8) {
+              m_high_inst_candidate.pop_front();
+            }
+            m_high_inst_candidate.push_back(wait_entry_pc);
+            fprintf(stderr, "%ld: %s idx=%ld(%s), Priority High Candidate: PC=%08lx\n",
+                            now.getCycleCount(), uop->getInstruction()->getDisassembly().c_str(), idx, Sim()->getDecoder()->reg_name(src_reg), wait_entry_pc);
+            break;
+          }
+          break;
+        }
       }
     }
   }
+
+  // UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+  // // 優先度の伝搬:
+  // // 自分が即時割り当ての命令であれば、自分が依存している命令も即時割り当ての命令でなければならない
+  // for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
+  //   RobEntry *waiting_entry =
+  //       this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
+
+  //   bool is_waiting_entry_vector_dest_reg =
+  //       waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
+  //       Sim()->getDecoder()->is_reg_vector(
+  //           waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
+  //   if (is_waiting_entry_vector_dest_reg) {
+  //     UInt64 wait_entry_pc =
+  //         waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
+  //     if (m_priority_manager->getPriority(wait_entry_pc) != PriorityManager::inst_priority_t::High) {
+  //       m_priority_manager->setPriority(
+  //           wait_entry_pc, PriorityManager::inst_priority_t::High);
+
+  //       fprintf(stderr,
+  //           "%ld: Priority backpropagation: Strong propagated from "
+  //           "PC=%08lx to PC=%08lx\n",
+  //           now.getCycleCount(),
+  //           entry_pc,
+  //           waiting_entry->uop->getMicroOp()->getInstruction()->getAddress());
+  //     }
+  //   }
+  // }
 }
 
 
@@ -142,7 +175,7 @@ void RobTimer::manageInstructionReserveVecPriority(RobEntry *entry)
   PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry_pc);
   if (priority == PriorityManager::inst_priority_t::High) {
     entry->uop->setStrongPriorityInst();
-    PropagateHighPriorityBackward(entry);
+    // PropagateHighPriorityBackward(entry->uop->getMicroOp());
   } else if (priority == PriorityManager::inst_priority_t::Reserve) {
     entry->uop->setReserveInst();
   } else {
@@ -170,13 +203,23 @@ void RobTimer::manageInstructionParOOO(RobEntry *entry)
   RemovePriorityQueue(entry);
 
   // fprintf (stderr, "manageIsntructionPAROOO() PC=%08lx\n", entry_pc);
+  // m_high_inst_candidateに自分のPCが含まれていれば、優先命令化する。
+  if (std::find(m_high_inst_candidate.begin(), m_high_inst_candidate.end(), entry_pc) != m_high_inst_candidate.end()) {
+    m_priority_manager->setPriority(entry_pc, PriorityManager::inst_priority_t::High);
+    m_priority_manager->AddHighInst(entry_pc);
+    entry->uop->setStrongPriorityInst();
+    fprintf (stderr, "%ld: Priority backpropagation: PC=%08lx %s\n",
+                     now.getCycleCount(), entry_pc, entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
+    m_high_inst_candidate.erase(std::remove(m_high_inst_candidate.begin(), m_high_inst_candidate.end(), entry_pc), m_high_inst_candidate.end());
+    // PropagateHighPriorityBackward(entry->uop->getMicroOp());
+  }
 
   PriorityManager::inst_priority_t priority = m_priority_manager->getPriority(entry_pc);
   if (priority == PriorityManager::inst_priority_t::High) {
     // 優先度の伝搬:
     // 自分が即時割り当ての命令であれば、自分が依存している命令も即時割り当ての命令でなければならない
     entry->uop->setStrongPriorityInst();
-    PropagateHighPriorityBackward(entry);
+    // PropagateHighPriorityBackward(entry);
   } else if (priority == PriorityManager::inst_priority_t::Reserve) {
     entry->uop->setReserveInst();
   } else {

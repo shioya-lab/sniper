@@ -450,8 +450,15 @@ private:
    void manageInstructionReserveVecPriority(RobEntry *entry);
    void manageInstructionReserveVecAll(RobEntry *entry);
 
+   typedef struct {
+      UInt64 pc;
+      dl::Decoder::decoder_reg dest_reg;
+   } vec_reg_hist_entry_t;
+   std::deque<vec_reg_hist_entry_t> m_vec_reg_hist;
+   std::deque<UInt64> m_high_inst_candidate;
+
    void RemovePriorityQueue (RobEntry *entry);
-   void PropagateHighPriorityBackward (RobEntry *entry);
+   void PropagateHighPriorityBackward (const MicroOp* uop);
    void PropagatePriorityFromForward (RobEntry *entry);
 
    void manageInstructionParOOO(RobEntry *entry);

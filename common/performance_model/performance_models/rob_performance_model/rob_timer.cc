@@ -103,6 +103,8 @@ RobTimer::RobTimer(
       , m_app(Sim()->getCfg()->getString("general/app"))
       , m_pref_target_log(strtol(Sim()->getCfg()->getStringArray("log/vec_pref_target_pc", core->getId()).c_str(), NULL, 16))
       , m_vec_store_inorder (Sim()->getCfg()->getBoolArray("research_option/vec_store_inorder", core->getId()))  // Vector Store 命令のみインオーダで実行する
+      , m_vec_reg_hist(32)
+      , m_high_inst_candidate(8)
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -1123,6 +1125,23 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.isLast())
             instrs_dispatched++;
 
+         std::list<UInt64> *priority_add_queue = m_priority_manager->getPriorityAddQueue();
+         if (std::find(priority_add_queue->begin(), priority_add_queue->end(), uop.getMicroOp()->getInstruction()->getAddress()) != priority_add_queue->end()) {
+            PropagateHighPriorityBackward(uop.getMicroOp());
+            priority_add_queue->remove(uop.getMicroOp()->getInstruction()->getAddress());
+         }
+
+         // if Vector instruction, record the vector register in program order
+         if (uop.getMicroOp()->isVector() && uop.isFirst() && uop.getMicroOp()->getDestinationRegistersLength() > 0) {
+            dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+            if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
+               if (m_vec_reg_hist.size() == 32) {
+                  m_vec_reg_hist.pop_front();
+               }
+               m_vec_reg_hist.push_back(vec_reg_hist_entry_t{uop.getMicroOp()->getInstruction()->getAddress(), dest_reg});
+            }
+         }
+
          // If uop is already ready, we may need to issue it in the following cycle
          entry->ready = std::max(entry->ready, (now + 1ul).getElapsedTime());
          next_event = std::min(next_event, entry->ready);
@@ -1683,7 +1702,10 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
                if (update) {
                   // 命令の属性を変更させるかどうかをチェックする
-                  m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss);
+                  auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss);
+                  if (result == pri_upd_result_t::Added) {
+                     m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
+                  }
                }
             }
          }

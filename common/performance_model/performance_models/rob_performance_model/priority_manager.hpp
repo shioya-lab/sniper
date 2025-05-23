@@ -63,6 +63,7 @@ private:
    //     return xor_fold_hash(murmur_hash(pc >> 2), static_cast<size_t>(std::log2(PRIORITY_MAP_SIZE)));
    // }
 
+   std::list<UInt64> m_priority_add_queue;     // High命令の追加候補キュー
    std::list<UInt64> m_priority_remove_queue;  // Highが依存する命令の削除候補キュー
 
    size_t target_inst_counter;
@@ -83,6 +84,18 @@ private:
 
    std::list<UInt64>* getPriorityRemoveQueue () {
       return &m_priority_remove_queue;
+   }
+
+   void AddHighInst(UInt64 pc) {
+      if (std::find(m_priority_add_queue.begin(), m_priority_add_queue.end(), pc) != m_priority_add_queue.end()) {
+         return;
+      }
+      m_priority_add_queue.push_back (pc);
+      fprintf (stderr, "%ld: Add High Inst: pc=%08lx\n", m_now->getCycleCount(), pc);
+   }
+
+   std::list<UInt64>* getPriorityAddQueue () {
+      return &m_priority_add_queue;
    }
 
    void dumpPriorityMap () {
