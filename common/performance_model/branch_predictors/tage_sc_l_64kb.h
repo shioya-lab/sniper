@@ -1,6 +1,8 @@
 #include <unordered_map>
 #include <fstream>
 #include <iomanip> // for hex formatting
+#include "config.hpp"
+#include "simulator.h"
 
 #include "branch_predictor.h"
 #include "pentium_m_indirect_branch_target_buffer.h"
@@ -8,9 +10,17 @@
 
 class TageScL64kb final : public BranchPredictor
 {
+    UInt64 m_debug_pc;
+    FILE *m_debug_fp;
+
 public:
     TageScL64kb(String name, core_id_t core_id) : BranchPredictor(name, core_id)
+       , m_debug_pc(strtol(Sim()->getCfg()->getStringArray("log/branch_debug_pc", 0).c_str(), nullptr, 16))
     {
+        m_debug_fp = fopen("tage_sc_l_64kb_debug.txt", "w");
+        if (!m_debug_fp) {
+            std::cerr << "Error: Could not open debug file for writing.\n";
+        }
     }
 
     virtual ~TageScL64kb ()
@@ -56,6 +66,10 @@ public:
         {
             ++m_incorrect_per_ip[ip];
         }
+        if (m_debug_pc == ip) {
+            fprintf(m_debug_fp, "TAGE: IP=0x%lx, Target=0x%lx, Predicted=%d, Actual=%d, Result=%d\n", ip, target, predicted, actual, predicted == actual);
+        }
+
     }
 
 private:

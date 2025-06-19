@@ -23,6 +23,9 @@ public:
 
 private:
 
+   uint8_t latest_pred_type = 0; // 1: Global, 2: LPB, 3: Bimodal, 4: Indirect BTB
+   bool applied_ibib;
+   
    void update_pir(bool actual, IntPtr ip, IntPtr target, BranchPredictorReturnValue::BranchType branch_type);
    IntPtr hash_function(IntPtr ip, IntPtr pir);
 
@@ -39,7 +42,12 @@ private:
    bool m_last_bm_pred;
    bool m_last_lpb_hit;
 
+   UInt64 m_debug_pc;
+   FILE *m_debug_fp;
+
    std::unordered_map<IntPtr, uint64_t> m_incorrect_per_ip;
+   // <<ip, predictor_type>, <count, incorrect_count>>
+   std::map<std::pair<IntPtr, uint8_t>, std::pair<uint64_t, uint64_t>> m_predictor_per_ip;  // 1: Global, 2: LPB, 3: Bimodal, 4: Indirect BTB
 
 };
 
