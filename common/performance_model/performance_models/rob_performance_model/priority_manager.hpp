@@ -234,23 +234,25 @@ private:
          }
       } else if (m_app == "pr") {
          switch (pc) {
-            case 0x143ac: // vle64.v	v11, (a7)
-            case 0x143b0: // vsll.vi	v11, v11, 3
-            case 0x143b4: // vluxei64.v	v11, (a2), v11
+            case 0x00015c4c: //  vluxei64.v     v11, (a2), v11
+            case 0x00015c44: //  vle64.v        v11, (a7)
+            case 0x00015c48: //  vsll.vi        v11, v11, 3
                return inst_priority_t::High;
             default:
-               return inst_priority_t::Normal;
+               return inst_priority_t::Reserve;
          }
       } else if (m_app == "sssp") {
          switch (pc) {
-            case 0x142e0: // vle64.v	v10, (a4)
-            case 0x142ec: // vsll.vi	v10, v10, 3
-            case 0x142f0: // vluxei64.v	v10, (t0), v10
+            case 0x00015a3c: //  vle64.v        v10, (a4)
+            case 0x00015a48: //  vsll.vi        v10, v10, 3
+            case 0x00015a4c: //  vluxei64.v     v10, (t0), v10
 
-            case 0x14298: // vle64.v	v8, (a6)
-            case 0x142a4: // vsll.vi	v8, v8, 3
-            case 0x142a8: // vluxei64.v	v9, (a1), v8
+            case 0x000158e8: //  vle64.v        v9, (t6)
+            case 0x000158f0: //  vsll.vi        v9, v9, 3
+            case 0x000158f4: //  vluxei64.v     v9, (t6), v9
                return inst_priority_t::High;
+            default:
+               return inst_priority_t::Reserve;
          }
       } else if (m_app == "00") {
          switch (pc) {

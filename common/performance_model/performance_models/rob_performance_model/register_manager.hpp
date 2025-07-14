@@ -73,12 +73,15 @@ class RegisterManager
       float vec_phy_rate = Sim()->getCfg()->getFloat("perf_model/core/rob_timer/nonpri_max_vec_phy_rate");
       if (vec_reserve_policy == VecReserveAlways) {
          m_nonpri_max_vec_phy_registers = m_max_phy_registers[VectorRegister] - 32;
-      } else if (vec_reserve_policy == VecReserveParOOO) {
-         m_nonpri_max_vec_phy_registers = 0;
+      } else if (vec_reserve_policy == VecReserveParOOO ||
+                 vec_reserve_policy == VecReserveStatic) {
+        m_nonpri_max_vec_phy_registers = 0;
       } else if (vec_phy_rate == 0.0) {
-         m_nonpri_max_vec_phy_registers = Sim()->getCfg()->getInt("perf_model/core/rob_timer/nonpri_max_vec_phy_registers");
+        m_nonpri_max_vec_phy_registers = Sim()->getCfg()->getInt(
+            "perf_model/core/rob_timer/nonpri_max_vec_phy_registers");
       } else {
-         m_nonpri_max_vec_phy_registers = (m_max_phy_registers[VectorRegister] - 32) * vec_phy_rate;
+        m_nonpri_max_vec_phy_registers =
+            (m_max_phy_registers[VectorRegister] - 32) * vec_phy_rate;
       }
       m_enable_rob_timer_log = Sim()->getCfg()->getBoolArray("log/enable_rob_timer_log", core_id);
       m_rob_start_cycle      = Sim()->getCfg()->getIntArray("log/rob_debug_start_cycle", core_id);
@@ -123,25 +126,26 @@ class RegisterManager
    }
 
    AllocResult_t AllocateVectorRegister (DynamicMicroOp *uop) {
-      if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveParOOO) {
-         if (uop->isUseNormalRegisterGroup()) {
-            return AllocateNormalVecRegister(uop);
-         } else {
-            // 予約の時はそもそも確保しない
-            return AllocResult_t::AllocSuccess;
-         }
-      } else if (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone) {
-         // 優先度付き予約
-         if (uop->isUseNormalRegisterGroup()) {
-            // 通常のレジスタグループから割り当てを行う命令
-            return AllocateNormalVecRegister (uop);
-         } else {
-            return AllocNonpriVecRegisters (uop);
-         }
-      } else {
-         // 予約なし
+     if (m_vec_reserve_policy == VecReserveParOOO ||
+         m_vec_reserve_policy == VecReserveStatic) {
+       if (uop->isUseNormalRegisterGroup()) {
          return AllocateNormalVecRegister(uop);
-      }
+       } else {
+         // 予約の時はそもそも確保しない
+         return AllocResult_t::AllocSuccess;
+       }
+     } else if (m_vec_reserve_policy != vec_reserve_policy_t::VecReserveNone) {
+       // 優先度付き予約
+       if (uop->isUseNormalRegisterGroup()) {
+         // 通常のレジスタグループから割り当てを行う命令
+         return AllocateNormalVecRegister(uop);
+       } else {
+         return AllocNonpriVecRegisters(uop);
+       }
+     } else {
+       // 予約なし
+       return AllocateNormalVecRegister(uop);
+     }
    }
 
    AllocResult_t AllocateNormalVecRegister (DynamicMicroOp *uop) {

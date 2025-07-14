@@ -49,7 +49,6 @@ RobTimer::RobTimer(
       , v_to_s_fence(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/v_to_s_fence", core->getId()))
       , m_gather_scatter_merge(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/gather_scatter_merge", core->getId()))
       , m_vec_preload(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/vec_preload", core->getId()))
-      , m_vsetvl_producer(0)
       , m_konata_count_max(Sim()->getCfg()->getIntArray("general/konata_count_max", core->getId()))
       , m_konata_count(0)
       , m_core(core)
@@ -96,7 +95,7 @@ RobTimer::RobTimer(
       , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull   :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_dynamic"   ? VecReserveDynamic    :
 			                     Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_vecparooo" ? VecReserveParOOO     :
-                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_stacic"    ? VecReserveStatic     :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_static"    ? VecReserveStatic     :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways     :
 			      VecReserveNone)
       , m_last_committed_time(core->getDvfsDomain())
@@ -1445,7 +1444,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
    }
 
    if (isUseNonpriVector (m_vec_reserve_policy)) {
-      if (m_vec_reserve_policy != VecReserveParOOO && uop->isReserveInst()) {
+      if (m_vec_reserve_policy != VecReserveParOOO && m_vec_reserve_policy != VecReserveStatic && uop->isReserveInst()) {
          // ParOOOの場合は物理レジスタを確保しない
          // 予約に回る命令であれば、LPIQに格納する
          // LPIQに入れるべき命令の場合
@@ -1542,7 +1541,7 @@ void RobTimer::releaseRegister (RobEntry *entry)
       return;
    }
 
-   if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveParOOO &&
+   if ((m_vec_reserve_policy == VecReserveParOOO || m_vec_reserve_policy == VecReserveStatic) &&
          entry->uop->isUseReserveRegisterGroup()) {
       // 予約命令の場合
       return;
@@ -1946,7 +1945,7 @@ SubsecondTime RobTimer::doIssue()
       // vector_inorder=true : Arith/Mem Vector issued in-order
       // lsu_inorder: Mem Vector issued in-order
       bool dyn_vector_inorder = vector_inorder;
-      if (m_vec_reserve_policy == vec_reserve_policy_t::VecReserveParOOO &&
+      if ((m_vec_reserve_policy == VecReserveParOOO || m_vec_reserve_policy == VecReserveStatic) &&
           uop->isUseReserveRegisterGroup()) {
          // ReserveInorderモードで、Inorder指定された命令は強制的にインオーダモードになる
          dyn_vector_inorder = true;
@@ -2731,7 +2730,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
          DEBUG_COUT_IF (state, "    ");
       }
 
-      if (m_vec_reserve_policy == VecReserveParOOO) {
+      if (m_vec_reserve_policy == VecReserveParOOO || m_vec_reserve_policy == VecReserveStatic) {
          // Inorderの場合は，予約はカウントしない
       } else if (i < m_num_in_rob &&
           !lowpri_decided &&
@@ -2911,7 +2910,7 @@ void RobTimer::setVSETDependencies(DynamicMicroOp& microOp, uint64_t lowestValid
     m_vsetvl_producer = microOp.getSequenceNumber();
   } else if (dec->is_vector(microOp.getMicroOp()->getInstructionOpcode(),
                             microOp.getMicroOp()->getDecodedInstruction())) {
-    if (m_vsetvl_producer >= lowestValidSequenceNumber) {
+    if (m_vsetvl_producer != INVALID_SEQNR && m_vsetvl_producer >= lowestValidSequenceNumber) {
       microOp.addDependency(m_vsetvl_producer);
     }
   }

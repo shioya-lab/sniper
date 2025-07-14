@@ -82,7 +82,7 @@ private:
    const bool v_to_s_fence;
    const bool m_gather_scatter_merge;
    const bool m_vec_preload;
-   uint64_t m_vsetvl_producer;
+   uint64_t m_vsetvl_producer = INVALID_SEQNR;
    uint64_t m_konata_count_max;
    uint64_t m_konata_count = 0;
 
@@ -462,7 +462,8 @@ private:
    void PropagatePriorityFromForward (RobEntry *entry);
 
    void manageInstructionParOOO(RobEntry *entry);
-
+   void manageInstructionStatic(RobEntry *entry);
+   
    // Find First Instruction
    uint64_t findFirstUopSeqNumber (DynamicMicroOp *uop) {
       UInt64 seqnum = uop->getSequenceNumber();

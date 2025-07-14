@@ -12,6 +12,8 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
     manageInstructionReserveVecPriority(entry);
   } else if (m_vec_reserve_policy == VecReserveParOOO) {
     manageInstructionParOOO(entry);
+  } else if (m_vec_reserve_policy == VecReserveStatic) {
+    manageInstructionStatic (entry);
   } else if (m_vec_reserve_policy == VecReserveAlways) {
     // 常にベクトル命令を予約に回す方針
     manageInstructionReserveVecAll(entry);
@@ -228,6 +230,28 @@ void RobTimer::manageInstructionParOOO(RobEntry *entry)
     PropagatePriorityFromForward(entry);
   }
 }
+
+
+/*
+ * ParOOOの場合の優先度の伝搬などの制御を行う
+*/
+void RobTimer::manageInstructionStatic (RobEntry *entry)
+{
+  UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+  if (!entry->uop->getMicroOp()->isVector()) {
+    return;
+  }
+  PriorityManager::inst_priority_t priority = m_priority_manager->getPriority_Static(entry_pc);
+  if (priority == PriorityManager::inst_priority_t::High) {
+    entry->uop->setStrongPriorityInst();
+  } else if (entry->uop->getMicroOp()->isVecMem()) {
+    entry->uop->setStrongPriorityInst();
+  } else {
+    /* default: keep instruction priority as normal*/
+    entry->uop->setReserveInst();
+  }
+}
+
 
 
 /*
