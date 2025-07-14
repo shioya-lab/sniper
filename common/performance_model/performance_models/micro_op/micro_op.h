@@ -15,7 +15,7 @@
 class Instruction;
 
 // #define MAX_SRC_REGS 3
-#define MAX_SRC_REGS 16
+#define MAX_SRC_REGS 32
 #define MAX_MEM_SRC_REGS 2
 #define MAX_DEST_REGS 3
 #define MAX_MEM_DEST_REGS 2
