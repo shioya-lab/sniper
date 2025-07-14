@@ -24,6 +24,7 @@ public:
    virtual void update(bool predicted, bool actual, bool indirect, IntPtr ip, IntPtr target) override
    {
       m_predictor.last_branch_result (champsim::address { ip }, champsim::address { target }, actual, indirect);
+      updateCounters (predicted, actual);
    }
 
   private:
