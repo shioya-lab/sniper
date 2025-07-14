@@ -1,8 +1,7 @@
-#include <cctype>
 #include <charconv>
 #include <forward_list>
 #include <optional>
-#include <decoder.h>
+// #include <decoder.h>
 #include "format.h"
 #include "frontend.h"
 #include "memory.h"
@@ -67,6 +66,31 @@ class QemuFrontend final : public Frontend<QemuFrontend>
          FrontendCallbacks<QemuFrontend>::countInsns(threadid, 1);
       }
 
+      const uint8_t *code = inst->get_code();
+      const uint32_t code_32 = static_cast<uint32_t>((code[3] << 24) | (code[2] << 16) | (code[1] << 8) | (code[0]));
+      if (!m_in_roi && code_32 == 0x00100013) {
+         std::cout << "[FRONTEND] ROI start\n";
+         m_control->beginROI(threadid);
+         roi_inst_count = 0;
+         m_in_roi = true;
+      }
+      if (m_in_roi && code_32 == 0x00200013) {
+         std::cout << "[FRONTEND] ROI end\n";
+         m_control->endROI(threadid);
+         m_in_roi = false;
+      }
+      if (m_in_roi && roi_inst_count == 20000000) {
+         std::cout << "[FRONTEND] Detail Mode Start\n";
+         FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_START, 0, 0);
+      }
+      if (m_in_roi && roi_inst_count == 20000000 + 20000000) {
+         std::cout << "[FRONTEND] Detail Mode End\n";
+         FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_END, 0, 0);
+         m_control->endROI(threadid);
+         m_in_roi = false;
+      }
+
+      roi_inst_count++;
       execution.inst = inst;
    }
 
@@ -90,6 +114,8 @@ class QemuFrontend final : public Frontend<QemuFrontend>
    std::unique_ptr<dl::Decoder> m_decoder;
    std::forward_list<std::unique_ptr<std::unique_ptr<dl::DecodedInst>[]>> m_tbs;
    Execution m_executions[MAX_NUM_THREADS];
+   uint64_t roi_inst_count = 0;
+   bool m_in_roi = false;
 };
 
 template <>
@@ -291,7 +317,7 @@ void QemuFrontend::init()
 
    m_decoder.reset(
       m_decoder_factory.CreateDecoder(
-         arch, dl::DL_MODE_64, dl::DL_SYNTAX_DEFAULT, 0));
+         arch, dl::DL_MODE_64, dl::DL_SYNTAX_DEFAULT));
 
    m_threads->initThreads();
 }

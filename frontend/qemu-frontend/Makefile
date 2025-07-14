@@ -1,8 +1,8 @@
 include ../../common/Makefile.common
 
-QEMU_FRONTEND_CFLAGS=-fPIC -fvisibility=hidden $(shell pkg-config --cflags glib-2.0)
+QEMU_FRONTEND_CFLAGS=-fPIC -fvisibility=hidden $(shell pkg-config --cflags glib-2.0) -std=c++17 -g
 CFLAGS+=$(QEMU_FRONTEND_CFLAGS)
-CPPFLAGS+=-I.. -I$(RV8_HOME)/src/asm -I$(RV8_HOME)/src -I/home/kimura/work/riscv/qemu/qemu/include/qemu/
+CPPFLAGS+=-I.. -I$(RV8_HOME)/src/asm # -I$(RV8_HOME)/src
 CXXFLAGS+=$(QEMU_FRONTEND_CFLAGS)
 LD_FLAGS+=-shared
 

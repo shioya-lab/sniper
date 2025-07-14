@@ -1,5 +1,5 @@
 #include "tools.h"
-#include "config.hpp"
+// #include "config.hpp"
 
 #include "riscv_decoder.h"
 #include <iostream>
@@ -119,6 +119,88 @@ const char* reg_name_sym[] = {
       nullptr
     };
 
+
+static const Decoder::GDBFeature gdb_features[] = {
+  {
+    "org.gnu.gdb.riscv.cpu",
+    (const Decoder::GDBReg[]) {
+      {"zero", rv_ireg_zero},
+      {"ra", rv_ireg_ra},
+      {"sp", rv_ireg_sp},
+      {"gp", rv_ireg_gp},
+      {"tp", rv_ireg_tp},
+      {"t0", rv_ireg_t0},
+      {"t1", rv_ireg_t1},
+      {"t2", rv_ireg_t2},
+      {"fp", rv_ireg_s0},
+      {"s1", rv_ireg_s1},
+      {"a0", rv_ireg_a0},
+      {"a1", rv_ireg_a1},
+      {"a2", rv_ireg_a2},
+      {"a3", rv_ireg_a3},
+      {"a4", rv_ireg_a4},
+      {"a5", rv_ireg_a5},
+      {"a6", rv_ireg_a6},
+      {"a7", rv_ireg_a7},
+      {"s2", rv_ireg_s2},
+      {"s3", rv_ireg_s3},
+      {"s4", rv_ireg_s4},
+      {"s5", rv_ireg_s5},
+      {"s6", rv_ireg_s6},
+      {"s7", rv_ireg_s7},
+      {"s8", rv_ireg_s8},
+      {"s9", rv_ireg_s9},
+      {"s10", rv_ireg_s10},
+      {"s11", rv_ireg_s11},
+      {"t3", rv_ireg_t3},
+      {"t4", rv_ireg_t4},
+      {"t5", rv_ireg_t5},
+      {"t6", rv_ireg_t6},
+      {},
+    },
+  },
+  {
+    "org.gnu.gdb.riscv.vector",
+    (const Decoder::GDBReg[]) {
+      {"v0", 64},
+      {"v1", 65},
+      {"v2", 66},
+      {"v3", 67},
+      {"v4", 68},
+      {"v5", 69},
+      {"v6", 70},
+      {"v7", 71},
+      {"v8", 72},
+      {"v9", 73},
+      {"v10", 74},
+      {"v11", 75},
+      {"v12", 76},
+      {"v13", 77},
+      {"v14", 78},
+      {"v15", 79},
+      {"v16", 80},
+      {"v17", 81},
+      {"v18", 82},
+      {"v19", 83},
+      {"v20", 84},
+      {"v21", 85},
+      {"v22", 86},
+      {"v23", 87},
+      {"v24", 88},
+      {"v25", 89},
+      {"v26", 90},
+      {"v27", 91},
+      {"v28", 92},
+      {"v29", 93},
+      {"v30", 94},
+      {"v31", 95},
+      {},
+    },
+  },
+  {}
+};
+
+
 static bool is_conditional_branch_op(uint16_t op)
 {
   switch (op) {
@@ -162,6 +244,7 @@ RISCVDecoder::RISCVDecoder(dl_arch arch, dl_mode mode, dl_syntax syntax)
   this->m_mode = mode;
   this->m_syntax = syntax;
   this->m_isa = DL_ISA_RISCV;
+  this->m_gdb_features = gdb_features;
 }
 
 RISCVDecoder::~RISCVDecoder()
@@ -287,7 +370,9 @@ unsigned int RISCVDecoder::num_memory_operands(const DecodedInst * inst)
   // static int vec_lmul = 1;
   // static int vec_vsew = 8;
 
-  int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
+  // int vlen = Sim()->getCfg()->getIntArray("general/vlen", 0);
+  // int vlenb = vlen / 8;
+  int vlen = 1024;
   int vlenb = vlen / 8;
 
   if (format == rv_fmt_rd_offset_rs1  /* lb, lh, lw, lbu, lhu, lwu, ld, ldu, lq, c.lwsp, c.ld, c.ldsp, c.lq, c.lqsp */
@@ -433,7 +518,7 @@ bool RISCVDecoder::has_index_reg(const DecodedInst *inst, unsigned int mem_idx)
         case rv_op_vluxei8_vm:
         case rv_op_vloxei8_vm:
         case rv_op_vsuxei8_vm:
-        case rv_op_vsoxei8_vm: 
+        case rv_op_vsoxei8_vm:
         case rv_op_vluxei16_v :
         case rv_op_vloxei16_v :
         case rv_op_vsuxei16_v :
@@ -441,7 +526,7 @@ bool RISCVDecoder::has_index_reg(const DecodedInst *inst, unsigned int mem_idx)
         case rv_op_vluxei16_vm:
         case rv_op_vloxei16_vm:
         case rv_op_vsuxei16_vm:
-        case rv_op_vsoxei16_vm: 
+        case rv_op_vsoxei16_vm:
         case rv_op_vluxei32_v :
         case rv_op_vloxei32_v :
         case rv_op_vsuxei32_v :
@@ -449,7 +534,7 @@ bool RISCVDecoder::has_index_reg(const DecodedInst *inst, unsigned int mem_idx)
         case rv_op_vluxei32_vm:
         case rv_op_vloxei32_vm:
         case rv_op_vsuxei32_vm:
-        case rv_op_vsoxei32_vm: 
+        case rv_op_vsoxei32_vm:
         case rv_op_vluxei64_v :
         case rv_op_vloxei64_v :
         case rv_op_vsuxei64_v :
@@ -457,7 +542,7 @@ bool RISCVDecoder::has_index_reg(const DecodedInst *inst, unsigned int mem_idx)
         case rv_op_vluxei64_vm:
         case rv_op_vloxei64_vm:
         case rv_op_vsuxei64_vm:
-        case rv_op_vsoxei64_vm: return true; 
+        case rv_op_vsoxei64_vm: return true;
 		default : return false;
 	}
 
@@ -477,7 +562,7 @@ Decoder::decoder_reg RISCVDecoder::mem_index_reg (const DecodedInst * inst, unsi
         case rv_op_vluxei8_vm:
         case rv_op_vloxei8_vm:
         case rv_op_vsuxei8_vm:
-        case rv_op_vsoxei8_vm: 
+        case rv_op_vsoxei8_vm:
         case rv_op_vluxei16_v :
         case rv_op_vloxei16_v :
         case rv_op_vsuxei16_v :
@@ -485,7 +570,7 @@ Decoder::decoder_reg RISCVDecoder::mem_index_reg (const DecodedInst * inst, unsi
         case rv_op_vluxei16_vm:
         case rv_op_vloxei16_vm:
         case rv_op_vsuxei16_vm:
-        case rv_op_vsoxei16_vm: 
+        case rv_op_vsoxei16_vm:
         case rv_op_vluxei32_v :
         case rv_op_vloxei32_v :
         case rv_op_vsuxei32_v :
@@ -493,7 +578,7 @@ Decoder::decoder_reg RISCVDecoder::mem_index_reg (const DecodedInst * inst, unsi
         case rv_op_vluxei32_vm:
         case rv_op_vloxei32_vm:
         case rv_op_vsuxei32_vm:
-        case rv_op_vsoxei32_vm: 
+        case rv_op_vsoxei32_vm:
         case rv_op_vluxei64_v :
         case rv_op_vloxei64_v :
         case rv_op_vsuxei64_v :
@@ -501,7 +586,7 @@ Decoder::decoder_reg RISCVDecoder::mem_index_reg (const DecodedInst * inst, unsi
         case rv_op_vluxei64_vm:
         case rv_op_vloxei64_vm:
         case rv_op_vsuxei64_vm:
-        case rv_op_vsoxei64_vm: return dec->rs2; 
+        case rv_op_vsoxei64_vm: return dec->rs2;
 		default : return 0;
 	}
 }
