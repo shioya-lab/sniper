@@ -239,7 +239,8 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
          m_prefetch_delay = true;
    }
 
-   bzero(&stats, sizeof(stats));
+   // bzero(&stats, sizeof(stats));
+   memset(&stats, 0, sizeof(stats));
 
    registerStatsMetric(name, core_id, "loads", &stats.loads);
    registerStatsMetric(name, core_id, "stores", &stats.stores);

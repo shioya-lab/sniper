@@ -1384,7 +1384,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
          UInt64 first_sequence_number = rob[0].uop->getSequenceNumber();
 
          UInt64 index = 1;
-         if (first_sequence_number > uop->getSequenceNumber() - index) {
+         if (static_cast<SInt64>(first_sequence_number) > static_cast<SInt64>(uop->getSequenceNumber()) - static_cast<SInt64>(index)) {
             return false;
          }
          RobEntry *firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);
@@ -1427,7 +1427,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
          UInt64 first_sequence_number = rob[0].uop->getSequenceNumber();
 
          UInt64 index = 1;
-         if (first_sequence_number > uop->getSequenceNumber() - index) {
+         if (static_cast<SInt64>(first_sequence_number) > static_cast<SInt64>(uop->getSequenceNumber()) - static_cast<SInt64>(index)) {
             return false;
          }
          RobEntry *firstEntry = findEntryBySequenceNumber(uop->getSequenceNumber() - index);

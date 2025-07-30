@@ -114,7 +114,8 @@ class StatHist {
     unsigned long hist[HIST_MAX];
     char dummy[64];
   public:
-    StatHist() : n(0), s(0), s2(0), min(0), max(0) { bzero(hist, sizeof(hist)); }
+    // StatHist() : n(0), s(0), s2(0), min(0), max(0) { bzero(hist, sizeof(hist)); }
+    StatHist() : n(0), s(0), s2(0), min(0), max(0) { memset(hist, 0, sizeof(hist)); }
     StatHist & operator += (StatHist & stat);
     void update(unsigned long v);
     void print();
