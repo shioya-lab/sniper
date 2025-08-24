@@ -1701,9 +1701,13 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
 
                if (update) {
                   // 命令の属性を変更させるかどうかをチェックする
-                  auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss);
+                  UInt64 replaced_pc = 0;
+                  auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss, replaced_pc);
                   if (result == pri_upd_result_t::Added) {
                      m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
+                     if (replaced_pc != 0) {
+                        m_mem_stats->Remove(replaced_pc);
+                     }
                   }
                }
             }
@@ -2331,6 +2335,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (entry->uop->getSequenceNumber() != 0 && entry->uop->getSequenceNumber() % 10000 == 0) {
          fprintf (stderr, "inst exec %ld (now = %ld cycle)\n", entry->uop->getSequenceNumber(), now.getCycleCount());
+         m_priority_manager->dumpPriorityMap();
       }
       m_last_committed_time = now;
 

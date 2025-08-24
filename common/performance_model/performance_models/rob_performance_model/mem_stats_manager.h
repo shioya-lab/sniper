@@ -30,14 +30,14 @@ private:
         SInt8 scounter;
     };
     std::unordered_map<UInt64, MemHitSatCounter> m_mem_stats;
- 
+
 public:
     MemStatsManager (ComponentTime *now, bool *enable_rob_timer_log, UInt64 *rob_start_cycle) {
         this->now = now;
         this->enable_rob_timer_log = enable_rob_timer_log;
         this->rob_start_cycle = rob_start_cycle;
     }
-    
+
     ~MemStatsManager() {
         std::cout << "-------------------\n";
         std::cout << "Memory Latency Statistics\n";
@@ -51,41 +51,18 @@ public:
         }
     }
 
-    // UInt64 Update (UInt64 pc, UInt64 latency) {
-    //     auto& stats = m_mem_stats[pc];
+    void Remove (UInt64 pc) {
+        m_mem_stats.erase(pc);
+    }
 
-    //     // 遅延値を記録
-    //     if (stats.latencies.size() >= kHistorySize) {
-    //         stats.latencies.pop_front(); // 古い値を削除
-    //     }
-    //     stats.latencies.push_back(latency); // 新しい値を追加
-
-    //     // 最大値と最小値を除去したうえで平均値を計算
-    //     UInt64 total_latency = 0;
-    //     // UInt64 min_latency = std::numeric_limits<UInt64>::max();
-    //     // UInt64 max_latency = 0;
-    //     for (const auto& value : stats.latencies) {
-    //         total_latency += value;
-    //         // min_latency = std::min(min_latency, value);
-    //         // max_latency = std::max(max_latency, value);
-    //     }
-    //     // float average_latency = stats.latencies.size() < 2 ? static_cast <UInt64>(total_latency) / stats.latencies.size() :
-    //     //     static_cast<float>(total_latency - min_latency - max_latency) / (stats.latencies.size() - 2);
-    //     float average_latency = static_cast <UInt64>(total_latency) / stats.latencies.size();
-        
-    //     // // 平均値を計算
-    //     // UInt64 total_latency = 0;
-    //     // for (const auto& value : stats.latencies) {
-    //     //     total_latency += value;
-    //     // }
-    //     // float average_latency = static_cast<float>(total_latency) / stats.latencies.size();
-
-    //     // MEMSTATS_DEBUG_PRINTF("Updated Mem Status: PC=%08lx, Count=%ld, Average=%f\n",
-    //     //                  pc, stats.latencies.size(), average_latency);
-
-    //     return static_cast <UInt64>(average_latency);
-    // }
-
+    /*
+     * Check and update saturation counter for cache hit/miss
+     *
+     * @param pc: PC of the instruction
+     * @param latency: latency of the instruction
+     * @param miss: true if the memory access of the PC is high possibility MISS, it means saturated counter.
+     * @return true if the saturation counter is updated,
+     */
     bool Update (UInt64 pc, UInt64 latency, bool &miss) {
         auto& stats = m_mem_stats[pc];
 
@@ -109,28 +86,9 @@ public:
             }
         }
         miss = stats.scounter >= THRESHOLD; // Saturation Counterが2以上の場合はキャッシュ・ヒット率が低と判定
-
-        // if (pc == 0x000149ac) {
-        //     fprintf(stderr, "PC=%08lx : Latency=%ld, Count=%d, Miss=%d", pc, latency, stats.scounter, miss);
-        //     if (updated) {
-        //         fprintf(stderr, " : Updated\n");
-        //     } else {
-        //         fprintf(stderr, "\n");
-        //     }
-        // }
-        return updated;  
+        return updated;
     }
 
-    // void dumpMemStats(UInt64 pc) {
-    //     auto it = m_mem_stats.find(pc);
-    //     if (it != m_mem_stats.end()) {
-    //         const auto& latencies = it->second.latencies;
-    //         fprintf(stderr, "PC=%08lx : Count=%lu : ", pc, latencies.size());
-    //         for (const auto& latency : latencies) {
-    //             fprintf(stderr, ", %lu", latency);
-    //         }
-    //         fprintf (stderr, "\n");
-    //     }
-    // }    
+
 
 };

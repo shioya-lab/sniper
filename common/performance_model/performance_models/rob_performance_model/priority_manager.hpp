@@ -91,7 +91,7 @@ private:
          return;
       }
       m_priority_add_queue.push_back (pc);
-      fprintf (stderr, "%ld: Add High Inst: pc=%08lx\n", m_now->getCycleCount(), pc);
+      fprintf (stderr, "%ld: Add High Priority Inst: pc=%08lx\n", m_now->getCycleCount(), pc);
    }
 
    std::list<UInt64>* getPriorityAddQueue () {
@@ -100,7 +100,9 @@ private:
 
    void dumpPriorityMap () {
       for (auto it = m_priority_map.begin(); it != m_priority_map.end(); it++) {
-         fprintf (stderr, "  pc=%08lx : %s\n", (*it).pc, (*it).pr == 0 ? "Normal" : (*it).pr == 1 ? "Reserve" : "High");
+         if ((*it).pc != 0) {
+            fprintf (stderr, "  pc=%08lx : %s\n", (*it).pc, (*it).pr == 0 ? "Normal" : (*it).pr == 1 ? "Reserve" : "High");
+         }
       }
    }
 
@@ -109,7 +111,7 @@ private:
    }
 
    // priorityがRemoveされれば、trueを返す
-   pri_upd_result_t UpdateInstPriority (const MicroOp *uop, bool vec_miss)
+   pri_upd_result_t UpdateInstPriority (const MicroOp *uop, bool vec_miss, UInt64 &replaced_pc)
    {
       auto pc = uop->getInstruction()->getAddress();
       auto assembly = uop->getInstruction()->getDisassembly();
@@ -124,6 +126,8 @@ private:
             m_priority_map[HASH_IDX(pc)].pc = pc;
             m_priority_map[HASH_IDX(pc)].pr = inst_priority_t::HighOrigin;
             fprintf (stderr, "%ld: pc=%08lx : Set Priority High. priority_map[%ld] %s\n", m_now->getCycleCount(), pc, HASH_IDX(pc), assembly.c_str());
+            dumpPriorityMap();
+            replaced_pc = it.pc;
             return pri_upd_result_t::Added;
          }
          return pri_upd_result_t::None;
@@ -133,7 +137,7 @@ private:
             if (!vec_miss) {
                m_priority_map[HASH_IDX(pc)].pc = 0; // Removed
                fprintf (stderr, "%ld: pc=%08lx : Remove Priority. %s\n", m_now->getCycleCount(), pc, assembly.c_str());
-               // dumpPriorityMap();
+               dumpPriorityMap();
                m_priority_remove_queue.push_back (pc);
                return pri_upd_result_t::Removed;
             }
