@@ -963,7 +963,8 @@ void Sift::Writer::handleMemoryRequest(Record &respRec)
          return;
       }
       char *read_data = new char[size];
-      bzero(read_data, size);
+      // bzero(read_data, size);
+      memset(read_data, 0, size);
       // Do the read here via a callback to populate the read buffer
       handleAccessMemoryFunc(handleAccessMemoryArg, lock, type, addr, (uint8_t*)read_data, size);
       Record rec;

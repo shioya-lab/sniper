@@ -7,6 +7,9 @@
 #include "memory.h"
 #include "qemu_frontend.h"
 
+#define FAST_MODE_INTERVAL      100000000
+#define DETAIL_MODE_INTERVAL     20000000
+
 namespace frontend
 {
 
@@ -66,24 +69,24 @@ class QemuFrontend final : public Frontend<QemuFrontend>
          FrontendCallbacks<QemuFrontend>::countInsns(threadid, 1);
       }
 
-      const uint8_t *code = inst->get_code();
-      const uint32_t code_32 = static_cast<uint32_t>((code[3] << 24) | (code[2] << 16) | (code[1] << 8) | (code[0]));
-      if (!m_in_roi && code_32 == 0x00100013) {
-         std::cout << "[FRONTEND] ROI start\n";
-         m_control->beginROI(threadid);
-         roi_inst_count = 0;
-         m_in_roi = true;
-      }
-      if (m_in_roi && code_32 == 0x00200013) {
-         std::cout << "[FRONTEND] ROI end\n";
-         m_control->endROI(threadid);
-         m_in_roi = false;
-      }
-      if (m_in_roi && roi_inst_count == 20000000) {
+      // const uint8_t *code = inst->get_code();
+      // const uint32_t code_32 = static_cast<uint32_t>((code[3] << 24) | (code[2] << 16) | (code[1] << 8) | (code[0]));
+      // if (!m_in_roi && code_32 == 0x00100013) {
+      //    std::cout << "[FRONTEND] ROI start\n";
+      //    m_control->beginROI(threadid);
+      //    roi_inst_count = 0;
+      //    m_in_roi = true;
+      // }
+      // if (m_in_roi && code_32 == 0x00200013) {
+      //    std::cout << "[FRONTEND] ROI end\n";
+      //    m_control->endROI(threadid);
+      //    m_in_roi = false;
+      // }
+      if (m_in_roi && roi_inst_count == m_fast_forward_target) {
          std::cout << "[FRONTEND] Detail Mode Start\n";
          FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_START, 0, 0);
       }
-      if (m_in_roi && roi_inst_count == 20000000 + 20000000) {
+      if (m_in_roi && roi_inst_count == m_fast_forward_target + m_detailed_target) {
          std::cout << "[FRONTEND] Detail Mode End\n";
          FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_END, 0, 0);
          m_control->endROI(threadid);
@@ -116,6 +119,9 @@ class QemuFrontend final : public Frontend<QemuFrontend>
    Execution m_executions[MAX_NUM_THREADS];
    uint64_t roi_inst_count = 0;
    bool m_in_roi = false;
+
+   uint64_t m_fast_forward_target;
+   uint64_t m_detailed_target;
 };
 
 template <>
@@ -318,6 +324,9 @@ void QemuFrontend::init()
    m_decoder.reset(
       m_decoder_factory.CreateDecoder(
          arch, dl::DL_MODE_64, dl::DL_SYNTAX_DEFAULT));
+
+   m_fast_forward_target = m_options->get_fast_forward_target();
+   m_detailed_target     = m_options->get_detailed_target();
 
    m_threads->initThreads();
 }
