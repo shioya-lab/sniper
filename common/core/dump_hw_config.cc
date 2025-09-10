@@ -31,15 +31,17 @@ DumpHwConfig::DumpHwConfig(uint64_t id)
 
     ADD_METRIC(vec_iq_size, "perf_model/core/interval_timer/vec_window_size");
 
-    uint64_t scalar_alu_iq_size = Sim()->getCfg()->getInt("perf_model/core/interval_timer/alu_window_size");
-    uint64_t scalar_lsu_iq_size = Sim()->getCfg()->getInt("perf_model/core/interval_timer/lsu_window_size");
-    scalar_int_iq_size = scalar_alu_iq_size + scalar_lsu_iq_size;
+    scalar_alu_iq_size = Sim()->getCfg()->getInt("perf_model/core/interval_timer/alu_window_size");
+    scalar_lsu_iq_size = Sim()->getCfg()->getInt("perf_model/core/interval_timer/lsu_window_size");
     scalar_fpu_iq_size = Sim()->getCfg()->getInt("perf_model/core/interval_timer/fpu_window_size");
-    registerStatsMetric("cfg", id, "scalar_int_iq_size", &scalar_int_iq_size);
+    registerStatsMetric("cfg", id, "scalar_alu_iq_size", &scalar_alu_iq_size);
+    registerStatsMetric("cfg", id, "scalar_lsu_iq_size", &scalar_lsu_iq_size);
     registerStatsMetric("cfg", id, "scalar_fpu_iq_size", &scalar_fpu_iq_size);
 
     ADD_METRIC(rob_size, "perf_model/core/interval_timer/rob_hw_size");
 
+    ADD_METRIC(dram_latency, "perf_model/dram/latency");
+    
     bool use_bloom_filter = Sim()->getCfg()->getBool("perf_model/core/rob_timer/bloom_filter");
     if (use_bloom_filter) {
         vec_load_queue_size = 1 << Sim()->getCfg()->getInt("perf_model/core/rob_timer/bloom_filter_length");
@@ -47,4 +49,7 @@ DumpHwConfig::DumpHwConfig(uint64_t id)
         vec_load_queue_size = 64;
     }
     registerStatsMetric("cfg", id, "vec_load_queue_size", &vec_load_queue_size);
+
+    ADD_METRIC(scalar_ldq_size, "perf_model/core/rob_timer/outstanding_loads");
+    ADD_METRIC(scalar_stq_size, "perf_model/core/rob_timer/outstanding_stores");
 }
