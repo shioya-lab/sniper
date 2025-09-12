@@ -13,9 +13,8 @@ class DumpHwConfig
     uint64_t scalar_lsu_iq_size = 0;
     uint64_t scalar_fpu_iq_size = 0;
     uint64_t vec_iq_size = 0;
-    uint64_t vec_load_queue_size = 0;
-    
+    uint64_t vldq_width = 0;
+
     public:
     DumpHwConfig(uint64_t id);
 };
-

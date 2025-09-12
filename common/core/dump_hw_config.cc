@@ -12,13 +12,13 @@ DumpHwConfig::DumpHwConfig(uint64_t id)
     // dump hardware configuration
     registerStatsMetric("cfg", id, "outstanding_loads", &scalar_load_queue);
     scalar_load_queue = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", id);
-    
+
     registerStatsMetric("cfg", id, "outstanding_stores", &scalar_store_queue);
     scalar_store_queue = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", id);
-    
+
     registerStatsMetric("cfg", id, "outstanding_vec_loads", &vec_load_queue);
     vec_load_queue = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_loads");
-    
+
     registerStatsMetric("cfg", id, "outstanding_vec_stores", &vec_store_queue);
     vec_store_queue = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
 
@@ -41,14 +41,14 @@ DumpHwConfig::DumpHwConfig(uint64_t id)
     ADD_METRIC(rob_size, "perf_model/core/interval_timer/rob_hw_size");
 
     ADD_METRIC(dram_latency, "perf_model/dram/latency");
-    
+
     bool use_bloom_filter = Sim()->getCfg()->getBool("perf_model/core/rob_timer/bloom_filter");
     if (use_bloom_filter) {
-        vec_load_queue_size = 1 << Sim()->getCfg()->getInt("perf_model/core/rob_timer/bloom_filter_length");
+        vldq_width = 1 << Sim()->getCfg()->getInt("perf_model/core/rob_timer/bloom_filter_length");
     } else {
-        vec_load_queue_size = 64;
+        vldq_width = 64 * (Sim()->getCfg()->getInt("general/vlen") / 64);
     }
-    registerStatsMetric("cfg", id, "vec_load_queue_size", &vec_load_queue_size);
+    registerStatsMetric("cfg", id, "vldq_width", &vldq_width);
 
     ADD_METRIC(scalar_ldq_size, "perf_model/core/rob_timer/outstanding_loads");
     ADD_METRIC(scalar_stq_size, "perf_model/core/rob_timer/outstanding_stores");
