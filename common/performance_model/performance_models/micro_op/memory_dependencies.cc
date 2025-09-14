@@ -1,6 +1,8 @@
 #include <cstdio>
 #include <stdint.h>
 #include <stdint.h>
+#include <functional>
+#include <random>
 #include "memory_dependencies.h"
 #include "dynamic_micro_op.h"
 #include "stats.h"
@@ -126,41 +128,33 @@ void MemoryDependencies::mergeVLDQAddressMultiSlot(DynamicMicroOp &microOp, uint
 }
 
 
-// MurmurHash3風（64bit key対応）
-uint64_t murmur_hash(uint64_t key) {
-   key ^= key >> 33;
-   key *= 0xff51afd7ed558ccdULL;
-   key ^= key >> 33;
-   key *= 0xc4ceb9fe1a85ec53ULL;
-   key ^= key >> 33;
-   return key;
+// STLベースのハッシュ関数実装
+namespace stl_hash {
+
+// 1. STLのstd::hashを使用（シンプル）
+uint64_t stl_hash(uint64_t key) {
+   std::hash<uint64_t> hasher;
+   return hasher(key);
 }
 
-// FNV-1a風（uint64_t版）
-uint64_t fnv1a_hash(uint64_t key) {
-   const uint64_t FNV_offset_basis = 14695981039346656037ULL;
-   const uint64_t FNV_prime = 1099511628211ULL;
-
-   uint64_t hash = FNV_offset_basis;
-   for (int i = 0; i < 8; ++i) {
-      uint8_t byte = (key >> (i * 8)) & 0xFF;
-      hash ^= byte;
-      hash *= FNV_prime;
-   }
-   return hash;
+// 2. 線形合同法ベースのハッシュ（STLのstd::linear_congruential_engine風）
+uint64_t lcg_hash(uint64_t key) {
+   // 線形合同法のパラメータ（ANSI C標準）
+   const uint64_t a = 1103515245ULL;
+   const uint64_t c = 12345ULL;
+   const uint64_t m = (1ULL << 31);
+   
+   return (a * key + c) % m;
 }
 
-// 自作ミックス関数（高速）
-uint64_t simple_mix_hash(uint64_t x) {
-   x = (~x) + (x << 21); // x = (x << 21) - x - 1
-   x = x ^ (x >> 24);
-   x = (x + (x << 3)) + (x << 8); // x * 265
-   x = x ^ (x >> 14);
-   x = (x + (x << 2)) + (x << 4); // x * 21
-   x = x ^ (x >> 28);
-   x = x + (x << 31);
-   return x;
+// 3. シード付きハッシュ（STLのstd::seed_seq風）
+uint64_t seeded_hash(uint64_t key) {
+   // シードとしてkeyを使用
+   std::mt19937_64 rng(key);
+   return rng();
 }
+
+} // namespace stl_hash
 
 uint64_t xor_fold_hash(uint64_t address, unsigned int N) {
    assert(N > 0 && N <= 64);
@@ -180,9 +174,9 @@ uint64_t xor_fold_hash(uint64_t address, unsigned int N) {
 void MemoryDependencies::RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize)
 {
    uint64_t pa_biased = physicalAddress >> m_cfg_bloom_filter_addr_lsb;
-   uint64_t load_hash0 = xor_fold_hash(murmur_hash(pa_biased),   m_cfg_bloom_filter_len);
-   uint64_t load_hash1 = xor_fold_hash(fnv1a_hash(pa_biased),    m_cfg_bloom_filter_len);
-   uint64_t load_hash2 = xor_fold_hash(simple_mix_hash(pa_biased), m_cfg_bloom_filter_len);
+   uint64_t load_hash0 = xor_fold_hash(stl_hash::stl_hash(pa_biased),      m_cfg_bloom_filter_len);
+   uint64_t load_hash1 = xor_fold_hash(stl_hash::lcg_hash(pa_biased),      m_cfg_bloom_filter_len);
+   uint64_t load_hash2 = xor_fold_hash(stl_hash::seeded_hash(pa_biased),   m_cfg_bloom_filter_len);
 
    if (microOp.getMicroOp()->isFirst()) {
       // Clear the bloom filter list if this is the first load
@@ -206,9 +200,9 @@ void MemoryDependencies::RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t 
    // There may be multiple entries with the same address, we want the latest one so traverse list in reverse order
    for(int i = producers.size() - 1; i >= 0; --i) {
       uint64_t st_pa_biased = producers.at(i).address >> m_cfg_bloom_filter_addr_lsb;
-      uint64_t store_hash0 = xor_fold_hash(murmur_hash(st_pa_biased), m_cfg_bloom_filter_len);
-      uint64_t store_hash1 = xor_fold_hash(fnv1a_hash(st_pa_biased), m_cfg_bloom_filter_len);
-      uint64_t store_hash2 = xor_fold_hash(simple_mix_hash(st_pa_biased), m_cfg_bloom_filter_len);
+      uint64_t store_hash0 = xor_fold_hash(stl_hash::stl_hash(st_pa_biased),    m_cfg_bloom_filter_len);
+      uint64_t store_hash1 = xor_fold_hash(stl_hash::lcg_hash(st_pa_biased),    m_cfg_bloom_filter_len);
+      uint64_t store_hash2 = xor_fold_hash(stl_hash::seeded_hash(st_pa_biased), m_cfg_bloom_filter_len);
       if ((bloom_filter_list.find(store_hash0) != bloom_filter_list.end()) && 
           (bloom_filter_list.find(store_hash1) != bloom_filter_list.end()) && 
           (bloom_filter_list.find(store_hash2) != bloom_filter_list.end())) {
@@ -231,7 +225,7 @@ void MemoryDependencies::RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t 
          }
          return;
       }
-   }
+   }  
 }
 
 void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowestValidSequenceNumber, uint64_t first_uop_seqnum)
