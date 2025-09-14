@@ -1,13 +1,14 @@
 #pragma once
 
 #include "interval_timer.h"
-#include "rob_contention.h"
 #include "stats.h"
 
 #include <unordered_map>
 #include <deque>
 #include <cstdint>
 #include <cstdio>
+#include <cstddef>
+#include <functional>
 
 #define MEMSTATS_DEBUG_PRINTF(...) { if (*enable_rob_timer_log && now->getCycleCount() >= *rob_start_cycle) { fprintf(stderr, __VA_ARGS__); }}
 
@@ -19,7 +20,7 @@ private:
     bool *enable_rob_timer_log;
     UInt64 *rob_start_cycle;
 
-    static constexpr size_t kHistorySize = 16;
+    std::size_t m_max_capacity = Sim()->getCfg()->getInt("perf_model/core/rob_timer/miss_stats_size");
 
     // struct MemStats {
     //     std::deque<UInt64> latencies; // 過去の遅延を記録するデータ構造
@@ -29,7 +30,12 @@ private:
     struct MemHitSatCounter {
         SInt8 scounter;
     };
-    std::unordered_map<UInt64, MemHitSatCounter> m_mem_stats;
+    std::unordered_map<std::size_t, MemHitSatCounter> m_mem_stats;
+
+    // ハッシュ関数
+    std::size_t hashPC(UInt64 pc) const {
+        return std::hash<UInt64>{}(pc) % m_max_capacity;
+    }
 
 public:
     MemStatsManager (ComponentTime *now, bool *enable_rob_timer_log, UInt64 *rob_start_cycle) {
@@ -46,13 +52,14 @@ public:
             const auto& scounter = mem.second.scounter;
 
             // 統計の出力
-            fprintf(stderr, "PC=%08lx : Count=%d\n",
+            fprintf(stderr, "Hash=%zu : Count=%d\n",
                     mem.first, scounter);
         }
     }
 
     void Remove (UInt64 pc) {
-        m_mem_stats.erase(pc);
+        std::size_t hash = hashPC(pc);
+        m_mem_stats.erase(hash);
     }
 
     /*
@@ -64,7 +71,8 @@ public:
      * @return true if the saturation counter is updated,
      */
     bool Update (UInt64 pc, UInt64 latency, bool &miss) {
-        auto& stats = m_mem_stats[pc];
+        std::size_t hash = hashPC(pc);
+        auto& stats = m_mem_stats[hash];
 
         bool hit = latency <= 4;
         bool updated = false;
@@ -89,6 +97,25 @@ public:
         return updated;
     }
 
+    SInt8 getSaturationCounter(UInt64 pc) {
+        std::size_t hash = hashPC(pc);
+        return m_mem_stats[hash].scounter;
+    }
 
+    // 容量制限を変更するメソッド
+    void setMaxCapacity(std::size_t max_capacity) {
+        m_max_capacity = max_capacity;
+        // 既存のデータをクリア（新しいハッシュ範囲に合わせるため）
+        m_mem_stats.clear();
+    }
 
+    // 現在の容量を取得
+    std::size_t getCurrentSize() const {
+        return m_mem_stats.size();
+    }
+
+    // 最大容量を取得
+    std::size_t getMaxCapacity() const {
+        return m_max_capacity;
+    }
 };
