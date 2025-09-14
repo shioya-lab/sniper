@@ -18,6 +18,9 @@
 #include <deque>
 #include <list>
 
+// Maximum size for vector register history
+#define MAX_VECTOR_REG_HISTORY_SIZE 32
+
 #define ROB_DEBUG_PRINTF(...) { if (enable_rob_debug_seqnumber || (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle)) { fprintf(stderr, __VA_ARGS__); }}
 #define KANATA_PRINTF(...) { if (m_active_kanata_gen && m_konata_count < m_konata_count_max) { fprintf(m_core->getKanataFp(), __VA_ARGS__); }}
 class RobTimer
@@ -330,23 +333,29 @@ private:
    inline bool is_vldq_assign (DynamicMicroOp *uop) {
       if (!uop->getMicroOp()->isVecLoad()) {
          return false;
-      } else if (m_cfg_bloom_filter) {
-         // Bloom Filter
-         return uop->isFirst();
       } else {
-         return true;
+         return uop->isFirst();
       }
+      // } else if (m_cfg_bloom_filter) {
+      //    // Bloom Filter
+      //    return uop->isFirst();
+      // } else {
+      //    return true;
+      // }
    }
 
    inline bool is_vldq_release (DynamicMicroOp *uop) {
       if (!uop->getMicroOp()->isVecLoad()) {
          return false;
-      } else if (m_cfg_bloom_filter) {
-         // Bloom Filter
-         return uop->isLast();
       } else {
-         return true;
+         return uop->isLast();
       }
+      // } else if (m_cfg_bloom_filter) {
+      //    // Bloom Filter
+      //    return uop->isLast();
+      // } else {
+      //    return true;
+      // }
    }
 
    // inline bool IsInLPIQ (DynamicMicroOp *uop) {
@@ -445,7 +454,7 @@ private:
 
    bool m_show_rob;
 
-   PriorityManager *m_priority_manager; 
+   PriorityManager *m_priority_manager;
    void manageInstructionReserve (RobEntry *entry);
    void manageInstructionReserveVecPriority(RobEntry *entry);
    void manageInstructionReserveVecAll(RobEntry *entry);
@@ -454,8 +463,10 @@ private:
       UInt64 pc;
       dl::Decoder::decoder_reg dest_reg;
    } vec_reg_hist_entry_t;
-   std::deque<vec_reg_hist_entry_t> m_vec_reg_hist;
-   std::deque<UInt64> m_high_inst_candidate;
+   const size_t m_MAX_VECTOR_REG_HISTORY_SIZE;
+   std::deque<vec_reg_hist_entry_t> m_vect_dest_reg_table;
+   const size_t m_BACKWORD_DEP_TABLE_SIZE;
+   std::deque<UInt64> m_backward_dep_table;
 
    void RemovePriorityQueue (RobEntry *entry);
    void PropagateHighPriorityBackward (const MicroOp* uop);

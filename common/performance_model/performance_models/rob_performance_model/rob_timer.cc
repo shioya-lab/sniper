@@ -102,8 +102,8 @@ RobTimer::RobTimer(
       , m_app(Sim()->getCfg()->getString("general/app"))
       , m_pref_target_log(strtol(Sim()->getCfg()->getStringArray("log/vec_pref_target_pc", core->getId()).c_str(), NULL, 16))
       , m_vec_store_inorder (Sim()->getCfg()->getBoolArray("research_option/vec_store_inorder", core->getId()))  // Vector Store 命令のみインオーダで実行する
-      , m_vec_reg_hist(32)
-      , m_high_inst_candidate(8)
+      , m_MAX_VECTOR_REG_HISTORY_SIZE(Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_reg_history_size"))
+      , m_BACKWORD_DEP_TABLE_SIZE( Sim()->getCfg()->getInt("perf_model/core/rob_timer/backward_dep_table_size")) 
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -424,7 +424,8 @@ RobTimer::~RobTimer()
    // }
 
    delete m_mem_stats;
-
+   delete m_reg_manager;
+   delete m_priority_manager;
 }
 
 void RobTimer::generateVectorStats ()
@@ -1134,10 +1135,11 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.getMicroOp()->isVector() && uop.isFirst() && uop.getMicroOp()->getDestinationRegistersLength() > 0) {
             dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
             if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
-               if (m_vec_reg_hist.size() == 32) {
-                  m_vec_reg_hist.pop_front();
+               // Maintain maximum size constraint for vector register history
+               if (m_vect_dest_reg_table.size() >= m_MAX_VECTOR_REG_HISTORY_SIZE) {
+                  m_vect_dest_reg_table.pop_front();
                }
-               m_vec_reg_hist.push_back(vec_reg_hist_entry_t{uop.getMicroOp()->getInstruction()->getAddress(), dest_reg});
+               m_vect_dest_reg_table.push_back(vec_reg_hist_entry_t{uop.getMicroOp()->getInstruction()->getAddress(), dest_reg});
             }
          }
 
@@ -1698,15 +1700,40 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                      uop.getMemMaxLatency());
                bool vec_miss;
                bool update = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
+               
+               if (entry->kanata_registered) {
+                  KANATA_PRINTF ("L\t%ld\t%d\tMemMaxLatency=%ld\n", entry->global_sequence_id, 2, uop.getMemMaxLatency());
+               }
 
                if (update) {
                   // 命令の属性を変更させるかどうかをチェックする
-                  UInt64 replaced_pc = 0;
-                  auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss, replaced_pc);
-                  if (result == pri_upd_result_t::Added) {
-                     m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
-                     if (replaced_pc != 0) {
-                        m_mem_stats->Remove(replaced_pc);
+                  // Search any of dependent instruction is already High priority
+                  bool high_priority_dependent = false;
+                  for (size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
+                     RobEntry *depEntry = entry->getDependant(idx);
+                     auto pc = depEntry->uop->getMicroOp()->getInstruction()->getAddress();
+                     if (m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::High ||
+                         m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::HighOrigin) {
+                        high_priority_dependent = true;
+                        break;
+                     }
+                  }
+                  if (vec_miss || (!vec_miss && !high_priority_dependent)) {
+                     // Update case
+                     //  1. Vector Miss: Update the table
+                     //  2. Vector Hit(remove target) and dependent instruction doesn't include High priority
+
+                     UInt64 replaced_pc = 0;
+                     auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss, replaced_pc);
+                     if (result == pri_upd_result_t::Added) {
+                        m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
+                        if (replaced_pc != 0) {
+                           m_mem_stats->Remove(replaced_pc);
+                        }
+                     }
+
+                     if (entry->kanata_registered) {
+                        KANATA_PRINTF ("L\t%ld\t%d\tMemStatus=%s\n", entry->global_sequence_id, 2, result == pri_upd_result_t::Added ? "Added" : "Removed");
                      }
                   }
                }
@@ -2335,7 +2362,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (entry->uop->getSequenceNumber() != 0 && entry->uop->getSequenceNumber() % 10000 == 0) {
          fprintf (stderr, "inst exec %ld (now = %ld cycle)\n", entry->uop->getSequenceNumber(), now.getCycleCount());
-         m_priority_manager->dumpPriorityMap();
+         // m_priority_manager->dumpPriorityMap();
       }
       m_last_committed_time = now;
 
