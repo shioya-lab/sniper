@@ -3,6 +3,7 @@
 #include <map>
 #include <list>
 #include <cmath>
+#include <functional>
 
 #include "config.hpp"
 
@@ -31,10 +32,8 @@ inline bool isUseNonpriVector(vec_reserve_policy_t res) {
           res == VecReserveAlways;
 }
 
-extern uint64_t simple_mix_hash(uint64_t key);
-extern uint64_t xor_fold_hash(uint64_t address, unsigned int N);
-
-#define HASH_IDX(pc) (xor_fold_hash(simple_mix_hash(pc >> 2), static_cast<size_t>(std::log2(PRIORITY_MAP_SIZE))))
+// std::hashを使用したハッシュインデックス計算
+#define HASH_IDX(pc) (std::hash<uint64_t>{}(pc >> 2) % PRIORITY_MAP_SIZE)
 
 class PriorityManager {
 
@@ -82,6 +81,16 @@ private:
          registerStatsMetric("rob_timer", 0, "inst_count", &inst_counter);
       }
 
+      ~PriorityManager() {
+         size_t valid_count = 0;
+         for (auto it = m_priority_map.begin(); it != m_priority_map.end(); it++) {
+            if ((*it).pc != 0 && ((*it).pr == inst_priority_t::HighOrigin || (*it).pr == inst_priority_t::High)) {
+               valid_count++;
+            }
+         }
+         fprintf (stderr, "Trigger Table Size=%ld\n", valid_count);
+      }
+      
    std::list<UInt64>* getPriorityRemoveQueue () {
       return &m_priority_remove_queue;
    }
@@ -116,31 +125,45 @@ private:
       auto pc = uop->getInstruction()->getAddress();
       auto assembly = uop->getInstruction()->getDisassembly();
 
-      // auto it = m_priority_map.find(pc);
-      // if (it == m_priority_map.end()) {
-      // m_priority_map[pc] = inst_priority_t::HighOrigin;
-
-      auto it = m_priority_map[HASH_IDX(pc)];
-      if (it.pc != pc) {
+      size_t hash_idx = HASH_IDX(pc);
+      auto& entry = m_priority_map[hash_idx];
+      
+      // ハッシュ衝突の処理：異なるPCが同じインデックスにある場合
+      if (entry.pc != 0 && entry.pc != pc) {
          if (vec_miss) {
-            m_priority_map[HASH_IDX(pc)].pc = pc;
-            m_priority_map[HASH_IDX(pc)].pr = inst_priority_t::HighOrigin;
-            fprintf (stderr, "%ld: pc=%08lx : Set Priority High. priority_map[%ld] %s\n", m_now->getCycleCount(), pc, HASH_IDX(pc), assembly.c_str());
-            dumpPriorityMap();
-            replaced_pc = it.pc;
+            // 既存のエントリを置き換える
+            replaced_pc = entry.pc;
+            entry.pc = pc;
+            entry.pr = inst_priority_t::HighOrigin;
+            fprintf (stderr, "%ld: pc=%08lx : Set Priority High (replaced pc=%08lx). priority_map[%ld] %s\n", 
+                    m_now->getCycleCount(), pc, replaced_pc, hash_idx, assembly.c_str());
+            // dumpPriorityMap();
             return pri_upd_result_t::Added;
          }
          return pri_upd_result_t::None;
-      } else {
-         inst_priority_t priority = it.pr;
-         if (priority == inst_priority_t::HighOrigin) {
-            if (!vec_miss) {
-               m_priority_map[HASH_IDX(pc)].pc = 0; // Removed
+      } else if (entry.pc == pc) {
+         // 同じPCのエントリが存在する場合
+         if (!vec_miss) { 
+            inst_priority_t priority = entry.pr;
+            if (priority == inst_priority_t::HighOrigin) {
+               entry.pc = 0; // Removed
                fprintf (stderr, "%ld: pc=%08lx : Remove Priority. %s\n", m_now->getCycleCount(), pc, assembly.c_str());
-               dumpPriorityMap();
+               // dumpPriorityMap();
                m_priority_remove_queue.push_back (pc);
                return pri_upd_result_t::Removed;
             }
+         }
+         return pri_upd_result_t::None;
+      } else {
+         // 空のエントリの場合
+         if (vec_miss) {
+            entry.pc = pc;
+            entry.pr = inst_priority_t::HighOrigin;
+            fprintf (stderr, "%ld: pc=%08lx : Set Priority High. priority_map[%ld] %s\n", 
+                    m_now->getCycleCount(), pc, hash_idx, assembly.c_str());
+            dumpPriorityMap();
+            replaced_pc = 0; // 置き換えは発生していない
+            return pri_upd_result_t::Added;
          }
          return pri_upd_result_t::None;
       }
@@ -151,13 +174,10 @@ private:
          return getPriority_Static(pc);
       } else {
          // マップにキー(pc)がある場合はその値を返す
-         // auto it = m_priority_map.find(pc);
-         // if (it != m_priority_map.end()) {
-         //    return it->second == HighOrigin ? High : it->second;
-         // }
-         auto it = m_priority_map[HASH_IDX(pc)];
-         if (it.pc == pc) {
-            return it.pr == inst_priority_t::HighOrigin ? inst_priority_t::High : it.pr;
+         size_t hash_idx = HASH_IDX(pc);
+         const auto& entry = m_priority_map[hash_idx];
+         if (entry.pc == pc) {
+            return entry.pr == inst_priority_t::HighOrigin ? inst_priority_t::High : entry.pr;
          }
          // ない場合はデフォルト値
          return Normal;
@@ -165,22 +185,29 @@ private:
    }
 
    void setPriority (UInt64 pc, inst_priority_t priority) {
-      // マップにキー(pc)がない場合は新規エントリが作られる
-      if (m_priority_map[HASH_IDX(pc)].pc != pc) {
-         if (m_priority_map[HASH_IDX(pc)].pc != 0) {
-            fprintf (stderr, "Priority Map [%ld].pc = %08lx is overwritten into pc=%08lx\n", HASH_IDX(pc), m_priority_map[HASH_IDX(pc)].pc, pc);
-         } else {
-            fprintf (stderr, "Priority Map [%ld] put into pc=%08lx\n", HASH_IDX(pc), pc);
-         }
+      size_t hash_idx = HASH_IDX(pc);
+      auto& entry = m_priority_map[hash_idx];
+      
+      // ハッシュ衝突の処理：異なるPCが同じインデックスにある場合
+      if (entry.pc != 0 && entry.pc != pc) {
+         fprintf (stderr, "Priority Map [%ld].pc = %08lx is overwritten into pc=%08lx\n", hash_idx, entry.pc, pc);
+      } else if (entry.pc == 0) {
+         fprintf (stderr, "Priority Map [%ld] put into pc=%08lx\n", hash_idx, pc);
       }
-      m_priority_map[HASH_IDX(pc)].pc = pc;
-      m_priority_map[HASH_IDX(pc)].pr = priority;
-      // m_priority_map[pc] = priority;
+      
+      entry.pc = pc;
+      entry.pr = priority;
    }
 
    void removePriority (UInt64 pc) {
-      // m_priority_map.erase(pc);
-      m_priority_map[HASH_IDX(pc)].pc = 0;
+      size_t hash_idx = HASH_IDX(pc);
+      auto& entry = m_priority_map[hash_idx];
+      
+      // 正しいPCのエントリのみを削除
+      if (entry.pc == pc) {
+         entry.pc = 0;
+         entry.pr = inst_priority_t::Normal;
+      }
    }
 
    inst_priority_t getPriority_Static (UInt64 pc) {
