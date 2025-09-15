@@ -10,7 +10,7 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
   if (m_vec_reserve_policy == VecReserveDynamic) {
     // 優先度に応じてベクトル命令を予約に回す方針
     manageInstructionReserveVecPriority(entry);
-  } else if (m_vec_reserve_policy == VecReservePrave) {
+  } else if (m_vec_reserve_policy == VecReserveParOOO) {
     manageInstructionParOOO(entry);
   } else if (m_vec_reserve_policy == VecReserveStatic) {
     manageInstructionStatic (entry);

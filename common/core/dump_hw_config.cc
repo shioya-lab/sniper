@@ -46,7 +46,7 @@ DumpHwConfig::DumpHwConfig(uint64_t id)
     if (use_bloom_filter) {
         vldq_width = 1 << Sim()->getCfg()->getInt("perf_model/core/rob_timer/bloom_filter_length");
     } else {
-        vldq_width = 64 * (Sim()->getCfg()->getInt("general/vlen") / 64);
+        vldq_width = 64;
     }
     registerStatsMetric("cfg", id, "vldq_width", &vldq_width);
 
