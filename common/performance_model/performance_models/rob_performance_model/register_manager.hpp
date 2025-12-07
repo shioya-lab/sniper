@@ -7,6 +7,7 @@
 
 #include <deque>
 #include <list>
+#include <cstdint>
 
 #include "stats.h"
 
@@ -59,9 +60,12 @@ class RegisterManager
       m_maxusage_phy_registers[FloatRegister ] = 32;
       m_maxusage_phy_registers[VectorRegister] = 32;
 
-      m_max_phy_registers[IntRegister   ] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/int_physical_registers"  );
-      m_max_phy_registers[FloatRegister ] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/float_physical_registers");
-      m_max_phy_registers[VectorRegister] = Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_physical_registers"  );
+      UInt64 int_regs = Sim()->getCfg()->getInt("perf_model/core/rob_timer/int_physical_registers");
+      m_max_phy_registers[IntRegister   ] = (int_regs == 0) ? UINT64_MAX : int_regs;
+      UInt64 float_regs = Sim()->getCfg()->getInt("perf_model/core/rob_timer/float_physical_registers");
+      m_max_phy_registers[FloatRegister ] = (float_regs == 0) ? UINT64_MAX : float_regs;
+      UInt64 vec_regs = Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_physical_registers");
+      m_max_phy_registers[VectorRegister] = (vec_regs == 0) ? UINT64_MAX : vec_regs;
 
       registerStatsMetric("rob_timer", m_core_id, "int_phyreg_max_usage",   &(m_maxusage_phy_registers[IntRegister   ]));
       registerStatsMetric("rob_timer", m_core_id, "float_phyreg_max_usage", &(m_maxusage_phy_registers[FloatRegister ]));

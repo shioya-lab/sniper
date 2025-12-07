@@ -18,6 +18,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <cstdint>
 
 #define LPIQ_SIZE  (1024) * 8
 
@@ -68,12 +69,12 @@ RobTimer::RobTimer(
       , frontend_stalled_until(SubsecondTime::Zero())
       , in_icache_miss(false)
       , last_store_done(SubsecondTime::Zero())
-      , load_queue("rob_timer.load_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()))
-      , store_queue("rob_timer.store_queue", core->getId(), Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()))
-      , vec_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_loads"))
-      , vec_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"))
-      , scalar_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_loads"))
-      , scalar_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_stores"))
+      , load_queue("rob_timer.load_queue", core->getId(), ([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
+      , store_queue("rob_timer.store_queue", core->getId(), ([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
+      , vec_load_queue (([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_loads"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
+      , vec_store_queue(([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
+      , scalar_load_queue (([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_loads"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
+      , scalar_store_queue(([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_stores"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
       , m_cfg_bloom_filter(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/bloom_filter", 0))
       , m_vlen(Sim()->getCfg()->getIntArray("general/vlen", core->getId()))
       , nextSequenceNumber(0)
@@ -280,10 +281,14 @@ RobTimer::RobTimer(
    m_last_kanata_time = SubsecondTime::Zero();
    m_kanata_generated_in_this_region = false;
 
-   m_alu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/alu_window_size", core->getId());
-   m_lsu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/lsu_window_size", core->getId());
-   m_fpu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/fpu_window_size", core->getId());
-   m_vec_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/vec_window_size", core->getId());
+   UInt64 alu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/alu_window_size", core->getId());
+   m_alu_window_size = (alu_window_size == 0) ? UINT64_MAX : alu_window_size;
+   UInt64 lsu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/lsu_window_size", core->getId());
+   m_lsu_window_size = (lsu_window_size == 0) ? UINT64_MAX : lsu_window_size;
+   UInt64 fpu_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/fpu_window_size", core->getId());
+   m_fpu_window_size = (fpu_window_size == 0) ? UINT64_MAX : fpu_window_size;
+   UInt64 vec_window_size = Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/vec_window_size", core->getId());
+   m_vec_window_size = (vec_window_size == 0) ? UINT64_MAX : vec_window_size;
 
    m_alu_num_in_rs = 0;
    m_lsu_num_in_rs = 0;
