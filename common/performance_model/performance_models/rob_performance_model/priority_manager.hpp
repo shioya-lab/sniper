@@ -9,7 +9,6 @@
 
 typedef enum {
    VecReserveWhenFull,  // ベクトルレジスタがいっぱいになったらReserve
-   VecReserveDynamic,   // ベクトルレジスタの割り当てポリシは動的に決める
    VecReserveStatic,    // ベクトルレジスタの割り当てはPCにより静的に決まる
    VecReserveAlways,    // ベクトルレジスタは常にReserve
    VecReserveParOOO,   // 予約に回ったベクトルレジスタはインオーダ
@@ -26,8 +25,7 @@ typedef enum {
 // 予約機構を使うポリシかどうか
 // ------------------------------------------------------------
 inline bool isUseNonpriVector(vec_reserve_policy_t res) {
-   return res == VecReserveDynamic ||
-          res == VecReserveParOOO  ||
+   return res == VecReserveParOOO  ||
           res == VecReserveStatic  ||
           res == VecReserveAlways;
 }
@@ -90,7 +88,7 @@ private:
          }
          fprintf (stderr, "Trigger Table Size=%ld\n", valid_count);
       }
-      
+
    std::list<UInt64>* getPriorityRemoveQueue () {
       return &m_priority_remove_queue;
    }
@@ -127,7 +125,7 @@ private:
 
       size_t hash_idx = HASH_IDX(pc);
       auto& entry = m_priority_map[hash_idx];
-      
+
       // ハッシュ衝突の処理：異なるPCが同じインデックスにある場合
       if (entry.pc != 0 && entry.pc != pc) {
          if (vec_miss) {
@@ -135,7 +133,7 @@ private:
             replaced_pc = entry.pc;
             entry.pc = pc;
             entry.pr = inst_priority_t::HighOrigin;
-            fprintf (stderr, "%ld: pc=%08lx : Set Priority High (replaced pc=%08lx). priority_map[%ld] %s\n", 
+            fprintf (stderr, "%ld: pc=%08lx : Set Priority High (replaced pc=%08lx). priority_map[%ld] %s\n",
                     m_now->getCycleCount(), pc, replaced_pc, hash_idx, assembly.c_str());
             // dumpPriorityMap();
             return pri_upd_result_t::Added;
@@ -143,7 +141,7 @@ private:
          return pri_upd_result_t::None;
       } else if (entry.pc == pc) {
          // 同じPCのエントリが存在する場合
-         if (!vec_miss) { 
+         if (!vec_miss) {
             inst_priority_t priority = entry.pr;
             if (priority == inst_priority_t::HighOrigin) {
                entry.pc = 0; // Removed
@@ -159,7 +157,7 @@ private:
          if (vec_miss) {
             entry.pc = pc;
             entry.pr = inst_priority_t::HighOrigin;
-            fprintf (stderr, "%ld: pc=%08lx : Set Priority High. priority_map[%ld] %s\n", 
+            fprintf (stderr, "%ld: pc=%08lx : Set Priority High. priority_map[%ld] %s\n",
                     m_now->getCycleCount(), pc, hash_idx, assembly.c_str());
             dumpPriorityMap();
             replaced_pc = 0; // 置き換えは発生していない
@@ -187,14 +185,14 @@ private:
    void setPriority (UInt64 pc, inst_priority_t priority) {
       size_t hash_idx = HASH_IDX(pc);
       auto& entry = m_priority_map[hash_idx];
-      
+
       // ハッシュ衝突の処理：異なるPCが同じインデックスにある場合
       if (entry.pc != 0 && entry.pc != pc) {
          fprintf (stderr, "Priority Map [%ld].pc = %08lx is overwritten into pc=%08lx\n", hash_idx, entry.pc, pc);
       } else if (entry.pc == 0) {
          fprintf (stderr, "Priority Map [%ld] put into pc=%08lx\n", hash_idx, pc);
       }
-      
+
       entry.pc = pc;
       entry.pr = priority;
    }
@@ -202,7 +200,7 @@ private:
    void removePriority (UInt64 pc) {
       size_t hash_idx = HASH_IDX(pc);
       auto& entry = m_priority_map[hash_idx];
-      
+
       // 正しいPCのエントリのみを削除
       if (entry.pc == pc) {
          entry.pc = 0;

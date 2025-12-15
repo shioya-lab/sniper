@@ -7,10 +7,7 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
   LOG_ASSERT_ERROR(!entry->uop->isReserveInst() &&
                        !entry->uop->isStrongPriorityInst(),
                    "Priority must not allocate before execution");
-  if (m_vec_reserve_policy == VecReserveDynamic) {
-    // 優先度に応じてベクトル命令を予約に回す方針
-    manageInstructionReserveVecPriority(entry);
-  } else if (m_vec_reserve_policy == VecReserveParOOO) {
+  if (m_vec_reserve_policy == VecReserveParOOO) {
     manageInstructionParOOO(entry);
   } else if (m_vec_reserve_policy == VecReserveStatic) {
     manageInstructionStatic (entry);
@@ -77,7 +74,7 @@ void RobTimer::PropagateHighPriorityBackward (const MicroOp* uop)
 {
   // size_t reg_idx = 0;
   // for (auto it = m_vect_dest_reg_table.rbegin(); it != m_vect_dest_reg_table.rend(); ++it, ++reg_idx) {
-  //   fprintf (stderr, "m_vect_dest_reg_table[%ld]: PC=%08lx, dest_reg=%d\n", 
+  //   fprintf (stderr, "m_vect_dest_reg_table[%ld]: PC=%08lx, dest_reg=%d\n",
   //     reg_idx, it->pc, it->dest_reg);
   // }
   auto uop_pc = uop->getInstruction()->getAddress();
