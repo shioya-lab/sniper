@@ -17,6 +17,7 @@
 
 #include <deque>
 #include <list>
+#include <set>
 
 // Maximum size for vector register history
 #define MAX_VECTOR_REG_HISTORY_SIZE 32
@@ -122,7 +123,7 @@ private:
    UInt64 scalar_store_queue;
    bool m_cfg_bloom_filter;
    UInt64 m_vlen;
-   
+
    uint64_t nextSequenceNumber;
    bool will_skip;
    SubsecondTime time_skipped;
@@ -474,7 +475,21 @@ private:
 
    void manageInstructionParOOO(RobEntry *entry);
    void manageInstructionStatic(RobEntry *entry);
-   
+   void manageInstructionSimple(RobEntry *entry);
+
+   // VecReserveSimple用のデータ構造
+   typedef struct {
+      UInt64 pc;
+      bool is_vec_load;  // ベクトルロード命令かどうか
+   } vec_inst_entry_t;
+   std::deque<vec_inst_entry_t> m_vec_inst_history; // 全ベクトル命令のPC履歴（プログラムオーダ）
+   const size_t m_VEC_INST_HISTORY_SIZE = 64;
+   std::set<UInt64> m_reordering_target_pcs; // リオーダリング対象の命令PC集合
+   UInt64 m_last_rebuild_cycle = 0; // 最後にリストを再構築したサイクル
+   const UInt64 m_REBUILD_INTERVAL = 10000; // リスト再構築の間隔（サイクル）
+
+   void rebuildReorderingListSimple();
+
    // Find First Instruction
    uint64_t findFirstUopSeqNumber (DynamicMicroOp *uop) {
       UInt64 seqnum = uop->getSequenceNumber();
@@ -486,7 +501,7 @@ private:
       while (!firstEntry->uop->isFirst()) {
          seqnum--;
          firstEntry = findEntryBySequenceNumber(seqnum);
-      } 
+      }
       return seqnum;
    }
 

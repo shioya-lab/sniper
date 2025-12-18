@@ -96,6 +96,7 @@ RobTimer::RobTimer(
       , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull   :
 			                     Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_vecparooo" ? VecReserveParOOO     :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_static"    ? VecReserveStatic     :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_simple"    ? VecReserveSimple     :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways     :
 			      VecReserveNone)
       , m_last_committed_time(core->getDvfsDomain())
