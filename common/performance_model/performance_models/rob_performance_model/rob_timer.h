@@ -119,6 +119,7 @@ private:
    ContentionModel store_queue;
    UInt64 vec_load_queue;
    UInt64 vec_store_queue;
+   UInt64 vec_store_queue_max;
    UInt64 scalar_load_queue;
    UInt64 scalar_store_queue;
    bool m_cfg_bloom_filter;
@@ -487,6 +488,7 @@ private:
    std::set<UInt64> m_reordering_target_pcs; // リオーダリング対象の命令PC集合
    UInt64 m_last_rebuild_cycle = 0; // 最後にリストを再構築したサイクル
    const UInt64 m_REBUILD_INTERVAL = 10000; // リスト再構築の間隔（サイクル）
+   const SInt8 m_MISS_RATE_THRESHOLD = 2; // キャッシュミス率判定の閾値（飽和カウンタ）
 
    void rebuildReorderingListSimple();
 

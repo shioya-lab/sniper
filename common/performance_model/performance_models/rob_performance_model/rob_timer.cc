@@ -73,6 +73,7 @@ RobTimer::RobTimer(
       , store_queue("rob_timer.store_queue", core->getId(), ([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
       , vec_load_queue (([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_loads"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
       , vec_store_queue(([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
+      , vec_store_queue_max(([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
       , scalar_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_loads"))
       , scalar_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_stores"))
       , m_cfg_bloom_filter(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/bloom_filter", 0))
@@ -1413,8 +1414,10 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
    }
 
    if (isUseNonpriVector (m_vec_reserve_policy)) {
-      if (m_vec_reserve_policy != VecReserveParOOO && m_vec_reserve_policy != VecReserveStatic && uop->isReserveInst()) {
-         // ParOOOの場合は物理レジスタを確保しない
+      if (m_vec_reserve_policy != VecReserveParOOO && 
+          m_vec_reserve_policy != VecReserveSimple && 
+          m_vec_reserve_policy != VecReserveStatic && uop->isReserveInst()) {
+         // ParOOO, Simple, Staticの場合は物理レジスタを確保しない
          // 予約に回る命令であれば、LPIQに格納する
          // LPIQに入れるべき命令の場合
          if (alloc_result == RegisterManager::AllocSuccess) {
@@ -1510,7 +1513,9 @@ void RobTimer::releaseRegister (RobEntry *entry)
       return;
    }
 
-   if ((m_vec_reserve_policy == VecReserveParOOO || m_vec_reserve_policy == VecReserveStatic) &&
+   if ((m_vec_reserve_policy == VecReserveParOOO || 
+       m_vec_reserve_policy == VecReserveSimple ||
+       m_vec_reserve_policy == VecReserveStatic) &&
          entry->uop->isUseReserveRegisterGroup()) {
       // 予約命令の場合
       return;
@@ -1942,7 +1947,9 @@ SubsecondTime RobTimer::doIssue()
       // vector_inorder=true : Arith/Mem Vector issued in-order
       // lsu_inorder: Mem Vector issued in-order
       bool dyn_vector_inorder = vector_inorder;
-      if ((m_vec_reserve_policy == VecReserveParOOO || m_vec_reserve_policy == VecReserveStatic) &&
+      if ((m_vec_reserve_policy == VecReserveParOOO || 
+           m_vec_reserve_policy == VecReserveSimple ||
+           m_vec_reserve_policy == VecReserveStatic) &&
           uop->isUseReserveRegisterGroup()) {
          // ReserveInorderモードで、Inorder指定された命令は強制的にインオーダモードになる
          dyn_vector_inorder = true;
@@ -2673,7 +2680,6 @@ void RobTimer::printRob(bool is_output, bool enable_check)
    }
    DEBUG_COUT_IF (std::cout, "\n");
 
-   static size_t vec_store_queue_max = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores");
    LOG_ASSERT_ERROR(vec_store_queue <= vec_store_queue_max, "Vec Store Queue exceeded default value. %ld <= %ld",
                      vec_store_queue, vec_store_queue_max);
 
@@ -2728,7 +2734,9 @@ void RobTimer::printRob(bool is_output, bool enable_check)
          DEBUG_COUT_IF (state, "    ");
       }
 
-      if (m_vec_reserve_policy == VecReserveParOOO || m_vec_reserve_policy == VecReserveStatic) {
+      if (m_vec_reserve_policy == VecReserveParOOO || 
+          m_vec_reserve_policy == VecReserveSimple || 
+          m_vec_reserve_policy == VecReserveStatic) {
          // Inorderの場合は，予約はカウントしない
       } else if (i < m_num_in_rob &&
           !lowpri_decided &&
