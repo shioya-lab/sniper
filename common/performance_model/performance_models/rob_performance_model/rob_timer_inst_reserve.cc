@@ -334,20 +334,38 @@ void RobTimer::manageInstructionSimple (RobEntry *entry)
 
     m_vec_inst_history.push_back(new_entry);
 
-    // ベクトルロード命令の場合、キャッシュミス率をチェックして即座に再構築
+    // ベクトルロード命令の場合、キャッシュミス率をチェックしてダウンカウンタを初期化
     if (is_vec_load) {
       SInt8 counter = m_mem_stats->getSaturationCounter(entry_pc);
-      // 飽和カウンタが閾値以上の場合、即座に再構築を実行
+      // 飽和カウンタが閾値以上の場合、そのPCのダウンカウンタを初期化（すぐには再構築しない）
       if (counter >= m_MISS_RATE_THRESHOLD) {
-        fprintf(stderr, "%ld: VecReserveSimple: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d), triggering immediate rebuild\n",
-                now.getCycleCount(), entry_pc, counter, m_MISS_RATE_THRESHOLD);
-        rebuildReorderingListSimple();
-        m_last_rebuild_cycle = now.getCycleCount();
+        // ダウンカウンタが既に0でない場合のみ初期化（既に設定されている場合は上書きしない）
+        if (m_mem_stats->getRebuildDowncounter(entry_pc) == 0) {
+          // ダウンカウンタの初期値を設定（4）
+          const SInt8 REBUILD_DOWNCOUNTER_INIT = 4;
+          m_mem_stats->setRebuildDowncounter(entry_pc, REBUILD_DOWNCOUNTER_INIT);
+          fprintf(stderr, "%ld: VecReserveSimple: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
+                  now.getCycleCount(), entry_pc, counter, m_MISS_RATE_THRESHOLD, REBUILD_DOWNCOUNTER_INIT);
+        }
       }
     }
 
     // 新しいベクトル命令が追加されたら、定期的にリオーダリングリストを再構築
     if (now.getCycleCount() - m_last_rebuild_cycle >= m_REBUILD_INTERVAL) {
+      rebuildReorderingListSimple();
+      m_last_rebuild_cycle = now.getCycleCount();
+    }
+  }
+
+  // ベクトル命令が通過するたびに、すべてのPCのダウンカウンタ（値>0）をデクリメント
+  if (uop->isVector()) {
+    // すべてのPCのダウンカウンタ（値>0）をデクリメントし、0になったPCがあるかチェック
+    bool any_reached_zero = m_mem_stats->decrementAllRebuildDowncounters();
+    
+    // いずれかのPCのダウンカウンタが0になったら、リオーダリングリストを再構築
+    if (any_reached_zero) {
+      fprintf(stderr, "%ld: VecReserveSimple: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
+              now.getCycleCount(), entry_pc);
       rebuildReorderingListSimple();
       m_last_rebuild_cycle = now.getCycleCount();
     }

@@ -28,7 +28,8 @@ private:
     // std::unordered_map<UInt64, MemStats> m_mem_stats;
 
     struct MemHitSatCounter {
-        SInt8 scounter;
+        SInt8 scounter = 0;
+        SInt8 rebuild_downcounter = 0;  // PCごとのリオーダリングリスト再構築用ダウンカウンタ
     };
     std::unordered_map<std::size_t, MemHitSatCounter> m_mem_stats;
 
@@ -99,7 +100,11 @@ public:
 
     SInt8 getSaturationCounter(UInt64 pc) {
         std::size_t hash = hashPC(pc);
-        return m_mem_stats[hash].scounter;
+        auto it = m_mem_stats.find(hash);
+        if (it == m_mem_stats.end()) {
+            return 0;
+        }
+        return it->second.scounter;
     }
 
     // 容量制限を変更するメソッド
@@ -117,5 +122,37 @@ public:
     // 最大容量を取得
     std::size_t getMaxCapacity() const {
         return m_max_capacity;
+    }
+
+    // PCごとのリオーダリングリスト再構築用のダウンカウンタを初期化
+    void setRebuildDowncounter(UInt64 pc, SInt8 value) {
+        std::size_t hash = hashPC(pc);
+        auto& stats = m_mem_stats[hash];
+        stats.rebuild_downcounter = value;
+    }
+
+    // PCごとのダウンカウンタを取得
+    SInt8 getRebuildDowncounter(UInt64 pc) {
+        std::size_t hash = hashPC(pc);
+        auto it = m_mem_stats.find(hash);
+        if (it == m_mem_stats.end()) {
+            return 0;
+        }
+        return it->second.rebuild_downcounter;
+    }
+
+    // すべてのPCのダウンカウンタ（値>0）をデクリメントし、0になったPCがあるかどうかを返す
+    bool decrementAllRebuildDowncounters() {
+        bool any_reached_zero = false;
+        for (auto& pair : m_mem_stats) {
+            auto& stats = pair.second;
+            if (stats.rebuild_downcounter > 0) {
+                stats.rebuild_downcounter--;
+                if (stats.rebuild_downcounter == 0) {
+                    any_reached_zero = true;
+                }
+            }
+        }
+        return any_reached_zero;
     }
 };
