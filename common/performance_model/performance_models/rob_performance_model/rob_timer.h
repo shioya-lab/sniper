@@ -106,6 +106,7 @@ private:
    bool m_active_kanata_gen;
    SubsecondTime m_last_kanata_time;
    bool m_kanata_generated_in_this_region;
+   bool m_get_konata_whole; // ROIとは関係なく、すべての実行領域をKonataでトレースする
 
    // When getMemAccessMerge=true, use this value
    uint64_t m_previous_latency;

@@ -63,6 +63,7 @@ RobTimer::RobTimer(
       , m_roi_started(false)
       , m_enable_o3 (Sim()->getCfg()->getBoolArray("log/enable_o3_log", m_core->getId()))
       , m_enable_kanata (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", m_core->getId()))
+      , m_get_konata_whole (Sim()->getCfg()->getBoolArray("log/get_konata_whole", m_core->getId()))
       , m_active_o3_gen (false)
       , m_active_kanata_gen (false)
       , now(core->getDvfsDomain())
@@ -2340,12 +2341,9 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
       m_last_committed_time = now;
 
       Instruction *inst = entry->uop->getMicroOp()->getInstruction();
-      if (cycle_activated &&
-          inst->getDisassembly().find("add            zero, zero, zero") != std::string::npos) {
-      }
-
-      if (cycle_activated &&
-          inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos &&
+      if (((m_get_konata_whole && m_enable_kanata && !m_active_kanata_gen) ||
+          (cycle_activated &&
+          inst->getDisassembly().find("add            zero, zero, ra") != std::string::npos)) &&
           m_konata_count < m_konata_count_max) {
 
          m_active_o3_gen     = m_enable_o3;
@@ -2355,8 +2353,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
                    << std::hex << entry->uop->getMicroOp()->getInstruction()->getAddress() << " "
                    << entry->uop->getMicroOp()->getInstruction()->getDisassembly() << '\n';
       }
-      if (enable_rob_timer_log &&
-          cycle_activated &&
+      if (cycle_activated &&
           inst->getDisassembly().find("add            zero, zero, sp") != std::string::npos) {
         m_active_o3_gen = false;
         m_active_kanata_gen = false;

@@ -78,6 +78,7 @@ class RegisterManager
       if (vec_reserve_policy == VecReserveAlways) {
          m_nonpri_max_vec_phy_registers = m_max_phy_registers[VectorRegister] - 32;
       } else if (vec_reserve_policy == VecReserveParOOO ||
+                 vec_reserve_policy == VecReserveSimple ||
                  vec_reserve_policy == VecReserveStatic) {
         m_nonpri_max_vec_phy_registers = 0;
       } else if (vec_phy_rate == 0.0) {
@@ -131,6 +132,7 @@ class RegisterManager
 
    AllocResult_t AllocateVectorRegister (DynamicMicroOp *uop) {
      if (m_vec_reserve_policy == VecReserveParOOO ||
+         m_vec_reserve_policy == VecReserveSimple ||
          m_vec_reserve_policy == VecReserveStatic) {
        if (uop->isUseNormalRegisterGroup()) {
          return AllocateNormalVecRegister(uop);

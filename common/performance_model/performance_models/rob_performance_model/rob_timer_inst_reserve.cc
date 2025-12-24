@@ -384,7 +384,6 @@ void RobTimer::rebuildReorderingListSimple()
 
   // 飽和カウンタが最も高い（キャッシュミス率が高い）ベクトルロード命令を探す
   UInt64 worst_pc = 0;
-  SInt8 worst_counter = -128;  // 最小値から開始
   size_t worst_idx = 0;
 
   fprintf(stderr, "%ld: VecReserveSimple: Rebuilding reordering list...\n", now.getCycleCount());
@@ -401,9 +400,8 @@ void RobTimer::rebuildReorderingListSimple()
       fprintf(stderr, "  VecInst history[%ld]: PC=%08lx, type=%s, counter=%d\n",
               i, pc, "LOAD", counter);
 
-      // 飽和カウンタが閾値以上で、かつ最も高い値を持つ命令を探す
-      if (counter >= m_MISS_RATE_THRESHOLD && counter >= worst_counter) {
-        worst_counter = counter;
+      // 飽和カウンタが閾値以上の命令を探す
+      if (counter >= m_MISS_RATE_THRESHOLD) {
         worst_pc = pc;
         worst_idx = i;
       }
@@ -420,8 +418,8 @@ void RobTimer::rebuildReorderingListSimple()
       m_reordering_target_pcs.insert(m_vec_inst_history[i].pc);
     }
 
-    fprintf(stderr, "%ld: VecReserveSimple: Reordering list rebuilt. Worst VecLoad PC=%08lx (counter=%d), list_size=%ld\n",
-            now.getCycleCount(), worst_pc, worst_counter, m_reordering_target_pcs.size());
+    fprintf(stderr, "%ld: VecReserveSimple: Reordering list rebuilt. Worst VecLoad PC=%08lx, list_size=%ld\n",
+            now.getCycleCount(), worst_pc, m_reordering_target_pcs.size());
 
     // デバッグ出力：リオーダリング対象リスト
     fprintf(stderr, "  Reordering targets (all vec insts up to worst load): ");
