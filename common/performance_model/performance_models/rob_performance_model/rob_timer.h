@@ -477,21 +477,34 @@ private:
 
    void manageInstructionParOOO(RobEntry *entry);
    void manageInstructionStatic(RobEntry *entry);
-   void manageInstructionSimple(RobEntry *entry);
+   void manageInstructionNWindow(RobEntry *entry);
 
-   // VecReserveSimple用のデータ構造
+   // VecReserveNWindow用のデータ構造
    typedef struct {
       UInt64 pc;
       bool is_vec_load;  // ベクトルロード命令かどうか
    } vec_inst_entry_t;
    std::deque<vec_inst_entry_t> m_vec_inst_history; // 全ベクトル命令のPC履歴（プログラムオーダ）
    const size_t m_VEC_INST_HISTORY_SIZE = 64;
-   std::set<UInt64> m_reordering_target_pcs; // リオーダリング対象の命令PC集合
-   UInt64 m_last_rebuild_cycle = 0; // 最後にリストを再構築したサイクル
-   const UInt64 m_REBUILD_INTERVAL = 10000; // リスト再構築の間隔（サイクル）
    const SInt8 m_MISS_RATE_THRESHOLD = 2; // キャッシュミス率判定の閾値（飽和カウンタ）
 
-   void rebuildReorderingListSimple();
+   SInt8 m_reserve_nwindow_ordering_counter; // リオーダリング禁止カウンタ
+   std::set<UInt64> m_reordering_trigger_table; // リオーダリングトリガーのPC集合. 最大で8エントリまでとする. 最初に挿入されたものを削除する.
+   SInt8 m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT; // リオーダリング禁止カウンタの初期値
+
+   void updateReorderingTriggerTable(UInt64 pc) {
+      if (m_reordering_trigger_table.size() < 8) {
+        m_reordering_trigger_table.insert(pc);
+      } else {
+         m_reordering_trigger_table.erase(m_reordering_trigger_table.begin());
+         m_reordering_trigger_table.insert(pc);
+      }
+   }
+
+   void clearReorderingTriggerTable() {
+      m_reordering_trigger_table.clear();
+   }
+
 
    // Find First Instruction
    uint64_t findFirstUopSeqNumber (DynamicMicroOp *uop) {

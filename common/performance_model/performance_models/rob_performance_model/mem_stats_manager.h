@@ -131,6 +131,15 @@ public:
         stats.rebuild_downcounter = value;
     }
 
+
+    // すべてのPCのリオーダリングリスト再構築用のダウンカウンタを初期化
+    void clearAllRebuildDowncounters() {
+        for (auto& pair : m_mem_stats) {
+            auto& stats = pair.second;
+            stats.rebuild_downcounter = 0;
+        }
+    }
+
     // PCごとのダウンカウンタを取得
     SInt8 getRebuildDowncounter(UInt64 pc) {
         std::size_t hash = hashPC(pc);

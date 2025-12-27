@@ -98,7 +98,7 @@ RobTimer::RobTimer(
       , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull   :
 			                     Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_vecparooo" ? VecReserveParOOO     :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_static"    ? VecReserveStatic     :
-                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_simple"    ? VecReserveSimple     :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_simple"    ? VecReserveNWindow     :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways     :
 			      VecReserveNone)
       , m_last_committed_time(core->getDvfsDomain())
@@ -107,6 +107,8 @@ RobTimer::RobTimer(
       , m_vec_store_inorder (Sim()->getCfg()->getBoolArray("research_option/vec_store_inorder", core->getId()))  // Vector Store 命令のみインオーダで実行する
       , m_MAX_VECTOR_REG_HISTORY_SIZE(Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_reg_history_size"))
       , m_BACKWORD_DEP_TABLE_SIZE( Sim()->getCfg()->getInt("perf_model/core/rob_timer/backward_dep_table_size"))
+      , m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT(Sim()->getCfg()->getInt("perf_model/core/rob_timer/reserve_nwindow_ordering_counter_init"))
+      , m_reserve_nwindow_ordering_counter(0)
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -1416,7 +1418,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
 
    if (isUseNonpriVector (m_vec_reserve_policy)) {
       if (m_vec_reserve_policy != VecReserveParOOO && 
-          m_vec_reserve_policy != VecReserveSimple && 
+          m_vec_reserve_policy != VecReserveNWindow && 
           m_vec_reserve_policy != VecReserveStatic && uop->isReserveInst()) {
          // ParOOO, Simple, Staticの場合は物理レジスタを確保しない
          // 予約に回る命令であれば、LPIQに格納する
@@ -1515,7 +1517,7 @@ void RobTimer::releaseRegister (RobEntry *entry)
    }
 
    if ((m_vec_reserve_policy == VecReserveParOOO || 
-       m_vec_reserve_policy == VecReserveSimple ||
+       m_vec_reserve_policy == VecReserveNWindow ||
        m_vec_reserve_policy == VecReserveStatic) &&
          entry->uop->isUseReserveRegisterGroup()) {
       // 予約命令の場合
@@ -1949,7 +1951,7 @@ SubsecondTime RobTimer::doIssue()
       // lsu_inorder: Mem Vector issued in-order
       bool dyn_vector_inorder = vector_inorder;
       if ((m_vec_reserve_policy == VecReserveParOOO || 
-           m_vec_reserve_policy == VecReserveSimple ||
+           m_vec_reserve_policy == VecReserveNWindow ||
            m_vec_reserve_policy == VecReserveStatic) &&
           uop->isUseReserveRegisterGroup()) {
          // ReserveInorderモードで、Inorder指定された命令は強制的にインオーダモードになる
@@ -2732,7 +2734,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
       }
 
       if (m_vec_reserve_policy == VecReserveParOOO || 
-          m_vec_reserve_policy == VecReserveSimple || 
+          m_vec_reserve_policy == VecReserveNWindow || 
           m_vec_reserve_policy == VecReserveStatic) {
          // Inorderの場合は，予約はカウントしない
       } else if (i < m_num_in_rob &&

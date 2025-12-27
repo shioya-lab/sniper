@@ -11,9 +11,9 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
     manageInstructionParOOO(entry);
   } else if (m_vec_reserve_policy == VecReserveStatic) {
     manageInstructionStatic (entry);
-  } else if (m_vec_reserve_policy == VecReserveSimple) {
+  } else if (m_vec_reserve_policy == VecReserveNWindow) {
     // ベクトルロードのみをリオーダリング対象とする簡潔な方法
-    manageInstructionSimple(entry);
+    manageInstructionNWindow(entry);
   } else if (m_vec_reserve_policy == VecReserveAlways) {
     // 常にベクトル命令を予約に回す方針
     manageInstructionReserveVecAll(entry);
@@ -259,7 +259,7 @@ void RobTimer::manageInstructionStatic (RobEntry *entry)
 }
 
 /*
- * VecReserveSimple:
+ * VecReserveNWindow:
  * ベクトル命令のリオーダリングを簡潔に管理する方法
  * - ループの各イテレーション内で全ベクトル命令をプログラムオーダで履歴に記録
  * - 分岐命令実行時に履歴をクリア（新しいイテレーションの開始）
@@ -267,29 +267,15 @@ void RobTimer::manageInstructionStatic (RobEntry *entry)
  * - 先頭からキャッシュミス率の悪いベクトルロード命令までの全ベクトル命令をリオーダリング対象とする
  * - それ以外のベクトル命令はインオーダ実行（Reserve）
  */
-void RobTimer::manageInstructionSimple (RobEntry *entry)
+void RobTimer::manageInstructionNWindow (RobEntry *entry)
 {
   const MicroOp *uop = entry->uop->getMicroOp();
   UInt64 entry_pc = uop->getInstruction()->getAddress();
 
-  // 分岐命令の場合、履歴をクリア（新しいイテレーションの開始）
-  // デバッグ: 履歴サイズが大きい場合、すべての命令の種類をログ出力
-  if (m_vec_inst_history.size() > m_VEC_INST_HISTORY_SIZE - 10) {
-    fprintf(stderr, "%ld: VecReserveSimple DEBUG: Processing PC=%08lx, isBranch=%d, isVector=%d, history_size=%ld\n",
-            now.getCycleCount(), entry_pc, uop->isBranch() ? 1 : 0, uop->isVector() ? 1 : 0, m_vec_inst_history.size());
-  }
-  
-  if (uop->isBranch()) {
-    if (!m_vec_inst_history.empty()) {
-      fprintf(stderr, "%ld: VecReserveSimple: Branch detected at PC=%08lx, clearing history (size=%ld)\n",
-              now.getCycleCount(), entry_pc, m_vec_inst_history.size());
-      m_vec_inst_history.clear();
-
-      // リオーダリングリストもクリア（新しいイテレーションでは全てリオーダリング可能）
-      m_reordering_target_pcs.clear();
-      fprintf(stderr, "%ld: VecReserveSimple: Reordering list cleared. All vec insts in new iteration can be reordered.\n",
-              now.getCycleCount());
-    }
+  if (uop->isBranch()) {  
+    // Backwardへの分岐の場合
+    // Temporary: PCの方向がBackwardかどうかは、SIFTのトレースでは分からないので、とりあえず全部の分岐命令で処理している
+    m_reserve_nwindow_ordering_counter = 0; // リオーダリングを有効にする
     return;
   }
 
@@ -300,60 +286,21 @@ void RobTimer::manageInstructionSimple (RobEntry *entry)
 
   bool is_vec_load = (uop->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD);
 
-  // 全ベクトル命令を履歴に追加（プログラムオーダで格納）
-  // 同じPCが既に存在する場合は追加しない（同一イテレーション内では一度だけ）
-  bool found = false;
-  for (const auto &entry : m_vec_inst_history) {
-    if (entry.pc == entry_pc) {
-      found = true;
-      break;
-    }
-  }
-
-  if (!found) {
-    vec_inst_entry_t new_entry;
-    new_entry.pc = entry_pc;
-    new_entry.is_vec_load = is_vec_load;
-
-    // 履歴サイズを制限（ループが非常に長い場合の対策）
-    // サイズが上限に達している場合、古いエントリを削除してから新しいエントリを追加
-    if (m_vec_inst_history.size() >= m_VEC_INST_HISTORY_SIZE) {
-      fprintf(stderr, "%ld: VecReserveSimple PC=%08lx: WARNING - History size at limit %ld, removing oldest entry. Last 5 entries before removal: ",
-              now.getCycleCount(), entry_pc, m_VEC_INST_HISTORY_SIZE);
-      // 最後の5つのエントリを表示
-      size_t start_idx = (m_vec_inst_history.size() >= 5) ? m_vec_inst_history.size() - 5 : 0;
-      for (size_t i = start_idx; i < m_vec_inst_history.size(); i++) {
-        fprintf(stderr, "%08lx(%s) ", m_vec_inst_history[i].pc, 
-                m_vec_inst_history[i].is_vec_load ? "LOAD" : "OTHER");
+  // ベクトルロード命令の場合、キャッシュミス率をチェックしてダウンカウンタを初期化
+  if (is_vec_load) {
+    SInt8 counter = m_mem_stats->getSaturationCounter(entry_pc);
+    // 飽和カウンタが閾値以上の場合、そのPCのダウンカウンタを初期化（すぐには再構築しない）
+    if (counter >= m_MISS_RATE_THRESHOLD) {
+      // 自分以外のダウンカウンタをクリア
+      m_mem_stats->clearAllRebuildDowncounters();
+      // ダウンカウンタが既に0でない場合のみ初期化（既に設定されている場合は上書きしない）
+      if (m_mem_stats->getRebuildDowncounter(entry_pc) == 0) {
+        // ダウンカウンタの初期値を設定（4）
+        const SInt8 REBUILD_DOWNCOUNTER_INIT = 4;
+        m_mem_stats->setRebuildDowncounter(entry_pc, REBUILD_DOWNCOUNTER_INIT);
+        fprintf(stderr, "%ld: VecReserveNWindow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
+                now.getCycleCount(), entry_pc, counter, m_MISS_RATE_THRESHOLD, REBUILD_DOWNCOUNTER_INIT);
       }
-      fprintf(stderr, "\n");
-      // 履歴がクリアされない原因を調査
-      fprintf(stderr, "  DEBUG: History not cleared by branch - checking if branch instructions are being processed...\n");
-      m_vec_inst_history.pop_front(); // 最も古いエントリを削除（FIFO方式）
-    }
-
-    m_vec_inst_history.push_back(new_entry);
-
-    // ベクトルロード命令の場合、キャッシュミス率をチェックしてダウンカウンタを初期化
-    if (is_vec_load) {
-      SInt8 counter = m_mem_stats->getSaturationCounter(entry_pc);
-      // 飽和カウンタが閾値以上の場合、そのPCのダウンカウンタを初期化（すぐには再構築しない）
-      if (counter >= m_MISS_RATE_THRESHOLD) {
-        // ダウンカウンタが既に0でない場合のみ初期化（既に設定されている場合は上書きしない）
-        if (m_mem_stats->getRebuildDowncounter(entry_pc) == 0) {
-          // ダウンカウンタの初期値を設定（4）
-          const SInt8 REBUILD_DOWNCOUNTER_INIT = 4;
-          m_mem_stats->setRebuildDowncounter(entry_pc, REBUILD_DOWNCOUNTER_INIT);
-          fprintf(stderr, "%ld: VecReserveSimple: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
-                  now.getCycleCount(), entry_pc, counter, m_MISS_RATE_THRESHOLD, REBUILD_DOWNCOUNTER_INIT);
-        }
-      }
-    }
-
-    // 新しいベクトル命令が追加されたら、定期的にリオーダリングリストを再構築
-    if (now.getCycleCount() - m_last_rebuild_cycle >= m_REBUILD_INTERVAL) {
-      rebuildReorderingListSimple();
-      m_last_rebuild_cycle = now.getCycleCount();
     }
   }
 
@@ -364,94 +311,27 @@ void RobTimer::manageInstructionSimple (RobEntry *entry)
     
     // いずれかのPCのダウンカウンタが0になったら、リオーダリングリストを再構築
     if (any_reached_zero) {
-      fprintf(stderr, "%ld: VecReserveSimple: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
+      fprintf(stderr, "%ld: VecReserveNWindow: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
               now.getCycleCount(), entry_pc);
-      rebuildReorderingListSimple();
-      m_last_rebuild_cycle = now.getCycleCount();
+      // Insert Reordering Trigger Table
+      updateReorderingTriggerTable(entry_pc);
     }
   }
 
-  // リオーダリング対象リストに含まれている場合はNormal（リオーダリング可能）
-  // それ以外はReserve（インオーダ実行）
-  if (m_reordering_target_pcs.empty()) {
-    // リストが空の場合は全部リオーダリング可能（Normal）
-    // 何も設定しない（デフォルトでNormal）
-    // fprintf(stderr, "%ld: VecReserveSimple: PC=%08lx is Normal (list empty)\n",
-    //         now.getCycleCount(), entry_pc);
-  } else if (m_reordering_target_pcs.find(entry_pc) != m_reordering_target_pcs.end()) {
-    // リオーダリング対象
-    // 何も設定しない（デフォルトでNormal）
-    // fprintf(stderr, "%ld: VecReserveSimple: PC=%08lx is Normal (in reordering list)\n",
-    //         now.getCycleCount(), entry_pc);
-  } else {
+  if (m_reordering_trigger_table.find(entry_pc) != m_reordering_trigger_table.end()) {
+    // ここから先のN命令は、リオーダリングを禁止する
+    m_reserve_nwindow_ordering_counter = m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT;
+  } else if (m_reserve_nwindow_ordering_counter > 0) {
     // リオーダリング禁止
     entry->uop->setReserveInst();
-    fprintf(stderr, "%ld: VecReserveSimple: PC=%08lx is Reserve (not in reordering list)\n",
+    fprintf(stderr, "%ld: VecReserveNWindow: PC=%08lx is Reserve (not in reordering list)\n",
             now.getCycleCount(), entry_pc);
+
+    if (uop->isLast()) {
+      m_reserve_nwindow_ordering_counter--;
+    }
   }
 }
-
-/*
- * リオーダリング対象リストを再構築
- * m_mem_statsの飽和カウンタを使用して、キャッシュミス率の高いベクトルロード命令を検出
- * 先頭からそのベクトルロード命令までの全ベクトル命令をリオーダリング対象とする
- */
-void RobTimer::rebuildReorderingListSimple()
-{
-  m_reordering_target_pcs.clear();
-
-  // 飽和カウンタが最も高い（キャッシュミス率が高い）ベクトルロード命令を探す
-  UInt64 worst_pc = 0;
-  size_t worst_idx = 0;
-
-  fprintf(stderr, "%ld: VecReserveSimple: Rebuilding reordering list...\n", now.getCycleCount());
-
-  for (size_t i = 0; i < m_vec_inst_history.size(); i++) {
-    const auto &entry = m_vec_inst_history[i];
-    UInt64 pc = entry.pc;
-    bool is_vec_load = entry.is_vec_load;
-
-    // ベクトルロード命令のみ、飽和カウンタを取得
-    if (is_vec_load) {
-      SInt8 counter = m_mem_stats->getSaturationCounter(pc);
-
-      fprintf(stderr, "  VecInst history[%ld]: PC=%08lx, type=%s, counter=%d\n",
-              i, pc, "LOAD", counter);
-
-      // 飽和カウンタが閾値以上の命令を探す
-      if (counter >= m_MISS_RATE_THRESHOLD) {
-        worst_pc = pc;
-        worst_idx = i;
-      }
-    } else {
-      fprintf(stderr, "  VecInst history[%ld]: PC=%08lx, type=%s\n",
-              i, pc, "ARITH/STORE");
-    }
-  }
-
-  // キャッシュミス率の高いベクトルロード命令が見つかった場合
-  if (worst_pc != 0) {
-    // 先頭からそのベクトルロード命令までの全ベクトル命令をリオーダリング対象とする
-    for (size_t i = 0; i <= worst_idx; i++) {
-      m_reordering_target_pcs.insert(m_vec_inst_history[i].pc);
-    }
-
-    fprintf(stderr, "%ld: VecReserveSimple: Reordering list rebuilt. Worst VecLoad PC=%08lx, list_size=%ld\n",
-            now.getCycleCount(), worst_pc, m_reordering_target_pcs.size());
-
-    // デバッグ出力：リオーダリング対象リスト
-    fprintf(stderr, "  Reordering targets (all vec insts up to worst load): ");
-    for (auto pc : m_reordering_target_pcs) {
-      fprintf(stderr, "%08lx ", pc);
-    }
-    fprintf(stderr, "\n");
-  } else {
-    // キャッシュミス率が閾値以下の場合、リストは空のまま（全部リオーダリング可能）
-    fprintf(stderr, "%ld: VecReserveSimple: No high miss-rate vec load found. All vec insts can be reordered.\n",
-            now.getCycleCount());
-  }
-}
-
 
 
 /*

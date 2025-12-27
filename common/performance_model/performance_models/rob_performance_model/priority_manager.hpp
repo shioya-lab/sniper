@@ -12,7 +12,7 @@ typedef enum {
    VecReserveStatic,    // ベクトルレジスタの割り当てはPCにより静的に決まる
    VecReserveAlways,    // ベクトルレジスタは常にReserve
    VecReserveParOOO,   // 予約に回ったベクトルレジスタはインオーダ
-   VecReserveSimple,   // ベクトルロードのみをリオーダリング対象とする簡潔な方法
+   VecReserveNWindow,   // ベクトルロードのみをリオーダリング対象とする簡潔な方法
    VecReserveNone       // 予約なし
 } vec_reserve_policy_t;
 
@@ -28,7 +28,7 @@ typedef enum {
 inline bool isUseNonpriVector(vec_reserve_policy_t res) {
    return res == VecReserveParOOO  ||
           res == VecReserveStatic  ||
-          res == VecReserveSimple  ||
+          res == VecReserveNWindow ||
           res == VecReserveAlways;
 }
 
