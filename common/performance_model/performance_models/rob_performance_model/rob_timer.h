@@ -14,10 +14,13 @@
 #include "register_manager.hpp"
 #include "mem_stats_manager.h"
 #include "priority_manager.hpp"
+#include "rob_timer_vector_trace.h"
 
 #include <deque>
 #include <list>
 #include <set>
+#include <map>
+#include <vector>
 
 // Maximum size for vector register history
 #define MAX_VECTOR_REG_HISTORY_SIZE 32
@@ -743,6 +746,9 @@ public:
    }
 
    void generateVectorStats ();
+
+   // ベクトル命令の実行フロートレース
+   VectorIssueTracer *m_vector_issue_tracer;
 
 };
 

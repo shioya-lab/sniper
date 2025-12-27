@@ -10,6 +10,7 @@
 #include "config.hpp"
 #include "core_manager.h"
 #include "itostr.h"
+#include "rob_timer_vector_trace.h"
 #include "performance_model.h"
 #include "core_model.h"
 #include "rob_contention.h"
@@ -410,31 +411,17 @@ RobTimer::~RobTimer()
    // }
 
    generateVectorStats();
-   // std::cout << "-------------------------------\n";
-   // std::cout << "Vector Instruction Statistics\n";
-   // std::cout << "-------------------------------\n";
-   // for (auto& entry : m_vec_stats_list) {
-   //    fprintf(stderr, "PC=%08lx, %s, %10d, average = %7.2lf",
-   //          std::get<0>(entry),
-   //          std::get<1>(entry) == PriorityManager::inst_priority_t::Reserve ? "Reserve" :
-   //          std::get<1>(entry) == PriorityManager::inst_priority_t::High    ? "High   " : "Normal ",
-   //          std::get<3>(entry),
-   //          static_cast<double>(std::get<2>(entry)) / static_cast<double>(std::get<3>(entry)));
 
-   //    if (std::get<5>(entry) != 0) {
-   //       fprintf(stderr, ", %10d, lpiq_average = %7.2lf",
-   //               std::get<5>(entry),
-   //               static_cast<double>(std::get<4>(entry)) / static_cast<double>(std::get<5>(entry)));
-   //    } else {
-   //       fprintf(stderr, ",           ,                  ");
-   //    }
-
-   //    fprintf(stderr, ", %s\n", std::get<6>(entry).c_str());
-   // }
+   // ベクトル命令の発行パターンを分析してGraphviz形式で出力
+   if (m_vector_issue_tracer) {
+      m_vector_issue_tracer->analyzeIssuePatterns();
+      m_vector_issue_tracer->generateIssuePatternGraphviz("vector_issue_patterns.dot");
+   }
 
    delete m_mem_stats;
    delete m_reg_manager;
    delete m_priority_manager;
+   delete m_vector_issue_tracer;
 }
 
 void RobTimer::generateVectorStats ()
@@ -1908,6 +1895,10 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    // Update the statistics
    if (uop.getMicroOp()->isVector()) {
       UpdateVectorLatencyStats (&uop);
+      // ベクトル命令の発行をトレース
+      if (m_vector_issue_tracer) {
+         m_vector_issue_tracer->traceVectorIssue(&uop, now.getCycleCount());
+      }
    }
 }
 
