@@ -291,6 +291,16 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
     SInt8 counter = m_mem_stats->getSaturationCounter(entry_pc);
     // 飽和カウンタが閾値以上の場合、そのPCのダウンカウンタを初期化（すぐには再構築しない）
     if (counter >= m_MISS_RATE_THRESHOLD) {
+      // downcounter が 0になっていないPCを、reordering trigger table から削除する
+      for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end();) {
+        if (*it != entry_pc && m_mem_stats->getRebuildDowncounter(*it) > 0) {
+          fprintf(stderr, "%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
+                  now.getCycleCount(), *it);
+          it = m_reordering_trigger_table.erase(it);
+        } else {
+          ++it;
+        }
+      }
       // 自分以外のダウンカウンタをクリア
       m_mem_stats->clearAllRebuildDowncounters();
       // ダウンカウンタが既に0でない場合のみ初期化（既に設定されている場合は上書きしない）
@@ -305,16 +315,35 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   }
 
   // ベクトル命令が通過するたびに、すべてのPCのダウンカウンタ（値>0）をデクリメント
-  if (uop->isVector()) {
+  if (uop->isVector() && uop->isLast()) {
     // すべてのPCのダウンカウンタ（値>0）をデクリメントし、0になったPCがあるかチェック
-    bool any_reached_zero = m_mem_stats->decrementAllRebuildDowncounters();
+    std::pair<bool, UInt64> result = m_mem_stats->decrementAllRebuildDowncounters();
+    bool any_reached_zero = result.first;
+    UInt64 rebuild_pc = result.second;
     
+    for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end(); ++it) {
+      fprintf(stderr, "%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
+              now.getCycleCount(), *it, m_mem_stats->getRebuildDowncounter(*it));
+    }
+
     // いずれかのPCのダウンカウンタが0になったら、リオーダリングリストを再構築
-    if (any_reached_zero) {
+    if (any_reached_zero) { 
       fprintf(stderr, "%ld: VecReserveNWindow: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
-              now.getCycleCount(), entry_pc);
-      // Insert Reordering Trigger Table
-      updateReorderingTriggerTable(entry_pc);
+              now.getCycleCount(), rebuild_pc);
+      // downcounter が 0になっていないPCを、reordering trigger table から削除する
+      for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end();) {
+        fprintf(stderr, "%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
+                now.getCycleCount(), *it, m_mem_stats->getRebuildDowncounter(*it));
+        if (m_mem_stats->getRebuildDowncounter(*it) > 0) {
+          fprintf(stderr, "%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
+                  now.getCycleCount(), *it);
+          it = m_reordering_trigger_table.erase(it);
+        } else {
+          ++it;
+        }
+      }
+      // Reordering Trigger Table に追加
+      updateReorderingTriggerTable(rebuild_pc);
     }
   }
 
@@ -324,8 +353,8 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   } else if (m_reserve_nwindow_ordering_counter > 0) {
     // リオーダリング禁止
     entry->uop->setReserveInst();
-    fprintf(stderr, "%ld: VecReserveNWindow: PC=%08lx is Reserve (not in reordering list)\n",
-            now.getCycleCount(), entry_pc);
+    fprintf(stderr, "%ld: VecReserveNWindow: PC=%08lx is Reserve (now window counter = %d)\n",
+            now.getCycleCount(), entry_pc, m_reserve_nwindow_ordering_counter);
 
     if (uop->isLast()) {
       m_reserve_nwindow_ordering_counter--;

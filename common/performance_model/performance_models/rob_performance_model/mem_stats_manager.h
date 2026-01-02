@@ -28,6 +28,7 @@ private:
     // std::unordered_map<UInt64, MemStats> m_mem_stats;
 
     struct MemHitSatCounter {
+        UInt64 pc = 0;
         SInt8 scounter = 0;
         SInt8 rebuild_downcounter = 0;  // PCごとのリオーダリングリスト再構築用ダウンカウンタ
     };
@@ -53,8 +54,8 @@ public:
             const auto& scounter = mem.second.scounter;
 
             // 統計の出力
-            fprintf(stderr, "Hash=%zu : Count=%d\n",
-                    mem.first, scounter);
+            fprintf(stderr, "Hash=%zu (PC=%08lx) : Count=%d\n",
+                    mem.first, mem.second.pc, scounter);
         }
     }
 
@@ -74,6 +75,11 @@ public:
     bool Update (UInt64 pc, UInt64 latency, bool &miss) {
         std::size_t hash = hashPC(pc);
         auto& stats = m_mem_stats[hash];
+        
+        // PCをセット（まだセットされていない場合、またはハッシュ衝突で異なるPCが入っている場合は更新）
+        if (stats.pc == 0 || stats.pc != pc) {
+            stats.pc = pc;
+        }
 
         bool hit = latency <= 4;
         bool updated = false;
@@ -151,17 +157,20 @@ public:
     }
 
     // すべてのPCのダウンカウンタ（値>0）をデクリメントし、0になったPCがあるかどうかを返す
-    bool decrementAllRebuildDowncounters() {
+    std::pair<bool, UInt64> decrementAllRebuildDowncounters() {
         bool any_reached_zero = false;
+        UInt64 pc = 0;
         for (auto& pair : m_mem_stats) {
             auto& stats = pair.second;
             if (stats.rebuild_downcounter > 0) {
                 stats.rebuild_downcounter--;
                 if (stats.rebuild_downcounter == 0) {
                     any_reached_zero = true;
+                    pc = stats.pc;
                 }
             }
         }
-        return any_reached_zero;
+        return std::make_pair(any_reached_zero, pc);
     }
+
 };

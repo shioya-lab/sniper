@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <map>
+#include <set>
 #include <cstdint>
 #include "stats.h"
 
@@ -27,6 +28,7 @@ public:
 
    // ブロック内の発行パターン
    struct IssuePattern {
+      UInt64 id;                            // グローバルパターンID
       std::vector<UInt64> pc_sequence;      // PCのシーケンス（プログラム順序）
       std::vector<UInt64> issue_sequence;   // 発行順序（シーケンス番号）
       UInt64 count;                         // このパターンの出現回数
@@ -44,12 +46,17 @@ private:
    void detectBlockPattern();
 
    std::vector<VectorIssueTrace> m_vector_issue_trace;  // 発行トレース
-   std::map<std::vector<UInt64>, IssuePattern> m_issue_patterns;  // パターン集計
+   std::map<std::pair<std::vector<UInt64>, std::vector<bool>>, IssuePattern> m_issue_patterns;  // パターン集計（PCシーケンスとis_inorderシーケンスのペア）
    std::vector<UInt64> m_current_block_pcs;  // 現在のブロックのPCリスト
+   std::vector<bool> m_current_block_is_inorder;  // 現在のブロックの各PCに対応するis_inorder情報
+   std::set<UInt64> m_entry_points;  // エントリポイント（分岐先など）のセット
    UInt64 m_block_start_cycle;
    UInt64 m_last_issue_cycle;  // 最後の発行サイクル
+   UInt64 m_last_pc;  // 最後のPC（連続性チェック用）
+   UInt64 m_next_pattern_id;  // 次のパターンID（グローバルIDカウンター）
    const UInt64 m_BLOCK_TIMEOUT;  // ブロック検出のタイムアウト（サイクル）
    const UInt64 m_BLOCK_MIN_SIZE;  // ブロックの最小サイズ
+   const UInt64 m_PC_JUMP_THRESHOLD;  // PCジャンプの閾値（エントリポイント検出用）
 };
 
 #endif /* ROB_TIMER_VECTOR_TRACE_H_ */

@@ -64,9 +64,9 @@ RobTimer::RobTimer(
       , m_roi_started(false)
       , m_enable_o3 (Sim()->getCfg()->getBoolArray("log/enable_o3_log", m_core->getId()))
       , m_enable_kanata (Sim()->getCfg()->getBoolArray("log/enable_kanata_log", m_core->getId()))
-      , m_get_konata_whole (Sim()->getCfg()->getBoolArray("log/get_konata_whole", m_core->getId()))
       , m_active_o3_gen (false)
       , m_active_kanata_gen (false)
+      , m_get_konata_whole (Sim()->getCfg()->getBoolArray("log/get_konata_whole", m_core->getId()))
       , now(core->getDvfsDomain())
       , frontend_stalled_until(SubsecondTime::Zero())
       , in_icache_miss(false)
@@ -108,8 +108,8 @@ RobTimer::RobTimer(
       , m_vec_store_inorder (Sim()->getCfg()->getBoolArray("research_option/vec_store_inorder", core->getId()))  // Vector Store 命令のみインオーダで実行する
       , m_MAX_VECTOR_REG_HISTORY_SIZE(Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_reg_history_size"))
       , m_BACKWORD_DEP_TABLE_SIZE( Sim()->getCfg()->getInt("perf_model/core/rob_timer/backward_dep_table_size"))
-      , m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT(Sim()->getCfg()->getInt("perf_model/core/rob_timer/reserve_nwindow_ordering_counter_init"))
       , m_reserve_nwindow_ordering_counter(0)
+      , m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT(Sim()->getCfg()->getInt("perf_model/core/rob_timer/reserve_nwindow_ordering_counter_init"))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -348,6 +348,8 @@ RobTimer::RobTimer(
    // } else {
    //    m_priority_manager = NULL;
    // }
+
+   m_vector_issue_tracer = new VectorIssueTracer();
 }
 
 RobTimer::~RobTimer()
@@ -1129,6 +1131,10 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          ROB_DEBUG_PRINTF ("DISPATCH uop_idx=%ld %s", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
 
+         if (m_vector_issue_tracer) {
+            m_vector_issue_tracer->traceVectorIssue(entry->uop, now.getCycleCount());
+         }
+   
          if (isUseNonpriVector (m_vec_reserve_policy)) {
             ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" :
                                                  entry->uop->isStrongPriorityInst() ? "STRONG" :
@@ -1149,6 +1155,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             cpiFrontEnd = &m_cpiBranchPredictor;
             break;
          }
+
       }
 
       m_cpiCurrentFrontEndStall = cpiFrontEnd;
@@ -1896,9 +1903,6 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
    if (uop.getMicroOp()->isVector()) {
       UpdateVectorLatencyStats (&uop);
       // ベクトル命令の発行をトレース
-      if (m_vector_issue_tracer) {
-         m_vector_issue_tracer->traceVectorIssue(&uop, now.getCycleCount());
-      }
    }
 }
 
