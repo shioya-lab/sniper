@@ -17,6 +17,9 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
   } else if (m_vec_reserve_policy == VecReserveAlways) {
     // 常にベクトル命令を予約に回す方針
     manageInstructionReserveVecAll(entry);
+  } else if (m_vec_reserve_policy == VecReserveFlow) {
+    // ReserveFlow: レジスタフロー解析による動的なInO/OoO判定
+    manageInstructionRegisterFlowAnalysis(entry);
   }
 }
 
@@ -65,6 +68,89 @@ void RobTimer::RemovePriorityQueue (RobEntry *entry)
                         now.getCycleCount(), idx, wait_entry_pc);
       }
     }
+  }
+}
+
+// ReserveFlow: レジスタフロー解析による動的なInO/OoO判定
+void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
+{
+  // キャッシュミス検出時にPCをテーブルに追加（dispatch付近）
+  if (entry->uop->getMicroOp()->isVecLoad()) {
+    UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+    SInt8 counter = m_mem_stats->getSaturationCounter(pc);
+    // Saturation Counterが閾値以上の場合はキャッシュミスと判定
+    if (counter >= m_MISS_RATE_THRESHOLD) {
+      fprintf(stderr, "%ld: VecReserveFlow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d)\n",
+              now.getCycleCount(), pc, counter, m_MISS_RATE_THRESHOLD);
+      
+      // 新しい命令がインオーダトリガ命令になる場合、テーブル内の自分以外の命令に無視フラグを設定
+      for (auto it = m_recent_cache_miss_vecload_table.begin(); it != m_recent_cache_miss_vecload_table.end(); ++it) {
+        UInt64 table_pc = it->first;
+        if (table_pc != pc) {
+          // 自分以外の命令に無視フラグを設定
+          it->second = true;
+          fprintf(stderr, "%ld: VecReserveFlow: Setting ignore flag for PC=%08lx (new trigger PC=%08lx)\n",
+                  now.getCycleCount(), table_pc, pc);
+        }
+      }
+      
+      // PCをテーブルに追加（OoO実行の条件開始のトリガとして、無視フラグはfalse）
+      if (m_recent_cache_miss_vecload_table.size() >= 8) {
+        // テーブルが満杯の場合、古いPCを削除（最初の要素を削除）
+        UInt64 removed_pc = m_recent_cache_miss_vecload_table.begin()->first;
+        m_recent_cache_miss_vecload_table.erase(m_recent_cache_miss_vecload_table.begin());
+        fprintf(stderr, "%ld: VecReserveFlow: Table full, removing oldest PC=%08lx (table size before removal: %zu)\n",
+                now.getCycleCount(), removed_pc, m_recent_cache_miss_vecload_table.size() + 1);
+      }
+      m_recent_cache_miss_vecload_table[pc] = false;  // 新規追加時は無視フラグはfalse
+      fprintf(stderr, "%ld: VecReserveFlow: Added PC=%08lx to table (table size: %zu)\n",
+              now.getCycleCount(), pc, m_recent_cache_miss_vecload_table.size());
+    }
+  }
+
+  // ReserveFlow: テーブルに含まれるPCの命令が発見された場合、レジスタフラグを設定（OoO実行の条件開始）
+  UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+  // テーブルに含まれ、かつ無視フラグが立っていない場合のみ、レジスタフラグを設定
+  auto it = m_recent_cache_miss_vecload_table.find(pc);
+  if (it != m_recent_cache_miss_vecload_table.end() &&
+      !it->second &&  // 無視フラグが立っていない（false）場合のみ
+      entry->uop->getMicroOp()->getDestinationRegistersLength() > 0) {
+    
+    fprintf(stderr, "%ld: VecReserveFlow: Setting ooo_dependency flag for PC=%08lx (trigger instruction)\n",
+            now.getCycleCount(), pc);
+    
+    // デスティネーションレジスタ（ベクトルレジスタのみ）にフラグを設定
+    for (uint32_t i = 0; i < entry->uop->getMicroOp()->getDestinationRegistersLength(); i++) {
+      dl::Decoder::decoder_reg dest_reg = entry->uop->getMicroOp()->getDestinationRegister(i);
+      if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
+        registerDependencies->setOooDependency(dest_reg);
+        fprintf(stderr, "%ld: VecReserveFlow:   Set ooo_dependency for vector register %u\n",
+                now.getCycleCount(), dest_reg);
+      }
+    }
+  } else if (it != m_recent_cache_miss_vecload_table.end() && it->second) {
+    // デバッグ: 無視フラグが立っている場合
+    fprintf(stderr, "%ld: VecReserveFlow: PC=%08lx is in table but ignored (ignore flag is set)\n",
+            now.getCycleCount(), pc);
+  }
+
+  // インオーダ/アウトオブオーダ判定
+  // ソースレジスタ（ベクトルレジスタのみ）のooo_dependencyフラグをチェック
+  bool should_inorder = false;
+  UInt64 pc_check = entry->uop->getMicroOp()->getInstruction()->getAddress();
+  for (uint32_t i = 0; i < entry->uop->getMicroOp()->getSourceRegistersLength(); i++) {
+    dl::Decoder::decoder_reg source_reg = entry->uop->getMicroOp()->getSourceRegister(i);
+    if (Sim()->getDecoder()->is_reg_vector(source_reg) && registerDependencies->hasOooDependency(source_reg)) {
+      should_inorder = true;
+      fprintf(stderr, "%ld: VecReserveFlow: PC=%08lx depends on v%u with ooo_dependency flag, forcing in-order execution\n",
+              now.getCycleCount(), pc_check, source_reg - 64);
+      break;
+    }
+  }
+  if (should_inorder) {
+    entry->uop->setReserveInst();  // インオーダ実行を強制
+    fprintf(stderr, "%ld: VecReserveFlow: PC=%08lx set to Reserve (in-order execution)\n",
+            now.getCycleCount(), pc_check);
   }
 }
 

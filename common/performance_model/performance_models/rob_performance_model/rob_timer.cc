@@ -22,6 +22,7 @@
 #include <cstdint>
 
 #define LPIQ_SIZE  (1024) * 8
+#define MAX_CACHE_MISS_TABLE_SIZE 8
 
 // Define to get per-cycle printout of dispatch, issue, writeback stages
 // #define DEBUG_PERCYCLE
@@ -99,7 +100,8 @@ RobTimer::RobTimer(
       , m_vec_reserve_policy (Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_when_full" ? VecReserveWhenFull   :
 			                     Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_vecparooo" ? VecReserveParOOO     :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_static"    ? VecReserveStatic     :
-                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_simple"    ? VecReserveNWindow     :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_simple"    ? VecReserveNWindow    :
+                              Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_flow"      ? VecReserveFlow       :
                               Sim()->getCfg()->getString("perf_model/core/rob_timer/vec_reserve_policy") == "alloc_always"    ? VecReserveAlways     :
 			      VecReserveNone)
       , m_last_committed_time(core->getDvfsDomain())
@@ -1153,6 +1155,12 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             frontend_stalled_until = SubsecondTime::MaxTime();
             ROB_DEBUG_PRINTF ("-- branch mispredict\n");
             cpiFrontEnd = &m_cpiBranchPredictor;
+            
+            // ReserveFlow: 分岐予測失敗時、すべてのベクトルレジスタのooo_dependencyフラグをクリア
+            if (m_vec_reserve_policy == VecReserveFlow) {
+               registerDependencies->clearAllOooDependency();
+            }
+            
             break;
          }
 
@@ -1413,6 +1421,7 @@ bool RobTimer::allocateRegister (RobEntry *entry, SubsecondTime **cpiFrontEnd)
    if (isUseNonpriVector (m_vec_reserve_policy)) {
       if (m_vec_reserve_policy != VecReserveParOOO && 
           m_vec_reserve_policy != VecReserveNWindow && 
+          m_vec_reserve_policy != VecReserveFlow &&
           m_vec_reserve_policy != VecReserveStatic && uop->isReserveInst()) {
          // ParOOO, Simple, Staticの場合は物理レジスタを確保しない
          // 予約に回る命令であれば、LPIQに格納する
@@ -1510,9 +1519,7 @@ void RobTimer::releaseRegister (RobEntry *entry)
       return;
    }
 
-   if ((m_vec_reserve_policy == VecReserveParOOO || 
-       m_vec_reserve_policy == VecReserveNWindow ||
-       m_vec_reserve_policy == VecReserveStatic) &&
+   if (isUseNonpriVector(m_vec_reserve_policy) &&
          entry->uop->isUseReserveRegisterGroup()) {
       // 予約命令の場合
       return;
@@ -1947,6 +1954,7 @@ SubsecondTime RobTimer::doIssue()
       bool dyn_vector_inorder = vector_inorder;
       if ((m_vec_reserve_policy == VecReserveParOOO || 
            m_vec_reserve_policy == VecReserveNWindow ||
+           m_vec_reserve_policy == VecReserveFlow ||
            m_vec_reserve_policy == VecReserveStatic) &&
           uop->isUseReserveRegisterGroup()) {
          // ReserveInorderモードで、Inorder指定された命令は強制的にインオーダモードになる
@@ -2730,6 +2738,7 @@ void RobTimer::printRob(bool is_output, bool enable_check)
 
       if (m_vec_reserve_policy == VecReserveParOOO || 
           m_vec_reserve_policy == VecReserveNWindow || 
+          m_vec_reserve_policy == VecReserveFlow ||
           m_vec_reserve_policy == VecReserveStatic) {
          // Inorderの場合は，予約はカウントしない
       } else if (i < m_num_in_rob &&

@@ -13,6 +13,7 @@ typedef enum {
    VecReserveAlways,    // ベクトルレジスタは常にReserve
    VecReserveParOOO,   // 予約に回ったベクトルレジスタはインオーダ
    VecReserveNWindow,   // ベクトルロードのみをリオーダリング対象とする簡潔な方法
+   VecReserveFlow,      // レジスタフロー解析による動的なInO/OoO判定
    VecReserveNone       // 予約なし
 } vec_reserve_policy_t;
 
@@ -29,6 +30,7 @@ inline bool isUseNonpriVector(vec_reserve_policy_t res) {
    return res == VecReserveParOOO  ||
           res == VecReserveStatic  ||
           res == VecReserveNWindow ||
+          res == VecReserveFlow    ||
           res == VecReserveAlways;
 }
 

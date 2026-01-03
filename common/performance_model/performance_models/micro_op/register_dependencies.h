@@ -17,6 +17,10 @@ private:
     // Not easy to get last element statically with the library
   uint64_t producers[280];  //XED_REG_LAST;
   uint64_t producerLength[280];
+  
+  // 新規追加（ベクトルレジスタのみ使用、1エントリあたり1ビット）
+  bool ooo_dependency[280];  // 1ビットフラグ、OoO実行を行う命令への依存を示す、ベクトルレジスタのみ使用（無視条件は外部で設定）
+  
 public:
   RegisterDependencies();
 
@@ -24,6 +28,12 @@ public:
   uint64_t peekProducer(dl::Decoder::decoder_reg reg, uint64_t lowestValidSequenceNumber);
 
   void clear();
+  
+  // 新規追加メソッド（フラグ設定・取得機能のみ、条件判定は外部で行う）
+  void setOooDependency(dl::Decoder::decoder_reg reg);  // OoO実行依存フラグを設定（1ビット）
+  bool hasOooDependency(dl::Decoder::decoder_reg reg);  // OoO実行依存フラグをチェック
+  void clearOooDependency(dl::Decoder::decoder_reg reg);  // OoO実行依存フラグをクリア
+  void clearAllOooDependency();  // すべてのベクトルレジスタのOoO実行依存フラグをクリア
 };
 
 #endif /* __REGISTER_DEPENDENCIES_H */

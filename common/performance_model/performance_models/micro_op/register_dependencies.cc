@@ -68,6 +68,18 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
    //    }
    // }
 
+   // ReserveFlow: 依存関係の伝播（ベクトルレジスタのみ）
+   // ソースレジスタのooo_dependencyフラグをチェックし、デスティネーションレジスタに伝播
+   bool has_source_ooo_dependency = false;
+   for(uint32_t i = 0; i < microOp.getMicroOp()->getSourceRegistersLength(); i++)
+   {
+      dl::Decoder::decoder_reg sourceRegister = microOp.getMicroOp()->getSourceRegister(i);
+      if (Sim()->getDecoder()->is_reg_vector(sourceRegister) && hasOooDependency(sourceRegister)) {
+         has_source_ooo_dependency = true;
+         break;
+      }
+   }
+
    // Intermediate Vector Instruction doent' update producer register
    // VLUXEI case
    // vluxei v24,(a0),v24
@@ -85,6 +97,11 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
             LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
             producers[destinationRegister] = microOp.getSequenceNumber() - microop_length;
             producerLength[destinationRegister] = microop_length;
+            
+            // ReserveFlow: ソースレジスタにooo_dependencyフラグがある場合、デスティネーションレジスタ（ベクトルレジスタのみ）に伝播
+            if (has_source_ooo_dependency && Sim()->getDecoder()->is_reg_vector(destinationRegister)) {
+               setOooDependency(destinationRegister);
+            }
          }  
       } else {
          // Not UnitStride, Gather/Scatter instructions are Issued in same time, then prevent Intermeditae Update
@@ -98,6 +115,11 @@ void RegisterDependencies::setDependencies(DynamicMicroOp& microOp, uint64_t low
          LOG_ASSERT_ERROR(destinationRegister < Sim()->getDecoder()->last_reg(), "Destination register dst[%u] = %u is invalid", i, destinationRegister);
          producers[destinationRegister] = microOp.getSequenceNumber() - microop_length;
          producerLength[destinationRegister] = microop_length;
+         
+         // ReserveFlow: ソースレジスタにooo_dependencyフラグがある場合、デスティネーションレジスタ（ベクトルレジスタのみ）に伝播
+         if (has_source_ooo_dependency && Sim()->getDecoder()->is_reg_vector(destinationRegister)) {
+            setOooDependency(destinationRegister);
+         }
       }
    }
 }
@@ -120,5 +142,45 @@ void RegisterDependencies::clear()
    {
       producers[i] = INVALID_SEQNR;
       producerLength[i] = 0;
+      ooo_dependency[i] = false;
+   }
+}
+
+void RegisterDependencies::setOooDependency(dl::Decoder::decoder_reg reg)
+{
+   if (reg == dl::Decoder::DL_REG_INVALID)
+      return;
+   
+   uint32_t mappedRegister = Sim()->getDecoder()->map_register(reg);
+   ooo_dependency[mappedRegister] = true;
+}
+
+bool RegisterDependencies::hasOooDependency(dl::Decoder::decoder_reg reg)
+{
+   if (reg == dl::Decoder::DL_REG_INVALID)
+      return false;
+   
+   uint32_t mappedRegister = Sim()->getDecoder()->map_register(reg);
+   return ooo_dependency[mappedRegister];
+}
+
+void RegisterDependencies::clearOooDependency(dl::Decoder::decoder_reg reg)
+{
+   if (reg == dl::Decoder::DL_REG_INVALID)
+      return;
+   
+   uint32_t mappedRegister = Sim()->getDecoder()->map_register(reg);
+   ooo_dependency[mappedRegister] = false;
+}
+
+void RegisterDependencies::clearAllOooDependency()
+{
+   // すべてのレジスタをループし、ベクトルレジスタの場合はooo_dependencyフラグをクリア
+   for(uint32_t i = 0; i < Sim()->getDecoder()->last_reg(); i++)
+   {
+      dl::Decoder::decoder_reg reg = static_cast<dl::Decoder::decoder_reg>(i);
+      if (Sim()->getDecoder()->is_reg_vector(reg)) {
+         ooo_dependency[i] = false;
+      }
    }
 }

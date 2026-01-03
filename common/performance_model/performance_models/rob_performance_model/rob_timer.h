@@ -464,6 +464,7 @@ private:
    void manageInstructionReserve (RobEntry *entry);
    void manageInstructionReserveVecPriority(RobEntry *entry);
    void manageInstructionReserveVecAll(RobEntry *entry);
+   void manageInstructionRegisterFlowAnalysis(RobEntry *entry);
 
    typedef struct {
       UInt64 pc;
@@ -494,6 +495,9 @@ private:
    SInt8 m_reserve_nwindow_ordering_counter; // リオーダリング禁止カウンタ
    std::set<UInt64> m_reordering_trigger_table; // リオーダリングトリガーのPC集合. 最大で8エントリまでとする. 最初に挿入されたものを削除する.
    SInt8 m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT; // リオーダリング禁止カウンタの初期値
+
+   // ReserveFlow: キャッシュミスベクトルロード命令のPCテーブル（PC -> 無視フラグ）
+   std::map<UInt64, bool> m_recent_cache_miss_vecload_table;  // キャッシュミスベクトルロード命令のPCテーブル（最大8エントリ）。値がtrueの場合は無視フラグが立っている
 
    void updateReorderingTriggerTable(UInt64 pc) {
       if (m_reordering_trigger_table.size() < 8) {
