@@ -57,6 +57,7 @@ private:
    const UInt64 m_BLOCK_TIMEOUT;  // ブロック検出のタイムアウト（サイクル）
    const UInt64 m_BLOCK_MIN_SIZE;  // ブロックの最小サイズ
    const UInt64 m_PC_JUMP_THRESHOLD;  // PCジャンプの閾値（エントリポイント検出用）
+   bool enable_vector_trace_log;
 };
 
 #endif /* ROB_TIMER_VECTOR_TRACE_H_ */

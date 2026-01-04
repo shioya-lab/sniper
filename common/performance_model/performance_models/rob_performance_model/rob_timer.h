@@ -27,6 +27,7 @@
 
 #define ROB_DEBUG_PRINTF(...) { if (enable_rob_debug_seqnumber || (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle)) { fprintf(stderr, __VA_ARGS__); }}
 #define KANATA_PRINTF(...) { if (m_active_kanata_gen && m_konata_count < m_konata_count_max) { fprintf(m_core->getKanataFp(), __VA_ARGS__); }}
+
 class RobTimer
 {
 private:
@@ -134,6 +135,7 @@ private:
    SubsecondTime time_skipped;
 
    bool enable_rob_timer_log;
+   bool enable_reserve_log;
    UInt64 rob_start_cycle;
    UInt64 rob_debug_seqnumber;
    bool enable_rob_debug_seqnumber = false;

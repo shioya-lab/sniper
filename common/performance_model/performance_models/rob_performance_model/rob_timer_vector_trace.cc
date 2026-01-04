@@ -12,6 +12,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <iomanip>
+#include "config.hpp"
+#include "core_manager.h"
+
+#define VECTOR_TRACE_DEBUG_PRINTF(...) { if (enable_vector_trace_log) { fprintf(stderr, __VA_ARGS__); }}
 
 VectorIssueTracer::VectorIssueTracer()
    : m_block_start_cycle(0)
@@ -21,6 +25,7 @@ VectorIssueTracer::VectorIssueTracer()
    , m_BLOCK_TIMEOUT(1000)
    , m_BLOCK_MIN_SIZE(2)
    , m_PC_JUMP_THRESHOLD(256)  // 256バイト以上のジャンプはエントリポイントとみなす
+   , enable_vector_trace_log(Sim()->getCfg()->getBoolArray("log/enable_vector_trace_log", 0))
 {
 }
 
@@ -46,7 +51,7 @@ void VectorIssueTracer::traceVectorIssue(DynamicMicroOp *uop, UInt64 issue_cycle
       // 分岐命令が登場した = Basic Blockが確定した
       // この時点で m_current_block_pcs には確定したBasic BlockのPCシーケンス（分岐命令を含む）が含まれている
       if (m_current_block_pcs.size() >= m_BLOCK_MIN_SIZE) {
-         std::cout << "PC = " << std::hex << pc << std::dec << ": Detect block pattern (branch): " << m_current_block_pcs.size() << "\n";
+         VECTOR_TRACE_DEBUG_PRINTF ("PC = %08lx: Detect block pattern (branch): %lu\n", pc, m_current_block_pcs.size());
          detectBlockPattern();
       }
       // 新しいブロックの開始（前のブロックをクリア）
@@ -106,7 +111,7 @@ void VectorIssueTracer::traceVectorIssue(DynamicMicroOp *uop, UInt64 issue_cycle
    if (is_new_block) {
       // 前のブロックが存在し、十分なサイズがあれば確定
       if (!m_current_block_pcs.empty() && m_current_block_pcs.size() >= m_BLOCK_MIN_SIZE) {
-         std::cout << "PC = " << std::hex << pc << std::dec << ": Detect block pattern (entry point): " << m_current_block_pcs.size() << "\n";
+         VECTOR_TRACE_DEBUG_PRINTF ("PC = %08lx: Detect block pattern (entry point): %lu\n", pc, m_current_block_pcs.size());
          detectBlockPattern();
       }
       // 新しいブロックの開始
@@ -126,10 +131,7 @@ void VectorIssueTracer::traceVectorIssue(DynamicMicroOp *uop, UInt64 issue_cycle
    if (it_pos == m_current_block_pcs.end()) {
       // 新しいPC
       trace.program_order_pos = m_current_block_pcs.size();
-      std::cout << "New block instruction: " << trace.program_order_pos << " " \
-         << std::hex << pc << std::dec << ": " \
-         << (trace.is_inorder ? "InO" : "OoO") << " " \
-         << "disassembly: " << trace.disassembly.c_str() << "\n";
+      VECTOR_TRACE_DEBUG_PRINTF ("New block instruction: %lu %08lx: %s %s disassembly: %s\n", trace.program_order_pos, pc, (trace.is_inorder ? "InO" : "OoO"), "disassembly: %s\n", trace.disassembly.c_str());
       m_current_block_pcs.push_back(pc);
       m_current_block_is_inorder.push_back(trace.is_inorder);
    } else {
@@ -192,17 +194,9 @@ void VectorIssueTracer::detectBlockPattern()
             break;
          }
       }
-      std::cout << "New pattern [ID=" << pattern.id << "]. Key = " << pattern_key.first.size() << " " << pattern_key.second.size() << " " << pattern.issue_sequence.size() << " instructions\n";
+      VECTOR_TRACE_DEBUG_PRINTF ("New pattern [ID=%lu]. Key = %lu %lu %lu instructions\n", pattern.id, pattern_key.first.size(), pattern_key.second.size(), pattern.issue_sequence.size());
       for (size_t i = 0; i < pattern.issue_sequence.size(); ++i) {
-         std::cout << "  [" << std::setw(2) << std::setfill('0') << i << \
-            "] PC: " << std::hex << pattern.pc_sequence[i] << std::dec << " ";
-            std::cout << " " << (m_current_block_is_inorder[i] ? "InO" : "OoO");
-            for (const auto& trace : m_vector_issue_trace) {
-            if (trace.pc == pattern.pc_sequence[i]) {
-               std::cout << "    " << trace.disassembly.c_str() << "\n";
-               break;
-            }
-         }
+         VECTOR_TRACE_DEBUG_PRINTF ("  [%lu] PC: %08lx %s\n", i, pattern.pc_sequence[i], (m_current_block_is_inorder[i] ? "InO" : "OoO"));
       }
       m_issue_patterns[pattern_key] = pattern;
    } else {

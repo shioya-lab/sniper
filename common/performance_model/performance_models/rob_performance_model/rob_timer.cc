@@ -85,6 +85,7 @@ RobTimer::RobTimer(
       , will_skip(false)
       , time_skipped(SubsecondTime::Zero())
       , enable_rob_timer_log(Sim()->getCfg()->getBoolArray("log/enable_rob_timer_log", core->getId()))
+      , enable_reserve_log(Sim()->getCfg()->getBoolArray("log/enable_reserve_log", core->getId()))
       , rob_start_cycle(Sim()->getCfg()->getIntArray("log/rob_debug_start_cycle", core->getId()))
       , rob_debug_seqnumber (Sim()->getCfg()->getIntArray("log/rob_debug_seqnumber", core->getId()))
       , enable_gatherscatter_log(Sim()->getCfg()->getBoolArray("log/enable_gatherscatter_log", core->getId()))

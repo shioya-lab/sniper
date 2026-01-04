@@ -2,6 +2,8 @@
 #include "rob_timer.h"
 #include <cstdio>
 
+#define RESERVE_DEBUG_PRINTF(...) { if (enable_reserve_log) { fprintf(stderr, __VA_ARGS__); }}
+
 void RobTimer::manageInstructionReserve (RobEntry *entry)
 {
   LOG_ASSERT_ERROR(!entry->uop->isReserveInst() &&
@@ -39,8 +41,8 @@ void RobTimer::RemovePriorityQueue (RobEntry *entry)
   }
   m_priority_manager->removePriority(entry_pc);
   priority_remove_queue_it->erase(remove_it);
-  // fprintf (stderr, "size of priority_remove_queue: %ld\n", priority_remove_queue_it->size());
-  fprintf (stderr, "%ld: Priority remove propagation phase: from PC=%08lx\n",
+  // RESERVE_DEBUG_PRINTF ("size of priority_remove_queue: %ld\n", priority_remove_queue_it->size());
+  RESERVE_DEBUG_PRINTF ("%ld: Priority remove propagation phase: from PC=%08lx\n",
                    now.getCycleCount(),
                    entry_pc);
 
@@ -64,7 +66,7 @@ void RobTimer::RemovePriorityQueue (RobEntry *entry)
       }
       if (same_it == priority_remove_queue_it->end()) {
         priority_remove_queue_it->push_back(wait_entry_pc);
-        fprintf(stderr, "%ld: idx=%ld, Priority Remove Candidate: PC=%08lx\n",
+        RESERVE_DEBUG_PRINTF("%ld: idx=%ld, Priority Remove Candidate: PC=%08lx\n",
                         now.getCycleCount(), idx, wait_entry_pc);
       }
     }
@@ -80,7 +82,7 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
     SInt8 counter = m_mem_stats->getSaturationCounter(pc);
     // Saturation Counterが閾値以上の場合はキャッシュミスと判定
     if (counter >= m_MISS_RATE_THRESHOLD) {
-      fprintf(stderr, "%ld: VecReserveFlow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d)\n",
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d)\n",
               now.getCycleCount(), pc, counter, m_MISS_RATE_THRESHOLD);
       
       // 新しい命令がインオーダトリガ命令になる場合、テーブル内の自分以外の命令に無視フラグを設定
@@ -89,7 +91,7 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
         if (table_pc != pc) {
           // 自分以外の命令に無視フラグを設定
           it->second = true;
-          fprintf(stderr, "%ld: VecReserveFlow: Setting ignore flag for PC=%08lx (new trigger PC=%08lx)\n",
+          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx (new trigger PC=%08lx)\n",
                   now.getCycleCount(), table_pc, pc);
         }
       }
@@ -99,11 +101,11 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
         // テーブルが満杯の場合、古いPCを削除（最初の要素を削除）
         UInt64 removed_pc = m_recent_cache_miss_vecload_table.begin()->first;
         m_recent_cache_miss_vecload_table.erase(m_recent_cache_miss_vecload_table.begin());
-        fprintf(stderr, "%ld: VecReserveFlow: Table full, removing oldest PC=%08lx (table size before removal: %zu)\n",
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Table full, removing oldest PC=%08lx (table size before removal: %zu)\n",
                 now.getCycleCount(), removed_pc, m_recent_cache_miss_vecload_table.size() + 1);
       }
       m_recent_cache_miss_vecload_table[pc] = false;  // 新規追加時は無視フラグはfalse
-      fprintf(stderr, "%ld: VecReserveFlow: Added PC=%08lx to table (table size: %zu)\n",
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Added PC=%08lx to table (table size: %zu)\n",
               now.getCycleCount(), pc, m_recent_cache_miss_vecload_table.size());
     }
   }
@@ -116,7 +118,7 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
       !it->second &&  // 無視フラグが立っていない（false）場合のみ
       entry->uop->getMicroOp()->getDestinationRegistersLength() > 0) {
     
-    fprintf(stderr, "%ld: VecReserveFlow: Setting ooo_dependency flag for PC=%08lx (trigger instruction)\n",
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ooo_dependency flag for PC=%08lx (trigger instruction)\n",
             now.getCycleCount(), pc);
     
     // デスティネーションレジスタ（ベクトルレジスタのみ）にフラグを設定
@@ -124,13 +126,13 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
       dl::Decoder::decoder_reg dest_reg = entry->uop->getMicroOp()->getDestinationRegister(i);
       if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
         registerDependencies->setOooDependency(dest_reg);
-        fprintf(stderr, "%ld: VecReserveFlow:   Set ooo_dependency for vector register %u\n",
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:   Set ooo_dependency for vector register %u\n",
                 now.getCycleCount(), dest_reg);
       }
     }
   } else if (it != m_recent_cache_miss_vecload_table.end() && it->second) {
     // デバッグ: 無視フラグが立っている場合
-    fprintf(stderr, "%ld: VecReserveFlow: PC=%08lx is in table but ignored (ignore flag is set)\n",
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx is in table but ignored (ignore flag is set)\n",
             now.getCycleCount(), pc);
   }
 
@@ -142,14 +144,14 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
     dl::Decoder::decoder_reg source_reg = entry->uop->getMicroOp()->getSourceRegister(i);
     if (Sim()->getDecoder()->is_reg_vector(source_reg) && registerDependencies->hasOooDependency(source_reg)) {
       should_inorder = true;
-      fprintf(stderr, "%ld: VecReserveFlow: PC=%08lx depends on v%u with ooo_dependency flag, forcing in-order execution\n",
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx depends on v%u with ooo_dependency flag, forcing in-order execution\n",
               now.getCycleCount(), pc_check, source_reg - 64);
       break;
     }
   }
   if (should_inorder) {
     entry->uop->setReserveInst();  // インオーダ実行を強制
-    fprintf(stderr, "%ld: VecReserveFlow: PC=%08lx set to Reserve (in-order execution)\n",
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx set to Reserve (in-order execution)\n",
             now.getCycleCount(), pc_check);
   }
 }
@@ -163,14 +165,14 @@ void RobTimer::PropagateHighPriorityBackward (const MicroOp* uop)
 {
   // size_t reg_idx = 0;
   // for (auto it = m_vect_dest_reg_table.rbegin(); it != m_vect_dest_reg_table.rend(); ++it, ++reg_idx) {
-  //   fprintf (stderr, "m_vect_dest_reg_table[%ld]: PC=%08lx, dest_reg=%d\n",
+  //   RESERVE_DEBUG_PRINTF ("m_vect_dest_reg_table[%ld]: PC=%08lx, dest_reg=%d\n",
   //     reg_idx, it->pc, it->dest_reg);
   // }
   auto uop_pc = uop->getInstruction()->getAddress();
   // ソース・オペランドを生成する命令をm_vec_histから探索して、優先度をHighにする。
   for (size_t idx = 0; idx < uop->getSourceRegistersLength(); ++idx) {
     dl::Decoder::decoder_reg src_reg = uop->getSourceRegister(idx);
-    // fprintf (stderr, " src_reg[%ld] = %d\n", idx, src_reg);
+    // RESERVE_DEBUG_PRINTF (" src_reg[%ld] = %d\n", idx, src_reg);
     if (Sim()->getDecoder()->is_reg_vector(src_reg)) {
       for (auto it = m_vect_dest_reg_table.rbegin(); it != m_vect_dest_reg_table.rend(); ++it) {
         if (it->pc != uop_pc && it->dest_reg == src_reg) {
@@ -179,14 +181,14 @@ void RobTimer::PropagateHighPriorityBackward (const MicroOp* uop)
             break;
           }
           // for (auto jt = m_backward_dep_table.begin(); jt != m_backward_dep_table.end(); ++jt) {
-          //   fprintf (stderr, "m_backward_dep_table[%ld]: PC=%08lx\n", std::distance(jt, m_backward_dep_table.begin()), *jt);
+          //   RESERVE_DEBUG_PRINTF ("m_backward_dep_table[%ld]: PC=%08lx\n", std::distance(jt, m_backward_dep_table.begin()), *jt);
           // }
           if (std::find(m_backward_dep_table.begin(), m_backward_dep_table.end(), wait_entry_pc) == m_backward_dep_table.end()) {
             if (m_backward_dep_table.size() >= m_BACKWORD_DEP_TABLE_SIZE) {
               m_backward_dep_table.pop_front();
             }
             m_backward_dep_table.push_back(wait_entry_pc);
-            fprintf(stderr, "%ld: %s idx=%ld(%s), Priority High Candidate: PC=%08lx\n",
+            RESERVE_DEBUG_PRINTF("%ld: %s idx=%ld(%s), Priority High Candidate: PC=%08lx\n",
                             now.getCycleCount(), uop->getInstruction()->getDisassembly().c_str(), idx, Sim()->getDecoder()->reg_name(src_reg), wait_entry_pc);
             break;
           }
@@ -247,7 +249,7 @@ void RobTimer::PropagatePriorityFromForward (RobEntry *entry)
          waiting_entry->uop
              ->isStrongPriorityInst())) { // レイテンシが長いであろう超高優先度命令に依存する命令はLPIQに入れる
       entry->uop->setReserveInst();
-      // fprintf(stderr, "Set Reserve Priority PC=%08lx, uop_idx=%ld %s\n",
+      // RESERVE_DEBUG_PRINTF("Set Reserve Priority PC=%08lx, uop_idx=%ld %s\n",
       //                 entry->uop->getMicroOp()->getInstruction()->getAddress(),
       //                 entry->uop->getSequenceNumber(),
       //                 entry->uop->getMicroOp()->toShortString().c_str());
@@ -296,13 +298,13 @@ void RobTimer::manageInstructionParOOO(RobEntry *entry)
   // 自分のエントリが優先命令さ削除対象キューに入っていれば、削除する
   RemovePriorityQueue(entry);
 
-  // fprintf (stderr, "manageIsntructionPAROOO() PC=%08lx\n", entry_pc);
+  // RESERVE_DEBUG_PRINTF ("manageIsntructionPAROOO() PC=%08lx\n", entry_pc);
   // m_backward_dep_tableに自分のPCが含まれていれば、優先命令化する。
   if (std::find(m_backward_dep_table.begin(), m_backward_dep_table.end(), entry_pc) != m_backward_dep_table.end()) {
     m_priority_manager->setPriority(entry_pc, PriorityManager::inst_priority_t::High);
     m_priority_manager->AddHighInst(entry_pc);
     entry->uop->setStrongPriorityInst();
-    fprintf (stderr, "%ld: Priority backpropagation: PC=%08lx %s\n",
+    RESERVE_DEBUG_PRINTF ("%ld: Priority backpropagation: PC=%08lx %s\n",
                      now.getCycleCount(), entry_pc, entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
     m_backward_dep_table.erase(std::remove(m_backward_dep_table.begin(), m_backward_dep_table.end(), entry_pc), m_backward_dep_table.end());
     // PropagateHighPriorityBackward(entry->uop->getMicroOp());
@@ -380,7 +382,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
       // downcounter が 0になっていないPCを、reordering trigger table から削除する
       for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end();) {
         if (*it != entry_pc && m_mem_stats->getRebuildDowncounter(*it) > 0) {
-          fprintf(stderr, "%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
+          RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
                   now.getCycleCount(), *it);
           it = m_reordering_trigger_table.erase(it);
         } else {
@@ -394,7 +396,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
         // ダウンカウンタの初期値を設定（4）
         const SInt8 REBUILD_DOWNCOUNTER_INIT = 4;
         m_mem_stats->setRebuildDowncounter(entry_pc, REBUILD_DOWNCOUNTER_INIT);
-        fprintf(stderr, "%ld: VecReserveNWindow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
                 now.getCycleCount(), entry_pc, counter, m_MISS_RATE_THRESHOLD, REBUILD_DOWNCOUNTER_INIT);
       }
     }
@@ -408,20 +410,20 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
     UInt64 rebuild_pc = result.second;
     
     for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end(); ++it) {
-      fprintf(stderr, "%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
+      RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
               now.getCycleCount(), *it, m_mem_stats->getRebuildDowncounter(*it));
     }
 
     // いずれかのPCのダウンカウンタが0になったら、リオーダリングリストを再構築
     if (any_reached_zero) { 
-      fprintf(stderr, "%ld: VecReserveNWindow: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
               now.getCycleCount(), rebuild_pc);
       // downcounter が 0になっていないPCを、reordering trigger table から削除する
       for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end();) {
-        fprintf(stderr, "%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
+        RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
                 now.getCycleCount(), *it, m_mem_stats->getRebuildDowncounter(*it));
         if (m_mem_stats->getRebuildDowncounter(*it) > 0) {
-          fprintf(stderr, "%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
+          RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
                   now.getCycleCount(), *it);
           it = m_reordering_trigger_table.erase(it);
         } else {
@@ -439,7 +441,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   } else if (m_reserve_nwindow_ordering_counter > 0) {
     // リオーダリング禁止
     entry->uop->setReserveInst();
-    fprintf(stderr, "%ld: VecReserveNWindow: PC=%08lx is Reserve (now window counter = %d)\n",
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx is Reserve (now window counter = %d)\n",
             now.getCycleCount(), entry_pc, m_reserve_nwindow_ordering_counter);
 
     if (uop->isLast()) {
@@ -460,9 +462,9 @@ void RobTimer::propagatePriInst (RobEntry *entry, pri_upd_result_t result)
 
   // 優先度の伝搬:
   // 自分が即時割り当ての命令であれば、自分が依存している命令も即時割り当ての命令でなければならない
-  fprintf (stderr, "propagatePriInst() ");
+  RESERVE_DEBUG_PRINTF ("propagatePriInst() ");
   for (size_t idx = 0; idx < entry->uop->getInitialDependenciesLength(); ++idx) {
-    fprintf (stderr, " %ld", idx);
+    RESERVE_DEBUG_PRINTF (" %ld", idx);
     RobEntry *waiting_entry =
         this->findEntryBySequenceNumber(entry->uop->getInitialDependency(idx));
 
@@ -478,7 +480,7 @@ void RobTimer::propagatePriInst (RobEntry *entry, pri_upd_result_t result)
           m_priority_manager->getPriority(wait_entry_pc) != PriorityManager::inst_priority_t::High) {
         m_priority_manager->setPriority(
             wait_entry_pc, PriorityManager::inst_priority_t::High);
-        fprintf (stderr,
+        RESERVE_DEBUG_PRINTF (
             "%ld: Priority backpropagation: Strong propagated from "
             "PC=%08lx to PC=%08lx\n",
             now.getCycleCount(),
@@ -489,7 +491,7 @@ void RobTimer::propagatePriInst (RobEntry *entry, pri_upd_result_t result)
                  m_priority_manager->getPriority(wait_entry_pc) == PriorityManager::inst_priority_t::High) {
         m_priority_manager->setPriority(
             wait_entry_pc, PriorityManager::inst_priority_t::High);
-        fprintf (stderr,
+        RESERVE_DEBUG_PRINTF (
             "%ld: Priority backpropagation: Strong propagated from "
             "PC=%08lx to PC=%08lx\n",
             now.getCycleCount(),
@@ -499,5 +501,5 @@ void RobTimer::propagatePriInst (RobEntry *entry, pri_upd_result_t result)
       }
     }
   }
-  fprintf (stderr, "\n");
+  RESERVE_DEBUG_PRINTF ("\n");
 }
