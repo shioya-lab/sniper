@@ -156,6 +156,20 @@ public:
         return it->second.rebuild_downcounter;
     }
 
+    // 最小ダウンカウンタのPCを取得
+    UInt64 getMinRebuildDowncounterPC() {
+        UInt64 min_pc = 0;
+        SInt8 min_counter = 100;
+        for (auto& pair : m_mem_stats) {
+            auto& stats = pair.second;
+            if (stats.rebuild_downcounter > 0 && stats.rebuild_downcounter < min_counter) {
+                min_counter = stats.rebuild_downcounter;
+                min_pc = stats.pc;
+            }
+        }
+        return min_pc;
+    }
+
     // すべてのPCのダウンカウンタ（値>0）をデクリメントし、0になったPCがあるかどうかを返す
     std::pair<bool, UInt64> decrementAllRebuildDowncounters() {
         bool any_reached_zero = false;
