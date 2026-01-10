@@ -682,6 +682,17 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       manageInstructionReserve(entry); // 命令の予約を制御する
 
+      if (m_vector_issue_tracer) {
+         m_vector_issue_tracer->traceVectorIssue(entry->uop, now.getCycleCount());
+      }
+
+      // ReserveFlow: 分岐命令時、すべてのベクトルレジスタのooo_dependencyフラグをクリア
+      if (m_vec_reserve_policy == VecReserveFlow && entry->uop->getMicroOp()->isBranch()) {
+         RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n", 
+            now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
+         registerDependencies->clearAllOooDependency();
+      }
+
       if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad() &&
           !entry->uop->getMicroOp()->isVector()) // In Vector, remove dependency for forwarding not support.
       {
@@ -1110,23 +1121,23 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
          if (uop.isLast())
             instrs_dispatched++;
 
-         std::list<UInt64> *priority_add_queue = m_priority_manager->getPriorityAddQueue();
-         if (std::find(priority_add_queue->begin(), priority_add_queue->end(), uop.getMicroOp()->getInstruction()->getAddress()) != priority_add_queue->end()) {
-            PropagateHighPriorityBackward(uop.getMicroOp());
-            priority_add_queue->remove(uop.getMicroOp()->getInstruction()->getAddress());
-         }
+         // std::list<UInt64> *priority_add_queue = m_priority_manager->getPriorityAddQueue();
+         // if (std::find(priority_add_queue->begin(), priority_add_queue->end(), uop.getMicroOp()->getInstruction()->getAddress()) != priority_add_queue->end()) {
+         //    PropagateHighPriorityBackward(uop.getMicroOp());
+         //    priority_add_queue->remove(uop.getMicroOp()->getInstruction()->getAddress());
+         // }
 
-         // if Vector instruction, record the vector register in program order
-         if (uop.getMicroOp()->isVector() && uop.isFirst() && uop.getMicroOp()->getDestinationRegistersLength() > 0) {
-            dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
-            if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
-               // Maintain maximum size constraint for vector register history
-               if (m_vect_dest_reg_table.size() >= m_MAX_VECTOR_REG_HISTORY_SIZE) {
-                  m_vect_dest_reg_table.pop_front();
-               }
-               m_vect_dest_reg_table.push_back(vec_reg_hist_entry_t{uop.getMicroOp()->getInstruction()->getAddress(), dest_reg});
-            }
-         }
+         // // if Vector instruction, record the vector register in program order
+         // if (uop.getMicroOp()->isVector() && uop.isFirst() && uop.getMicroOp()->getDestinationRegistersLength() > 0) {
+         //    dl::Decoder::decoder_reg dest_reg = uop.getMicroOp()->getDestinationRegister(0);
+         //    if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
+         //       // Maintain maximum size constraint for vector register history
+         //       if (m_vect_dest_reg_table.size() >= m_MAX_VECTOR_REG_HISTORY_SIZE) {
+         //          m_vect_dest_reg_table.pop_front();
+         //       }
+         //       m_vect_dest_reg_table.push_back(vec_reg_hist_entry_t{uop.getMicroOp()->getInstruction()->getAddress(), dest_reg});
+         //    }
+         // }
 
          // If uop is already ready, we may need to issue it in the following cycle
          entry->ready = std::max(entry->ready, (now + 1ul).getElapsedTime());
@@ -1134,10 +1145,6 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
 
          ROB_DEBUG_PRINTF ("DISPATCH uop_idx=%ld %s", entry->uop->getSequenceNumber(), entry->uop->getMicroOp()->toShortString().c_str());
 
-         if (m_vector_issue_tracer) {
-            m_vector_issue_tracer->traceVectorIssue(entry->uop, now.getCycleCount());
-         }
-   
          if (isUseNonpriVector (m_vec_reserve_policy)) {
             ROB_DEBUG_PRINTF (" Priority: %s\n", entry->uop->isReserveInst() ? "RESERVE" :
                                                  entry->uop->isStrongPriorityInst() ? "STRONG" :
@@ -1150,18 +1157,14 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             LOG_ASSERT_ERROR(will_skip == false, "Cycle would have been skipped but stuff happened");
          #endif
 
+
          // Mispredicted branch
          if (uop.getMicroOp()->isBranch() && uop.isBranchMispredicted())
          {
             frontend_stalled_until = SubsecondTime::MaxTime();
             ROB_DEBUG_PRINTF ("-- branch mispredict\n");
             cpiFrontEnd = &m_cpiBranchPredictor;
-            
-            // ReserveFlow: 分岐予測失敗時、すべてのベクトルレジスタのooo_dependencyフラグをクリア
-            if (m_vec_reserve_policy == VecReserveFlow) {
-               registerDependencies->clearAllOooDependency();
-            }
-            
+                        
             break;
          }
 
