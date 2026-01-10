@@ -134,7 +134,7 @@ class RegisterManager
    AllocResult_t AllocateVectorRegister (DynamicMicroOp *uop) {
      if (m_vec_reserve_policy == VecReserveParOOO ||
          m_vec_reserve_policy == VecReserveNWindow ||
-         m_vec_reserve_policy == VecReserveFlow) {
+         m_vec_reserve_policy == VecReserveFlow ||
          m_vec_reserve_policy == VecReserveStatic) {
        if (uop->isUseNormalRegisterGroup()) {
          return AllocateNormalVecRegister(uop);
