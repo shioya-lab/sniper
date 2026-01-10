@@ -131,7 +131,12 @@ void VectorIssueTracer::traceVectorIssue(DynamicMicroOp *uop, UInt64 issue_cycle
    if (it_pos == m_current_block_pcs.end()) {
       // 新しいPC
       trace.program_order_pos = m_current_block_pcs.size();
-      VECTOR_TRACE_DEBUG_PRINTF ("New block instruction: %lu %08lx: %s %s disassembly: %s\n", trace.program_order_pos, pc, (trace.is_inorder ? "InO" : "OoO"), "disassembly: %s\n", trace.disassembly.c_str());
+      VECTOR_TRACE_DEBUG_PRINTF ("New block instruction: %lu %08lx(%ld): %s disassembly: %s\n", 
+         trace.program_order_pos, 
+         pc, 
+         seq_num,
+         (trace.is_inorder ? "InO" : "OoO"), 
+         trace.disassembly.c_str());
       m_current_block_pcs.push_back(pc);
       m_current_block_is_inorder.push_back(trace.is_inorder);
    } else {
