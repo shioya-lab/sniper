@@ -2,8 +2,6 @@
 #include "rob_timer.h"
 #include <cstdio>
 
-#define RESERVE_DEBUG_PRINTF(...) { if (enable_reserve_log) { fprintf(stderr, __VA_ARGS__); }}
-
 void RobTimer::manageInstructionReserve (RobEntry *entry)
 {
   LOG_ASSERT_ERROR(!entry->uop->isReserveInst() &&
@@ -77,63 +75,78 @@ void RobTimer::RemovePriorityQueue (RobEntry *entry)
 void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
 {
   // キャッシュミス検出時にPCをテーブルに追加（dispatch付近）
-  if (entry->uop->getMicroOp()->isVecLoad()) {
+  if (entry->uop->getMicroOp()->isVecLoad() && entry->uop->isLast()) {
     UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
     SInt8 counter = m_mem_stats->getSaturationCounter(pc);
     // Saturation Counterが閾値以上の場合はキャッシュミスと判定
-    if (counter >= m_MISS_RATE_THRESHOLD) {
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d)\n",
-              now.getCycleCount(), pc, counter, m_MISS_RATE_THRESHOLD);
+    if (counter >= m_MISS_RATE_THRESHOLD && 
+        m_regflow_ino_trigger_table.find(pc) == m_regflow_ino_trigger_table.end()) {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: High miss-rate detected at PC=%08lx(SeqID=%ld) (counter=%d, threshold=%d)\n",
+              now.getCycleCount(), pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD);
       
       // 新しい命令がインオーダトリガ命令になる場合、テーブル内の自分以外の命令に無視フラグを設定
-      for (auto it = m_recent_cache_miss_vecload_table.begin(); it != m_recent_cache_miss_vecload_table.end(); ++it) {
+      for (auto it = m_regflow_ino_trigger_table.begin(); it != m_regflow_ino_trigger_table.end(); ++it) {
         UInt64 table_pc = it->first;
-        if (table_pc != pc) {
-          // 自分以外の命令に無視フラグを設定
+        if (table_pc != pc && (pc <= table_pc + 0x10) && (pc >= table_pc - 0x10)) {
+          // 自分以外の命令に無視フラグを設定 (レンジ内)
           it->second = true;
-          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx (new trigger PC=%08lx)\n",
-                  now.getCycleCount(), table_pc, pc);
+          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx(SeqID=%ld) (new trigger PC=%08lx(SeqID=%ld))\n",
+                  now.getCycleCount(), table_pc, entry->uop->getSequenceNumber(), pc, entry->uop->getSequenceNumber());
         }
       }
       
       // PCをテーブルに追加（OoO実行の条件開始のトリガとして、無視フラグはfalse）
-      if (m_recent_cache_miss_vecload_table.size() >= 8) {
+      if (m_regflow_ino_trigger_table.size() >= 8) {
         // テーブルが満杯の場合、古いPCを削除（最初の要素を削除）
-        UInt64 removed_pc = m_recent_cache_miss_vecload_table.begin()->first;
-        m_recent_cache_miss_vecload_table.erase(m_recent_cache_miss_vecload_table.begin());
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Table full, removing oldest PC=%08lx (table size before removal: %zu)\n",
-                now.getCycleCount(), removed_pc, m_recent_cache_miss_vecload_table.size() + 1);
+        UInt64 removed_pc = m_regflow_ino_trigger_table.begin()->first;
+        m_regflow_ino_trigger_table.erase(m_regflow_ino_trigger_table.begin());
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Table full, removing oldest PC=%08lx(SeqID=%ld) (table size before removal: %zu)\n",
+                now.getCycleCount(), removed_pc, entry->uop->getSequenceNumber(), m_regflow_ino_trigger_table.size() + 1);
       }
-      m_recent_cache_miss_vecload_table[pc] = false;  // 新規追加時は無視フラグはfalse
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Added PC=%08lx to table (table size: %zu)\n",
-              now.getCycleCount(), pc, m_recent_cache_miss_vecload_table.size());
+      m_regflow_ino_trigger_table[pc] = false;  // 新規追加時は無視フラグはfalse
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Added PC=%08lx(SeqID=%ld) to table (table size: %zu)\n",
+              now.getCycleCount(), pc, entry->uop->getSequenceNumber(), m_regflow_ino_trigger_table.size());
+      for (auto it = m_regflow_ino_trigger_table.begin(); it != m_regflow_ino_trigger_table.end(); ++it) {
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Table: PC=%08lx(IgnoreFlag=%d)\n",
+                now.getCycleCount(), it->first, it->second);
+      }
     }
   }
 
   // ReserveFlow: テーブルに含まれるPCの命令が発見された場合、レジスタフラグを設定（OoO実行の条件開始）
   UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
   // テーブルに含まれ、かつ無視フラグが立っていない場合のみ、レジスタフラグを設定
-  auto it = m_recent_cache_miss_vecload_table.find(pc);
-  if (it != m_recent_cache_miss_vecload_table.end() &&
+  auto it = m_regflow_ino_trigger_table.find(pc);
+  if (it != m_regflow_ino_trigger_table.end() &&
       !it->second &&  // 無視フラグが立っていない（false）場合のみ
       entry->uop->getMicroOp()->getDestinationRegistersLength() > 0) {
     
-    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ooo_dependency flag for PC=%08lx (trigger instruction)\n",
-            now.getCycleCount(), pc);
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ooo_dependency flag for PC=%08lx(SeqID=%ld) (trigger instruction)\n",
+            now.getCycleCount(), pc, entry->uop->getSequenceNumber());
     
     // デスティネーションレジスタ（ベクトルレジスタのみ）にフラグを設定
     for (uint32_t i = 0; i < entry->uop->getMicroOp()->getDestinationRegistersLength(); i++) {
       dl::Decoder::decoder_reg dest_reg = entry->uop->getMicroOp()->getDestinationRegister(i);
       if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
         registerDependencies->setOooDependency(dest_reg);
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:   Set ooo_dependency for vector register %u\n",
-                now.getCycleCount(), dest_reg);
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:   Set ooo_dependency for vector register v%02u\n",
+                now.getCycleCount(), dest_reg - 64);
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:    ooo_dependency: ", now.getCycleCount());
+        for (int j = 64; j < 96; j++) {
+          RESERVE_DEBUG_PRINTF("v%02u: %d ", j - 64, registerDependencies->hasOooDependency(j));
+          if ((j - 64) % 8 == 7) {
+            RESERVE_DEBUG_PRINTF("\n                          ");
+          }
+        }
+        RESERVE_DEBUG_PRINTF("\n");
       }
     }
-  } else if (it != m_recent_cache_miss_vecload_table.end() && it->second) {
+    return;
+  } else if (it != m_regflow_ino_trigger_table.end() && it->second) {
     // デバッグ: 無視フラグが立っている場合
-    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx is in table but ignored (ignore flag is set)\n",
-            now.getCycleCount(), pc);
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) is in table but ignored (ignore flag is set)\n",
+            now.getCycleCount(), pc, entry->uop->getSequenceNumber());
+    return;
   }
 
   // インオーダ/アウトオブオーダ判定
@@ -144,15 +157,34 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
     dl::Decoder::decoder_reg source_reg = entry->uop->getMicroOp()->getSourceRegister(i);
     if (Sim()->getDecoder()->is_reg_vector(source_reg) && registerDependencies->hasOooDependency(source_reg)) {
       should_inorder = true;
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx depends on v%u with ooo_dependency flag, forcing in-order execution\n",
-              now.getCycleCount(), pc_check, source_reg - 64);
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) depends on v%u with ooo_dependency flag, forcing in-order execution\n",
+              now.getCycleCount(), pc_check, entry->uop->getSequenceNumber(), source_reg - 64);
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:    ooo_dependency: ", now.getCycleCount());
+      for (int j = 64; j < 96; j++) {
+        RESERVE_DEBUG_PRINTF("v%02u: %d ", j - 64, registerDependencies->hasOooDependency(j));
+        if ((j - 64) % 8 == 7) {
+          RESERVE_DEBUG_PRINTF("\n                                         ");
+        }
+      }
+      RESERVE_DEBUG_PRINTF("\n");
+      // デスティネーションレジスタ（ベクトルレジスタのみ）にフラグを設定
+      for (uint32_t i = 0; i < entry->uop->getMicroOp()->getDestinationRegistersLength(); i++) {
+        dl::Decoder::decoder_reg dest_reg = entry->uop->getMicroOp()->getDestinationRegister(i);
+        if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
+          registerDependencies->setOooDependency(dest_reg);
+        }
+      }
       break;
     }
   }
+
   if (should_inorder) {
     entry->uop->setReserveInst();  // インオーダ実行を強制
-    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx set to Reserve (in-order execution)\n",
-            now.getCycleCount(), pc_check);
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) set to Reserve (in-order execution)\n",
+            now.getCycleCount(), pc_check, entry->uop->getSequenceNumber());
+  // } else {
+  //   RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) is OoO (out-of-order execution)\n",
+  //           now.getCycleCount(), pc_check, entry->uop->getSequenceNumber());
   }
 }
 
@@ -360,82 +392,61 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   const MicroOp *uop = entry->uop->getMicroOp();
   UInt64 entry_pc = uop->getInstruction()->getAddress();
 
-  if (uop->isBranch()) {  
-    // Backwardへの分岐の場合
-    // Temporary: PCの方向がBackwardかどうかは、SIFTのトレースでは分からないので、とりあえず全部の分岐命令で処理している
+  const SInt8 REBUILD_DOWNCOUNTER_INIT = 4;
+
+  if (entry->uop->getMicroOp()->isBranch()) {
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch executed %08lx: Trigger PC\n",
+            now.getCycleCount(), entry_pc);
+    UInt64 trigger_pc = 0;
+    trigger_pc = m_mem_stats->getMinRebuildDowncounterPC();
+    if (trigger_pc != 0) {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Trigger PC=%08lx (min_counter=%d)\n",
+              now.getCycleCount(), trigger_pc, m_mem_stats->getRebuildDowncounter(trigger_pc));
+      UpdateNWindowTriggerTable(trigger_pc); // 新しいトリガ命令を追加
+    }
     m_reserve_nwindow_ordering_counter = 0; // リオーダリングを有効にする
     return;
   }
 
-  // ベクトル命令でない場合は何もしない
-  if (!uop->isVector()) {
-    return;
-  }
-
-  bool is_vec_load = (uop->getSubtype() == MicroOp::UOP_SUBTYPE_VEC_LOAD);
-
   // ベクトルロード命令の場合、キャッシュミス率をチェックしてダウンカウンタを初期化
-  if (is_vec_load) {
+  if (entry->uop->getMicroOp()->isVecLoad() && entry->uop->isLast()) {
     SInt8 counter = m_mem_stats->getSaturationCounter(entry_pc);
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx(%ld) counter=%d, threshold=%d\n",
+      now.getCycleCount(), entry_pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD);
     // 飽和カウンタが閾値以上の場合、そのPCのダウンカウンタを初期化（すぐには再構築しない）
-    if (counter >= m_MISS_RATE_THRESHOLD) {
-      // downcounter が 0になっていないPCを、reordering trigger table から削除する
-      for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end();) {
-        if (*it != entry_pc && m_mem_stats->getRebuildDowncounter(*it) > 0) {
-          RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
-                  now.getCycleCount(), *it);
-          it = m_reordering_trigger_table.erase(it);
-        } else {
-          ++it;
-        }
-      }
+    if (counter >= m_MISS_RATE_THRESHOLD && 
+      m_nwindow_ino_trigger_table.find(entry_pc) == m_nwindow_ino_trigger_table.end()) {
       // 自分以外のダウンカウンタをクリア
       m_mem_stats->clearAllRebuildDowncounters();
-      // ダウンカウンタが既に0でない場合のみ初期化（既に設定されている場合は上書きしない）
-      if (m_mem_stats->getRebuildDowncounter(entry_pc) == 0) {
-        // ダウンカウンタの初期値を設定（4）
-        const SInt8 REBUILD_DOWNCOUNTER_INIT = 4;
-        m_mem_stats->setRebuildDowncounter(entry_pc, REBUILD_DOWNCOUNTER_INIT);
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: High miss-rate detected at PC=%08lx (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
-                now.getCycleCount(), entry_pc, counter, m_MISS_RATE_THRESHOLD, REBUILD_DOWNCOUNTER_INIT);
-      }
+      // ダウンカウンタの初期値を設定（4）
+      m_mem_stats->setRebuildDowncounter(entry_pc, REBUILD_DOWNCOUNTER_INIT);
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: High miss-rate detected at PC=%08lx(%ld) (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
+              now.getCycleCount(), entry_pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD, REBUILD_DOWNCOUNTER_INIT);
+    } else if (counter < -m_MISS_RATE_THRESHOLD) {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx(%ld) counter=%d, threshold=%d, clear trigger table\n",
+        now.getCycleCount(), entry_pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD);
+      ClearNWindowTriggerTable(entry_pc);
+      // テーブルから削除する際は、カウンタもリセットして状態を同期させる
+      m_reserve_nwindow_ordering_counter = 0;
     }
   }
 
-  // ベクトル命令が通過するたびに、すべてのPCのダウンカウンタ（値>0）をデクリメント
-  if (uop->isVector() && uop->isLast()) {
+  // 命令が通過するたびに、すべてのPCのダウンカウンタ（値>0）をデクリメント
+  if (uop->isLast()) {
     // すべてのPCのダウンカウンタ（値>0）をデクリメントし、0になったPCがあるかチェック
     std::pair<bool, UInt64> result = m_mem_stats->decrementAllRebuildDowncounters();
     bool any_reached_zero = result.first;
-    UInt64 rebuild_pc = result.second;
+    UInt64 trigger_pc = result.second;
     
-    for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end(); ++it) {
-      RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
-              now.getCycleCount(), *it, m_mem_stats->getRebuildDowncounter(*it));
-    }
-
     // いずれかのPCのダウンカウンタが0になったら、リオーダリングリストを再構築
     if (any_reached_zero) { 
       RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
-              now.getCycleCount(), rebuild_pc);
-      // downcounter が 0になっていないPCを、reordering trigger table から削除する
-      for (auto it = m_reordering_trigger_table.begin(); it != m_reordering_trigger_table.end();) {
-        RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Checking PC=%08lx, Rebuild downcounter is %d\n",
-                now.getCycleCount(), *it, m_mem_stats->getRebuildDowncounter(*it));
-        if (m_mem_stats->getRebuildDowncounter(*it) > 0) {
-          RESERVE_DEBUG_PRINTF("%ld:   VecReserveNWindow: Rebuild downcounter is not zero for PC=%08lx, removing from reordering trigger table\n",
-                  now.getCycleCount(), *it);
-          it = m_reordering_trigger_table.erase(it);
-        } else {
-          ++it;
-        }
-      }
-      // Reordering Trigger Table に追加
-      updateReorderingTriggerTable(rebuild_pc);
+              now.getCycleCount(), trigger_pc);
+      UpdateNWindowTriggerTable(trigger_pc); // 新しいトリガ命令を追加
     }
   }
 
-  if (m_reordering_trigger_table.find(entry_pc) != m_reordering_trigger_table.end()) {
+  if (m_nwindow_ino_trigger_table.find(entry_pc) != m_nwindow_ino_trigger_table.end()) {
     // ここから先のN命令は、リオーダリングを禁止する
     m_reserve_nwindow_ordering_counter = m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT;
   } else if (m_reserve_nwindow_ordering_counter > 0) {
@@ -450,6 +461,28 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   }
 }
 
+void RobTimer::UpdateNWindowTriggerTable(UInt64 pc) 
+{
+  // 自分の近い範囲で、自分よりもPCの大きい命令が既に存在している場合には更新しない
+  for (auto it = m_nwindow_ino_trigger_table.begin(); it != m_nwindow_ino_trigger_table.end(); ++it) {
+     UInt64 table_pc = *it;
+     if (table_pc != pc && (pc < table_pc) && (pc >= table_pc - 0x10)) {
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx is already in trigger table, skip update\n",
+                now.getCycleCount(), table_pc);
+        return;
+     }
+  }
+
+  // 新しい命令を追加
+  if (m_nwindow_ino_trigger_table.find(pc) == m_nwindow_ino_trigger_table.end()) {
+     if (m_nwindow_ino_trigger_table.size() < 8) {
+        m_nwindow_ino_trigger_table.insert(pc);
+     } else {
+         m_nwindow_ino_trigger_table.erase(m_nwindow_ino_trigger_table.begin());
+         m_nwindow_ino_trigger_table.insert(pc);
+     }
+  }
+}
 
 /*
  * entryをベースに、優先度の情報を伝搬させる：

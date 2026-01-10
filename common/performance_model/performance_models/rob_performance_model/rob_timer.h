@@ -27,6 +27,7 @@
 
 #define ROB_DEBUG_PRINTF(...) { if (enable_rob_debug_seqnumber || (enable_rob_timer_log && now.getCycleCount() >= rob_start_cycle)) { fprintf(stderr, __VA_ARGS__); }}
 #define KANATA_PRINTF(...) { if (m_active_kanata_gen && m_konata_count < m_konata_count_max) { fprintf(m_core->getKanataFp(), __VA_ARGS__); }}
+#define RESERVE_DEBUG_PRINTF(...) { if (enable_reserve_log) { fprintf(stderr, __VA_ARGS__); }}
 
 class RobTimer
 {
@@ -495,23 +496,20 @@ private:
    const SInt8 m_MISS_RATE_THRESHOLD = 2; // キャッシュミス率判定の閾値（飽和カウンタ）
 
    SInt8 m_reserve_nwindow_ordering_counter; // リオーダリング禁止カウンタ
-   std::set<UInt64> m_reordering_trigger_table; // リオーダリングトリガーのPC集合. 最大で8エントリまでとする. 最初に挿入されたものを削除する.
+   std::set<UInt64> m_nwindow_ino_trigger_table; // リオーダリングトリガーのPC集合. 最大で8エントリまでとする. 最初に挿入されたものを削除する.
    SInt8 m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT; // リオーダリング禁止カウンタの初期値
 
    // ReserveFlow: キャッシュミスベクトルロード命令のPCテーブル（PC -> 無視フラグ）
-   std::map<UInt64, bool> m_recent_cache_miss_vecload_table;  // キャッシュミスベクトルロード命令のPCテーブル（最大8エントリ）。値がtrueの場合は無視フラグが立っている
+   std::map<UInt64, bool> m_regflow_ino_trigger_table;  // キャッシュミスベクトルロード命令のPCテーブル（最大8エントリ）。値がtrueの場合は無視フラグが立っている
 
-   void updateReorderingTriggerTable(UInt64 pc) {
-      if (m_reordering_trigger_table.size() < 8) {
-        m_reordering_trigger_table.insert(pc);
-      } else {
-         m_reordering_trigger_table.erase(m_reordering_trigger_table.begin());
-         m_reordering_trigger_table.insert(pc);
+   void UpdateNWindowTriggerTable(UInt64 pc);
+   void ClearNWindowTriggerTable(UInt64 pc) {
+      if (m_nwindow_ino_trigger_table.find(pc) != m_nwindow_ino_trigger_table.end()) {
+         m_nwindow_ino_trigger_table.erase(pc);
       }
    }
-
    void clearReorderingTriggerTable() {
-      m_reordering_trigger_table.clear();
+      m_nwindow_ino_trigger_table.clear();
    }
 
 
