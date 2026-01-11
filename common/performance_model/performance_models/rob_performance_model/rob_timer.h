@@ -506,8 +506,11 @@ private:
    void ClearNWindowTriggerTable(UInt64 pc) {
       if (m_nwindow_ino_trigger_table.find(pc) != m_nwindow_ino_trigger_table.end()) {
          m_nwindow_ino_trigger_table.erase(pc);
+         // Trigger Tableが更新されたので、一覧を表示
+         printNWindowTriggerTable();
       }
    }
+   void printNWindowTriggerTable();
    void clearReorderingTriggerTable() {
       m_nwindow_ino_trigger_table.clear();
    }

@@ -420,7 +420,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
       m_mem_stats->clearAllRebuildDowncounters();
       // ダウンカウンタの初期値を設定（4）
       m_mem_stats->setRebuildDowncounter(entry_pc, REBUILD_DOWNCOUNTER_INIT);
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: High miss-rate detected at PC=%08lx(%ld) (counter=%d, threshold=%d), initializing rebuild downcounter to %d\n",
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: High miss-rate detected at PC=%08lx(%ld) (counter=%d, threshold=%d), initializing Downcounter to %d\n",
               now.getCycleCount(), entry_pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD, REBUILD_DOWNCOUNTER_INIT);
     } else if (counter < -m_MISS_RATE_THRESHOLD) {
       RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx(%ld) counter=%d, threshold=%d, clear trigger table\n",
@@ -440,7 +440,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
     
     // いずれかのPCのダウンカウンタが0になったら、リオーダリングリストを再構築
     if (any_reached_zero) { 
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Rebuild downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
               now.getCycleCount(), trigger_pc);
       UpdateNWindowTriggerTable(trigger_pc); // 新しいトリガ命令を追加
     }
@@ -464,12 +464,26 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
 void RobTimer::UpdateNWindowTriggerTable(UInt64 pc) 
 {
   // 自分の近い範囲で、自分よりもPCの大きい命令が既に存在している場合には更新しない
-  for (auto it = m_nwindow_ino_trigger_table.begin(); it != m_nwindow_ino_trigger_table.end(); ++it) {
-     UInt64 table_pc = *it;
-     if (table_pc != pc && (pc < table_pc) && (pc >= table_pc - 0x10)) {
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx is already in trigger table, skip update\n",
+  std::set<UInt64>::iterator it = m_nwindow_ino_trigger_table.begin();
+  for (it = m_nwindow_ino_trigger_table.begin(); it != m_nwindow_ino_trigger_table.end(); ++it) {
+    UInt64 table_pc = *it;
+    if (table_pc != pc && (pc < table_pc) && (pc >= table_pc - 0x10)) {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx is already in trigger table, skip update\n",
                 now.getCycleCount(), table_pc);
-        return;
+      return;
+    }                
+  }
+
+  // 自分の近い範囲で、自分よりもPCの小さい命令が存在している場合には、その命令を削除する
+  it = m_nwindow_ino_trigger_table.begin();
+  while (it != m_nwindow_ino_trigger_table.end()) {
+     UInt64 table_pc = *it;
+     if (table_pc != pc && (pc > table_pc) && (pc <= table_pc + 0x10)) {
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx is already in trigger table, remove from trigger table\n",
+                now.getCycleCount(), table_pc);
+        it = m_nwindow_ino_trigger_table.erase(it);
+     } else {
+        it++;
      }
   }
 
@@ -481,7 +495,22 @@ void RobTimer::UpdateNWindowTriggerTable(UInt64 pc)
          m_nwindow_ino_trigger_table.erase(m_nwindow_ino_trigger_table.begin());
          m_nwindow_ino_trigger_table.insert(pc);
      }
+     // Trigger Tableが更新されたので、一覧を表示
+     printNWindowTriggerTable();
   }
+}
+
+void RobTimer::printNWindowTriggerTable() 
+{
+  RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Trigger Table contents (size=%zu): ",
+          now.getCycleCount(), m_nwindow_ino_trigger_table.size());
+  for (auto it = m_nwindow_ino_trigger_table.begin(); it != m_nwindow_ino_trigger_table.end(); ++it) {
+     if (it != m_nwindow_ino_trigger_table.begin()) {
+        RESERVE_DEBUG_PRINTF(", ");
+     }
+     RESERVE_DEBUG_PRINTF("%08lx", *it);
+  }
+  RESERVE_DEBUG_PRINTF("\n");
 }
 
 /*
