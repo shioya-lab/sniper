@@ -87,11 +87,17 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
       // 新しい命令がインオーダトリガ命令になる場合、テーブル内の自分以外の命令に無視フラグを設定
       for (auto it = m_regflow_ino_trigger_table.begin(); it != m_regflow_ino_trigger_table.end(); ++it) {
         UInt64 table_pc = it->first;
-        if (table_pc != pc && (pc <= table_pc + 0x10) && (pc >= table_pc - 0x10)) {
-          // 自分以外の命令に無視フラグを設定 (レンジ内)
+        if (table_pc < pc && pc <= table_pc + 0x10) {
+          // table_pcがpcよりも小さく、table_pc + 0x10 内に収まっている場合、無視フラグを設定
           it->second = true;
           RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx(SeqID=%ld) (new trigger PC=%08lx(SeqID=%ld))\n",
                   now.getCycleCount(), table_pc, entry->uop->getSequenceNumber(), pc, entry->uop->getSequenceNumber());
+        }
+        // 自分よりもPCの大きく、0x10以内に収まっている命令が既に存在している場合には更新しない
+        if (pc < table_pc && pc + 0x10 >= table_pc) {
+          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) is already in table and within 0x10 of PC=%08lx(SeqID=%ld), skipping\n",
+                  now.getCycleCount(), pc, entry->uop->getSequenceNumber(), table_pc, entry->uop->getSequenceNumber());
+          return;
         }
       }
       
