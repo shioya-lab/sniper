@@ -497,6 +497,9 @@ private:
 
    SInt8 m_reserve_nwindow_ordering_counter; // リオーダリング禁止カウンタ
    std::set<UInt64> m_nwindow_ino_trigger_table; // リオーダリングトリガーのPC集合. 最大で8エントリまでとする. 最初に挿入されたものを削除する.
+   std::set<UInt64> m_nwindow_forward_branch_table; // 前方向分岐命令のPC集合（次の命令で判定されたもの）
+   bool m_pending_branch_check; // 分岐命令が待機中かどうか（次の命令で判定するために一時保存）
+   UInt64 m_pending_branch_pc; // 分岐命令のPC（次の命令で判定するために一時保存）
    SInt8 m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT; // リオーダリング禁止カウンタの初期値
 
    // ReserveFlow: キャッシュミスベクトルロード命令のPCテーブル（PC -> 無視フラグ）

@@ -41,7 +41,7 @@ RobTimer::RobTimer(
       : dispatchWidth(dispatch_width)
       , commitWidth(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/commit_width", core->getId()))
       , windowSize(window_size) // windowSize = ROB length = 96 for Core2
-      , robHwSize (Sim()->getCfg()->getIntArray("perf_model/core/interval_timer/rob_hw_size", core->getId()))
+      , robHwSize (([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/interval_timer/rob_hw_size"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
       , rsEntries(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/rs_entries", core->getId()))
       , misprediction_penalty(misprediction_penalty)
       , m_store_to_load_forwarding(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/store_to_load_forwarding", core->getId()))
@@ -72,13 +72,13 @@ RobTimer::RobTimer(
       , frontend_stalled_until(SubsecondTime::Zero())
       , in_icache_miss(false)
       , last_store_done(SubsecondTime::Zero())
-      , load_queue("rob_timer.load_queue", core->getId(), ([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
-      , store_queue("rob_timer.store_queue", core->getId(), ([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
+      , load_queue("rob_timer.load_queue", core->getId(), ([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()); return (val == 0) ? static_cast<UInt64>(1024) : val; })())
+      , store_queue("rob_timer.store_queue", core->getId(), ([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_stores", core->getId()); return (val == 0) ? static_cast<UInt64>(1024) : val; })())
       , vec_load_queue (([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_loads"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
       , vec_store_queue(([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
       , vec_store_queue_max(([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_vec_stores"); return (val == 0) ? static_cast<UInt64>(UINT64_MAX) : val; })())
-      , scalar_load_queue (Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_loads"))
-      , scalar_store_queue(Sim()->getCfg()->getInt("perf_model/core/rob_timer/outstanding_stores"))
+      , scalar_load_queue (([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()); return (val == 0) ? static_cast<UInt64>(1024) : val; })())
+      , scalar_store_queue(([core]() -> UInt64 { UInt64 val = Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/outstanding_loads", core->getId()); return (val == 0) ? static_cast<UInt64>(1024) : val; })())
       , m_cfg_bloom_filter(Sim()->getCfg()->getBoolArray("perf_model/core/rob_timer/bloom_filter", 0))
       , m_vlen(Sim()->getCfg()->getIntArray("general/vlen", core->getId()))
       , nextSequenceNumber(0)
@@ -112,6 +112,8 @@ RobTimer::RobTimer(
       , m_MAX_VECTOR_REG_HISTORY_SIZE(Sim()->getCfg()->getInt("perf_model/core/rob_timer/vec_reg_history_size"))
       , m_BACKWORD_DEP_TABLE_SIZE( Sim()->getCfg()->getInt("perf_model/core/rob_timer/backward_dep_table_size"))
       , m_reserve_nwindow_ordering_counter(0)
+      , m_pending_branch_check(false)
+      , m_pending_branch_pc(0)
       , m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT(Sim()->getCfg()->getInt("perf_model/core/rob_timer/reserve_nwindow_ordering_counter_init"))
 {
 
@@ -1679,44 +1681,45 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                      uop.getSequenceNumber(),
                      uop.getMemMaxLatency());
                bool vec_miss;
-               bool update = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
+               // bool update = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
+               m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
 
                if (entry->kanata_registered) {
                   KANATA_PRINTF ("L\t%ld\t%d\tMemMaxLatency=%ld\n", entry->global_sequence_id, 2, uop.getMemMaxLatency());
                }
 
-               if (update) {
-                  // 命令の属性を変更させるかどうかをチェックする
-                  // Search any of dependent instruction is already High priority
-                  bool high_priority_dependent = false;
-                  for (size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
-                     RobEntry *depEntry = entry->getDependant(idx);
-                     auto pc = depEntry->uop->getMicroOp()->getInstruction()->getAddress();
-                     if (m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::High ||
-                         m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::HighOrigin) {
-                        high_priority_dependent = true;
-                        break;
-                     }
-                  }
-                  if (vec_miss || (!vec_miss && !high_priority_dependent)) {
-                     // Update case
-                     //  1. Vector Miss: Update the table
-                     //  2. Vector Hit(remove target) and dependent instruction doesn't include High priority
+               // if (update) {
+               //    // 命令の属性を変更させるかどうかをチェックする
+               //    // Search any of dependent instruction is already High priority
+               //    bool high_priority_dependent = false;
+               //    for (size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
+               //       RobEntry *depEntry = entry->getDependant(idx);
+               //       auto pc = depEntry->uop->getMicroOp()->getInstruction()->getAddress();
+               //       if (m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::High ||
+               //           m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::HighOrigin) {
+               //          high_priority_dependent = true;
+               //          break;
+               //       }
+               //    }
+               //    if (vec_miss || (!vec_miss && !high_priority_dependent)) {
+               //       // Update case
+               //       //  1. Vector Miss: Update the table
+               //       //  2. Vector Hit(remove target) and dependent instruction doesn't include High priority
 
-                     UInt64 replaced_pc = 0;
-                     auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss, replaced_pc);
-                     if (result == pri_upd_result_t::Added) {
-                        m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
-                        if (replaced_pc != 0) {
-                           m_mem_stats->Remove(replaced_pc);
-                        }
-                     }
+               //       UInt64 replaced_pc = 0;
+               //       auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss, replaced_pc);
+               //       if (result == pri_upd_result_t::Added) {
+               //          m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
+               //          if (replaced_pc != 0) {
+               //             m_mem_stats->Remove(replaced_pc);
+               //          }
+               //       }
 
-                     if (entry->kanata_registered) {
-                        KANATA_PRINTF ("L\t%ld\t%d\tMemStatus=%s\n", entry->global_sequence_id, 2, result == pri_upd_result_t::Added ? "Added" : "Removed");
-                     }
-                  }
-               }
+               //       if (entry->kanata_registered) {
+               //          KANATA_PRINTF ("L\t%ld\t%d\tMemStatus=%s\n", entry->global_sequence_id, 2, result == pri_upd_result_t::Added ? "Added" : "Removed");
+               //       }
+               //    }
+               // }
             }
          }
       }

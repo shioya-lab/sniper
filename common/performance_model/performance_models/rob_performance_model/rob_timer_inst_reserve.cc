@@ -401,17 +401,53 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   const SInt8 REBUILD_DOWNCOUNTER_INIT = 4;
 
   if (entry->uop->getMicroOp()->isBranch()) {
-    RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch executed %08lx: Trigger PC\n",
-            now.getCycleCount(), entry_pc);
-    UInt64 trigger_pc = 0;
-    trigger_pc = m_mem_stats->getMinRebuildDowncounterPC();
-    if (trigger_pc != 0) {
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Trigger PC=%08lx (min_counter=%d)\n",
-              now.getCycleCount(), trigger_pc, m_mem_stats->getRebuildDowncounter(trigger_pc));
-      UpdateNWindowTriggerTable(trigger_pc); // 新しいトリガ命令を追加
+    // 1. Branch命令だと、Branchだということを覚えておく
+    if (entry->uop->isLast()) {
+      // 最後のuopの場合のみ、分岐命令として記録
+      m_pending_branch_check = true;
+      m_pending_branch_pc = entry_pc;
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch detected %08lx, waiting for next instruction\n",
+              now.getCycleCount(), entry_pc);
     }
-    m_reserve_nwindow_ordering_counter = 0; // リオーダリングを有効にする
+    
+    // 4. 以降の分岐命令で、テーブルに入っていれば前方向と判断する
+    bool is_forward_branch = (m_nwindow_forward_branch_table.find(entry_pc) != m_nwindow_forward_branch_table.end());
+    
+    if (is_forward_branch) {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Forward branch executed %08lx: Trigger PC\n",
+              now.getCycleCount(), entry_pc);
+      UInt64 trigger_pc = 0;
+      trigger_pc = m_mem_stats->getMinRebuildDowncounterPC();
+      if (trigger_pc != 0) {
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Trigger PC=%08lx (min_counter=%d)\n",
+                now.getCycleCount(), trigger_pc, m_mem_stats->getRebuildDowncounter(trigger_pc));
+        UpdateNWindowTriggerTable(trigger_pc); // 新しいトリガ命令を追加
+      }
+      m_reserve_nwindow_ordering_counter = 0; // リオーダリングを有効にする
+    } else {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch %08lx not confirmed as forward branch yet\n",
+              now.getCycleCount(), entry_pc);
+    }
     return;
+  }
+
+  // 2. 次の命令が来たときに、PCを比較する
+  // 3. PCが前方向に戻っていれば、テーブルにBranch命令を登録する
+  if (entry->uop->isFirst() && m_pending_branch_check) {
+    // 待機中の分岐命令がある場合、PCを比較
+    UInt64 branch_pc = m_pending_branch_pc;
+    
+    // PCが前方向に戻っていれば（現在の命令のPC < 分岐命令のPC）、前方向分岐として登録
+    if (entry_pc < branch_pc) {
+      m_nwindow_forward_branch_table.insert(branch_pc);
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Confirmed forward branch %08lx -> %08lx\n",
+              now.getCycleCount(), branch_pc, entry_pc);
+    } else {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Confirmed backward branch %08lx -> %08lx\n",
+              now.getCycleCount(), branch_pc, entry_pc);
+    }
+    // 判定が完了したので、クリア
+    m_pending_branch_check = false;
   }
 
   // ベクトルロード命令の場合、キャッシュミス率をチェックしてダウンカウンタを初期化
@@ -461,7 +497,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
     RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx is Reserve (now window counter = %d)\n",
             now.getCycleCount(), entry_pc, m_reserve_nwindow_ordering_counter);
 
-    if (uop->isLast()) {
+    if (uop->isVector() && uop->isLast()) {
       m_reserve_nwindow_ordering_counter--;
     }
   }
