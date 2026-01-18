@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-import sys, os, time, getopt, tempfile, subprocess, threading, platform, pprint, Queue, socket, pipes, commands
+import sys, os, time, getopt, tempfile, subprocess, threading, platform, pprint, Queue, socket, pipes, commands, glob
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools'))
 import sniper_lib, sniper_config, gen_simout, debugpin, env_setup, run_sniper
 
@@ -24,6 +24,7 @@ def usage():
         '  [--viz-aso]' + \
         '  [--profile]' + \
         '  [--memory-profile]' + \
+        '  [--heaptrack]' + \
         '  [--cheetah]' + \
         '  [--perf]' + \
         '  [--gdb]' + \
@@ -71,6 +72,7 @@ use_viz_aso = ''
 use_viz_mcpat = ''
 use_profile = False
 use_memory_profile = False
+use_heaptrack = False
 use_cheetah = False
 use_perf = False
 use_wrap_sim = None
@@ -205,6 +207,7 @@ try:
       "roi", "roi-script",
       "viz", "viz-aso",
       "profile", "memory-profile", "cheetah",
+      "heaptrack",
       "perf", "valgrind", "wrap-sim=",
       "gdb", "gdb-wait", "gdb-quit",
       "appdebug", "appdebug-manual", "appdebug-enable",
@@ -274,6 +277,8 @@ for o, a in opts:
     use_viz_profile = '--add-level=profile'
   if o == '--memory-profile':
     use_memory_profile = True
+  if o == '--heaptrack':
+    use_heaptrack = True
   if o == '--cheetah':
     use_cheetah = True
     sniperoptions.append('-g --core/cheetah/enabled=true')
@@ -415,6 +420,12 @@ if roi_only and roi_script:
 if standalone:
   if use_appdebug:
     print >> sys.stderr, '--appdebug not supported in standalone mode'
+    sys.exit(-1)
+  if use_heaptrack and use_gdb:
+    print >> sys.stderr, '--heaptrack not supported with --gdb in standalone mode'
+    sys.exit(-1)
+  if use_heaptrack and use_wrap_sim:
+    print >> sys.stderr, '--heaptrack not supported with --wrap-sim/--valgrind in standalone mode'
     sys.exit(-1)
   if use_wrap_sim and use_gdb:
     print >> sys.stderr, 'Cannot use both --wrap-sim and --gdb at the same time [wrap-cmd="%(use_wrap_sim)s"]' % locals()
@@ -717,6 +728,8 @@ if pinballs and not pinball_sift:
     sys.exit(1)
   cmdline = [nullapp_path]
 
+print "optcmd: ", optcmd
+
 optcmd += ' -c %(sim_root)s/config/base.cfg --general/total_cores=%(ncores)u --general/output_dir=%(outputdir)s %(sniperoptions)s' % locals()
 if standalone:
   if use_gdb:
@@ -780,7 +793,10 @@ def log_memory(pid):
 def execute():
   global cmd, usage
 
-  cmd = [ 'bash', '-c', cmd ]
+  if use_heaptrack:
+    cmd = [ 'bash', '-c', 'cd "%s" && heaptrack --raw %s' % (outputdir, cmd) ]
+  else:
+    cmd = [ 'bash', '-c', cmd ]
   if use_perf:
     cmd = [ 'perf', 'record', '--force', '--output', os.path.join(outputdir, 'perf.data'), '--' ] + cmd
 
@@ -906,6 +922,18 @@ elif os.path.exists(os.path.join(outputdir, 'sim.cfg')):
 
   if use_memory_profile:
     os.system('%(sim_root)s/tools/gen_memory_profile.py -d %(outputdir)s -o %(outputdir)s' % locals())
+
+  if use_heaptrack:
+    heaptrack_glob = os.path.join(outputdir, 'heaptrack.*')
+    heaptrack_files = sorted(glob.glob(heaptrack_glob))
+    if heaptrack_files:
+      heaptrack_input = heaptrack_files[-1]
+      heaptrack_output = os.path.join(outputdir, 'heaptrack.out')
+      rc = os.system('heaptrack_print "%s" > "%s"' % (heaptrack_input, heaptrack_output))
+      if rc != 0:
+        print >> sys.stderr, '[SNIPER] Warning: heaptrack_print failed, check PATH or command output'
+    else:
+      print >> sys.stderr, '[SNIPER] Warning: heaptrack output not found, heaptrack_print skipped'
 
   if use_cheetah:
     os.system('%(sim_root)s/tools/gen_cheetah.py -d %(outputdir)s -o %(outputdir)s/cheetah' % locals())
