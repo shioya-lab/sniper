@@ -5,6 +5,7 @@
 #include "sift_format.h"
 
 #include <unordered_map>
+#include <vector>
 #include <fstream>
 #include <cassert>
 
@@ -84,7 +85,7 @@ namespace Sift
 
          uint64_t last_address;
          std::unordered_map<uint64_t, const uint8_t*> icache;
-         std::unordered_map<uint64_t, const StaticInstruction*> scache;
+         std::unordered_map<uint64_t, std::vector<const StaticInstruction*> > scache;
          std::unordered_map<uint64_t, uint64_t> vcache;
 
          uint32_t m_id;

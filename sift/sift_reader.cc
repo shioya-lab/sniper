@@ -68,9 +68,12 @@ Sift::Reader::~Reader()
    {
       delete [] (*i).second;
    }
-   for(std::unordered_map<uint64_t, const StaticInstruction*>::iterator i = scache.begin() ; i != scache.end() ; ++i)
+   for(std::unordered_map<uint64_t, std::vector<const StaticInstruction*> >::iterator i = scache.begin() ; i != scache.end() ; ++i)
    {
-      delete (*i).second;
+      for(size_t idx = 0; idx < (*i).second.size(); ++idx)
+      {
+         delete (*i).second[idx];
+      }
    }
 }
 
@@ -678,21 +681,54 @@ const Sift::StaticInstruction* Sift::Reader::getStaticInstruction(uint64_t addr,
 {
    const StaticInstruction *sinst;
 
-   // // Lookup in a large unordered_map is quite expensive if we have to do this for every dynamic instruction
-   // // Therefore, keep a pointer to the probable next instruction in each (static) instruction
-   // if (m_last_sinst && m_last_sinst->next && m_last_sinst->next->addr == addr)
-   // {
-   //    sinst = m_last_sinst->next;
-   // }
-   // else if (scache.count(addr))
-   // {
-   //    sinst = scache[addr];
-   //    assert(sinst->size == size);
-   // }
-   // else
+   // Lookup in a large unordered_map is expensive if we do it for every dynamic instruction.
+   // Cache the probable next instruction, but validate size and bytes to handle same PC/different instruction cases.
+   uint8_t current_bytes[sizeof(sinst->data)];
+   assert(size <= sizeof(current_bytes));
+   uint8_t *dst = current_bytes;
+   uint8_t remaining = size;
+   uint64_t base_addr = addr & ICACHE_PAGE_MASK;
+   while(remaining > 0)
    {
-      sinst = staticInfoInstruction(addr, size);
-      scache[addr] = sinst;
+      uint32_t offset = (dst == current_bytes) ? addr & ICACHE_OFFSET_MASK : 0;
+      uint32_t _size = std::min(uint32_t(remaining), ICACHE_SIZE - offset);
+      assert(icache.count(base_addr));
+      memcpy(dst, icache[base_addr] + offset, _size);
+      dst += _size;
+      remaining -= _size;
+      base_addr += ICACHE_SIZE;
+   }
+
+   auto matches_current = [&](const StaticInstruction *candidate) -> bool {
+      if (!candidate || candidate->addr != addr || candidate->size != size)
+         return false;
+      return memcmp(candidate->data, current_bytes, size) == 0;
+   };
+
+   if (m_last_sinst && m_last_sinst->next && m_last_sinst->next->addr == addr && matches_current(m_last_sinst->next))
+   {
+      sinst = m_last_sinst->next;
+   }
+   else
+   {
+      sinst = NULL;
+      if (scache.count(addr))
+      {
+         const std::vector<const StaticInstruction*> &entries = scache[addr];
+         for(size_t idx = 0; idx < entries.size(); ++idx)
+         {
+            if (matches_current(entries[idx]))
+            {
+               sinst = entries[idx];
+               break;
+            }
+         }
+      }
+      if (!sinst)
+      {
+         sinst = staticInfoInstruction(addr, size);
+         scache[addr].push_back(sinst);
+      }
    }
 
    if (m_last_sinst && m_last_sinst->next == NULL)
