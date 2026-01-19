@@ -115,6 +115,7 @@ RobTimer::RobTimer(
       , m_pending_branch_check(false)
       , m_pending_branch_pc(0)
       , m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT(Sim()->getCfg()->getInt("perf_model/core/rob_timer/reserve_nwindow_ordering_counter_init"))
+      , m_enable_vector_trace (Sim()->getCfg()->getBoolArray("log/enable_vector_trace", core->getId()))
 {
 
    registerStatsMetric("rob_timer", core->getId(), "time_skipped", &time_skipped);
@@ -420,7 +421,7 @@ RobTimer::~RobTimer()
    generateVectorStats();
 
    // ベクトル命令の発行パターンを分析してGraphviz形式で出力
-   if (m_vector_issue_tracer) {
+   if (m_enable_vector_trace && m_vector_issue_tracer) {
       m_vector_issue_tracer->analyzeIssuePatterns();
       m_vector_issue_tracer->generateIssuePatternGraphviz("vector_issue_patterns.dot");
    }
@@ -684,7 +685,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       manageInstructionReserve(entry); // 命令の予約を制御する
 
-      if (m_vector_issue_tracer) {
+      if (m_vector_issue_tracer && m_enable_vector_trace) {
          m_vector_issue_tracer->traceVectorIssue(entry->uop, now.getCycleCount());
       }
 

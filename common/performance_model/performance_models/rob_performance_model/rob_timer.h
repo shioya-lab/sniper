@@ -502,6 +502,8 @@ private:
    UInt64 m_pending_branch_pc; // 分岐命令のPC（次の命令で判定するために一時保存）
    SInt8 m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT; // リオーダリング禁止カウンタの初期値
 
+   const bool m_enable_vector_trace;
+
    // ReserveFlow: キャッシュミスベクトルロード命令のPCテーブル（PC -> 無視フラグ）
    std::map<UInt64, bool> m_regflow_ino_trigger_table;  // キャッシュミスベクトルロード命令のPCテーブル（最大8エントリ）。値がtrueの場合は無視フラグが立っている
 
