@@ -71,6 +71,8 @@ class MemoryDependencies
       void mergeVLDQAddressMultiSlot(DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
 
       void RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
+      void RegisterBloomFilter2 (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
+      void RegisterBloomFilter3 (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize);
 
    private:
       // 最小の2のべき乗を返す（例: 130 -> 256）

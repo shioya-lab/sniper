@@ -170,6 +170,39 @@ uint64_t xor_fold_hash(uint64_t address, unsigned int N) {
    return result & mask;
 }
 
+static void append_bloom_false_positive_log(const char *tag,
+                                            const DynamicMicroOp &microOp,
+                                            uint64_t load_address,
+                                            uint64_t load_size,
+                                            uint64_t store_address,
+                                            uint64_t store_size,
+                                            uint64_t load_in0,
+                                            uint64_t load_in1,
+                                            uint64_t load_in2,
+                                            uint64_t store_in0,
+                                            uint64_t store_in1,
+                                            uint64_t store_in2,
+                                            uint64_t hash0,
+                                            uint64_t hash1,
+                                            uint64_t hash2)
+{
+   FILE *fp = std::fopen("vldq_bloom_false_positive.log", "a");
+   if (!fp) return;
+   std::fprintf(fp,
+                "%s PC=%08lx %s: LD=0x%08lx,%lu ST=0x%08lx,%lu "
+                "IN_LD={0x%08lx,0x%08lx,0x%08lx} IN_ST={0x%08lx,0x%08lx,0x%08lx} "
+                "HASH={%lu,%lu,%lu}\n",
+                tag,
+                microOp.getMicroOp()->getInstruction()->getAddress(),
+                microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(),
+                load_address, load_size,
+                store_address, store_size,
+                load_in0, load_in1, load_in2,
+                store_in0, store_in1, store_in2,
+                hash0, hash1, hash2);
+   std::fclose(fp);
+}
+
 
 void MemoryDependencies::RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize)
 {
@@ -222,11 +255,148 @@ void MemoryDependencies::RegisterBloomFilter (DynamicMicroOp &microOp, uint64_t 
             //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
             //          physicalAddress, memorySize);
             m_num_vldq_conflict_false_positive ++;
+            append_bloom_false_positive_log("BF1", microOp, physicalAddress, memorySize,
+                                            producers.at(i).address, producers.at(i).size,
+                                            pa_biased, pa_biased, pa_biased,
+                                            st_pa_biased, st_pa_biased, st_pa_biased,
+                                            store_hash0, store_hash1, store_hash2);
+         }
+         return;
+      }
+   }
+}
+
+void MemoryDependencies::RegisterBloomFilter2 (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize)
+{
+   const uint64_t pa_biased = physicalAddress >> m_cfg_bloom_filter_addr_lsb;
+   const uint64_t total_len = m_cfg_bloom_filter_len;
+   const uint64_t region0_len = std::max<uint64_t>(1, total_len / 2);   // wide region (low bits)
+   const uint64_t region1_len = std::max<uint64_t>(1, total_len / 3);   // mid region
+   const uint64_t region2_len = std::max<uint64_t>(1, total_len - region0_len - region1_len); // narrow region (high bits)
+   const uint64_t region0_off = 0;
+   const uint64_t region1_off = region0_len;
+   const uint64_t region2_off = region0_len + region1_len;
+
+   const uint64_t low_bits  = pa_biased & ((1ULL << 10) - 1);
+   const uint64_t mid_bits  = pa_biased & ((1ULL << 20) - 1);
+   const uint64_t high_bits = pa_biased;
+
+   const uint64_t seed0 = 0x9e3779b97f4a7c15ULL;
+   const uint64_t seed1 = 0xbf58476d1ce4e5b9ULL;
+   const uint64_t seed2 = 0x94d049bb133111ebULL;
+
+   const uint64_t load_hash0 =
+      region0_off + xor_fold_hash(stl_hash::seeded_hash(low_bits  ^ seed0), region0_len);
+   const uint64_t load_hash1 =
+      region1_off + xor_fold_hash(stl_hash::seeded_hash(mid_bits  ^ seed1), region1_len);
+   const uint64_t load_hash2 =
+      region2_off + xor_fold_hash(stl_hash::seeded_hash(high_bits ^ seed2), region2_len);
+
+   if (microOp.getMicroOp()->isFirst()) {
+      // Clear the bloom filter list if this is the first load
+      bloom_filter_list.clear();
+   }
+
+   bloom_filter_list.insert (load_hash0);
+   bloom_filter_list.insert (load_hash1);
+   bloom_filter_list.insert (load_hash2);
+
+   m_num_vldq_conflict_check ++;
+
+   // There may be multiple entries with the same address, we want the latest one so traverse list in reverse order
+   for(int i = producers.size() - 1; i >= 0; --i) {
+      uint64_t st_pa_biased = producers.at(i).address >> m_cfg_bloom_filter_addr_lsb;
+      const uint64_t st_low_bits = st_pa_biased & ((1ULL << 10) - 1);
+      const uint64_t st_mid_bits = st_pa_biased & ((1ULL << 20) - 1);
+      const uint64_t st_high_bits = st_pa_biased;
+      uint64_t store_hash0 =
+         region0_off + xor_fold_hash(stl_hash::seeded_hash(st_low_bits  ^ seed0), region0_len);
+      uint64_t store_hash1 =
+         region1_off + xor_fold_hash(stl_hash::seeded_hash(st_mid_bits  ^ seed1), region1_len);
+      uint64_t store_hash2 =
+         region2_off + xor_fold_hash(stl_hash::seeded_hash(st_high_bits ^ seed2), region2_len);
+      if ((bloom_filter_list.find(store_hash0) != bloom_filter_list.end()) && 
+          (bloom_filter_list.find(store_hash1) != bloom_filter_list.end()) && 
+          (bloom_filter_list.find(store_hash2) != bloom_filter_list.end())) {
+         // Found a match
+         // fprintf (stderr, "  Bloom Filter found: PC=%08lx %s: 0x%08lx, %lx -> 0x%08lx, %lx. ST Hash %ld, %ld, %ld\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+         //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+         //          physicalAddress, memorySize, producers.at(i).address, producers.at(i).size,
+         //          store_hash0, store_hash1, store_hash2);
+         microOp.addDependency(producers.at(i).seqnr);
+
+         m_num_vldq_conflict ++;
+         uint64_t found_st_idx;
+         uint64_t producerSequenceNumber = find(physicalAddress, memorySize, found_st_idx);
+         if (producerSequenceNumber == INVALID_SEQNR) /* producer not found */
+         {
+            // fprintf (stderr, " False positive found: PC=%08lx %s: 0x%08lx, %lx\n", microOp.getMicroOp()->getInstruction()->getAddress(),
+            //          microOp.getMicroOp()->getInstruction()->getDisassembly().c_str(), 
+            //          physicalAddress, memorySize);
+            m_num_vldq_conflict_false_positive ++;
+            append_bloom_false_positive_log("BF2", microOp, physicalAddress, memorySize,
+                                            producers.at(i).address, producers.at(i).size,
+                                            low_bits, mid_bits, high_bits,
+                                            st_low_bits, st_mid_bits, st_high_bits,
+                                            store_hash0, store_hash1, store_hash2);
          }
          return;
       }
    }  
 }
+
+void MemoryDependencies::RegisterBloomFilter3 (DynamicMicroOp &microOp, uint64_t &physicalAddress, uint64_t &memorySize)
+{
+   const uint64_t pa_biased = physicalAddress >> m_cfg_bloom_filter_addr_lsb;
+   const uint64_t total_len = m_cfg_bloom_filter_len;
+
+   const uint64_t addr_bits = pa_biased;
+   const uint64_t seed0 = 0x9e3779b97f4a7c15ULL;
+   const uint64_t seed1 = 0xbf58476d1ce4e5b9ULL;
+   const uint64_t seed2 = 0x94d049bb133111ebULL;
+
+   const uint64_t load_hash0 = xor_fold_hash(stl_hash::seeded_hash(addr_bits ^ seed0), total_len);
+   const uint64_t load_hash1 = xor_fold_hash(stl_hash::seeded_hash(addr_bits ^ seed1), total_len);
+   const uint64_t load_hash2 = xor_fold_hash(stl_hash::seeded_hash(addr_bits ^ seed2), total_len);
+
+   if (microOp.getMicroOp()->isFirst()) {
+      bloom_filter_list.clear();
+   }
+
+   bloom_filter_list.insert (load_hash0);
+   bloom_filter_list.insert (load_hash1);
+   bloom_filter_list.insert (load_hash2);
+
+   m_num_vldq_conflict_check ++;
+
+   for(int i = producers.size() - 1; i >= 0; --i) {
+      uint64_t st_pa_biased = producers.at(i).address >> m_cfg_bloom_filter_addr_lsb;
+      const uint64_t st_addr_bits = st_pa_biased;
+      uint64_t store_hash0 = xor_fold_hash(stl_hash::seeded_hash(st_addr_bits ^ seed0), total_len);
+      uint64_t store_hash1 = xor_fold_hash(stl_hash::seeded_hash(st_addr_bits ^ seed1), total_len);
+      uint64_t store_hash2 = xor_fold_hash(stl_hash::seeded_hash(st_addr_bits ^ seed2), total_len);
+      if ((bloom_filter_list.find(store_hash0) != bloom_filter_list.end()) && 
+          (bloom_filter_list.find(store_hash1) != bloom_filter_list.end()) && 
+          (bloom_filter_list.find(store_hash2) != bloom_filter_list.end())) {
+         microOp.addDependency(producers.at(i).seqnr);
+
+         m_num_vldq_conflict ++;
+         uint64_t found_st_idx;
+         uint64_t producerSequenceNumber = find(physicalAddress, memorySize, found_st_idx);
+         if (producerSequenceNumber == INVALID_SEQNR)
+         {
+            m_num_vldq_conflict_false_positive ++;
+            append_bloom_false_positive_log("BF3", microOp, physicalAddress, memorySize,
+                                            producers.at(i).address, producers.at(i).size,
+                                            addr_bits, addr_bits, addr_bits,
+                                            st_addr_bits, st_addr_bits, st_addr_bits,
+                                            store_hash0, store_hash1, store_hash2);
+         }
+         return;
+      }
+   }
+}
+
 
 void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowestValidSequenceNumber, uint64_t first_uop_seqnum)
 {
@@ -239,7 +409,7 @@ void MemoryDependencies::setDependencies(DynamicMicroOp &microOp, uint64_t lowes
       uint64_t memorySize = microOp.getMicroOp()->getMemoryAccessSize();
 
       if (m_cfg_bloom_filter && microOp.getMicroOp()->isVector()) {
-         RegisterBloomFilter(microOp, physicalAddress, memorySize);
+         RegisterBloomFilter3(microOp, physicalAddress, memorySize);
       } else {
          if (microOp.getMicroOp()->isVector()) {
             // if (m_cfg_vldq_merge) {
