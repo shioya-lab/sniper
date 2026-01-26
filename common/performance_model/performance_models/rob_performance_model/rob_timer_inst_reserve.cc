@@ -8,7 +8,7 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
                        !entry->uop->isStrongPriorityInst(),
                    "Priority must not allocate before execution");
   if (m_vec_reserve_policy == VecReserveParOOO) {
-    manageInstructionParOOO(entry);
+    manageInstructionParOOO2(entry);
   } else if (m_vec_reserve_policy == VecReserveStatic) {
     manageInstructionStatic (entry);
   } else if (m_vec_reserve_policy == VecReserveNWindow) {
@@ -74,33 +74,47 @@ void RobTimer::RemovePriorityQueue (RobEntry *entry)
 // ReserveFlow: レジスタフロー解析による動的なInO/OoO判定
 void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
 {
+  if (entry->uop->getMicroOp()->isBranch()) {
+    if (entry->uop->isLast()) {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n",
+              now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
+      registerDependencies->clearAllOooDependency();
+    }
+    return;
+  }
+
   // キャッシュミス検出時にPCをテーブルに追加（dispatch付近）
   if (entry->uop->getMicroOp()->isVecLoad() && entry->uop->isLast()) {
     UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
     SInt8 counter = m_mem_stats->getSaturationCounter(pc);
     // Saturation Counterが閾値以上の場合はキャッシュミスと判定
-    if (counter >= m_MISS_RATE_THRESHOLD && 
+    if (counter >= m_MISS_RATE_THRESHOLD &&
         m_regflow_ino_trigger_table.find(pc) == m_regflow_ino_trigger_table.end()) {
       RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: High miss-rate detected at PC=%08lx(SeqID=%ld) (counter=%d, threshold=%d)\n",
               now.getCycleCount(), pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD);
-      
-      // 新しい命令がインオーダトリガ命令になる場合、テーブル内の自分以外の命令に無視フラグを設定
-      for (auto it = m_regflow_ino_trigger_table.begin(); it != m_regflow_ino_trigger_table.end(); ++it) {
-        UInt64 table_pc = it->first;
-        if (table_pc < pc && pc <= table_pc + 0x10) {
-          // table_pcがpcよりも小さく、table_pc + 0x10 内に収まっている場合、無視フラグを設定
-          it->second = true;
-          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx(SeqID=%ld) (new trigger PC=%08lx(SeqID=%ld))\n",
-                  now.getCycleCount(), table_pc, entry->uop->getSequenceNumber(), pc, entry->uop->getSequenceNumber());
-        }
-        // 自分よりもPCの大きく、0x10以内に収まっている命令が既に存在している場合には更新しない
-        if (pc < table_pc && pc + 0x10 >= table_pc) {
-          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) is already in table and within 0x10 of PC=%08lx(SeqID=%ld), skipping\n",
-                  now.getCycleCount(), pc, entry->uop->getSequenceNumber(), table_pc, entry->uop->getSequenceNumber());
-          return;
+
+      // 祖先トリガの存在判定: ooo_dependency を参照する高負荷ロードなら、近傍の既存トリガに無視フラグ
+      bool depends_on_trigger = false;
+      for (uint32_t i = 0; i < entry->uop->getMicroOp()->getSourceRegistersLength(); i++) {
+        dl::Decoder::decoder_reg source_reg = entry->uop->getMicroOp()->getSourceRegister(i);
+        if (Sim()->getDecoder()->is_reg_vector(source_reg) &&
+            registerDependencies->hasOooDependency(source_reg)) {
+          depends_on_trigger = true;
+          break;
         }
       }
-      
+      if (depends_on_trigger) {
+        for (auto it = m_regflow_ino_trigger_table.begin(); it != m_regflow_ino_trigger_table.end(); ++it) {
+          UInt64 table_pc = it->first;
+          UInt64 diff = (table_pc > pc) ? (table_pc - pc) : (pc - table_pc);
+          if (diff <= 0x10) {
+            it->second = true;
+            RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx(SeqID=%ld) (descendant PC=%08lx(SeqID=%ld))\n",
+                    now.getCycleCount(), table_pc, entry->uop->getSequenceNumber(), pc, entry->uop->getSequenceNumber());
+          }
+        }
+      }
+
       // PCをテーブルに追加（OoO実行の条件開始のトリガとして、無視フラグはfalse）
       if (m_regflow_ino_trigger_table.size() >= 8) {
         // テーブルが満杯の場合、古いPCを削除（最初の要素を削除）
@@ -191,6 +205,135 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
   // } else {
   //   RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) is OoO (out-of-order execution)\n",
   //           now.getCycleCount(), pc_check, entry->uop->getSequenceNumber());
+  }
+}
+
+// VecReserveParOOO2: キャッシュヒット率に基づくフロー解析
+// - 高ミス率な命令をトリガにして優先度をHighに設定
+// - 逆依存テーブルにより依存元の命令のPCを登録し、高優先度を伝搬
+// - Trigger以降はレジスタフラグを立て、Reserveな命令を伝搬
+void RobTimer::manageInstructionParOOO2(RobEntry *entry)
+{
+  if (entry->uop->getMicroOp()->isBranch()) {
+    if (entry->uop->isLast()) {
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n",
+              now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
+      registerDependencies->clearAllOooDependency();
+    }
+    return;
+  }
+
+  UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+
+  // キャッシュミス率が高いベクトルロード命令をトリガとして登録
+  if (entry->uop->getMicroOp()->isVecLoad() && entry->uop->isLast()) {
+    SInt8 counter = m_mem_stats->getSaturationCounter(pc);
+    if (counter >= m_MISS_RATE_THRESHOLD &&
+        std::find(m_parooo2_trigger_table.begin(), m_parooo2_trigger_table.end(), pc) ==
+            m_parooo2_trigger_table.end()) {
+      if (m_parooo2_trigger_table.size() >= m_PAROOO2_TRIGGER_TABLE_SIZE) {
+        UInt64 removed_pc = m_parooo2_trigger_table.front();
+        m_parooo2_trigger_table.pop_front();
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Trigger table full, removing PC=%08lx\n",
+                now.getCycleCount(), removed_pc);
+      }
+      m_parooo2_trigger_table.push_back(pc);
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: High miss-rate detected at PC=%08lx(SeqID=%ld) (counter=%d, threshold=%d)\n",
+              now.getCycleCount(), pc, entry->uop->getSequenceNumber(), counter, -m_MISS_RATE_THRESHOLD);
+    }
+  }
+
+  bool is_trigger =
+      std::find(m_parooo2_trigger_table.begin(), m_parooo2_trigger_table.end(), pc) !=
+      m_parooo2_trigger_table.end();
+  bool is_backward =
+      std::find(m_parooo2_backward_dep_table.begin(), m_parooo2_backward_dep_table.end(), pc) !=
+      m_parooo2_backward_dep_table.end();
+
+  // 逆依存テーブルに入っている命令はトリガとして扱わず無視する
+  bool do_register_backward = false;
+  if (is_backward) {
+    do_register_backward = true;
+    if (is_trigger) {
+      m_parooo2_trigger_table.erase(
+          std::remove(m_parooo2_trigger_table.begin(),
+                      m_parooo2_trigger_table.end(),
+                      pc),
+          m_parooo2_trigger_table.end());
+      RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Ignore trigger PC=%08lx(SeqID=%ld) (backward entry)\n",
+              now.getCycleCount(), pc, entry->uop->getSequenceNumber());
+      is_trigger = false;
+    }
+  }
+
+  // トリガ命令は高優先度化し、逆依存を登録
+  if (is_trigger) {
+    do_register_backward = true;
+    m_priority_manager->setPriority(pc, PriorityManager::inst_priority_t::High);
+    m_priority_manager->AddHighInst(pc);
+    entry->uop->setStrongPriorityInst();
+    RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Set High priority PC=%08lx(SeqID=%ld) (trigger=%d, backward=%d)\n",
+            now.getCycleCount(), pc, entry->uop->getSequenceNumber(), is_trigger, is_backward);
+
+    // デスティネーションレジスタ（ベクトルレジスタのみ）にフラグを設定
+    for (uint32_t i = 0; i < entry->uop->getMicroOp()->getDestinationRegistersLength(); i++) {
+      dl::Decoder::decoder_reg dest_reg = entry->uop->getMicroOp()->getDestinationRegister(i);
+      if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
+        registerDependencies->setOooDependency(dest_reg);
+      }
+    }
+
+  }
+
+  // 逆依存テーブルへ依存元の命令を登録（トリガ/逆依存のどちらでも登録）
+  if (do_register_backward) {
+    for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
+      RobEntry *waiting_entry =
+          this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
+      bool is_waiting_entry_vector_dest_reg =
+          waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
+          Sim()->getDecoder()->is_reg_vector(
+              waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
+      if (!is_waiting_entry_vector_dest_reg) {
+        continue;
+      }
+      UInt64 dep_pc =
+          waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
+      if (std::find(m_parooo2_backward_dep_table.begin(),
+                    m_parooo2_backward_dep_table.end(),
+                    dep_pc) == m_parooo2_backward_dep_table.end()) {
+        if (m_parooo2_backward_dep_table.size() >= m_BACKWORD_DEP_TABLE_SIZE) {
+          m_parooo2_backward_dep_table.pop_front();
+        }
+        m_parooo2_backward_dep_table.push_back(dep_pc);
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Backward dep registered PC=%08lx (from PC=%08lx)\n",
+                now.getCycleCount(), dep_pc, pc);
+      }
+    }
+    if (is_trigger) {
+      return;
+    }
+  }
+
+  // Reserveな命令の伝搬: ソースレジスタにフラグがある場合はインオーダ実行
+  bool should_inorder = false;
+  for (uint32_t i = 0; i < entry->uop->getMicroOp()->getSourceRegistersLength(); i++) {
+    dl::Decoder::decoder_reg source_reg = entry->uop->getMicroOp()->getSourceRegister(i);
+    if (Sim()->getDecoder()->is_reg_vector(source_reg) &&
+        registerDependencies->hasOooDependency(source_reg)) {
+      should_inorder = true;
+      for (uint32_t j = 0; j < entry->uop->getMicroOp()->getDestinationRegistersLength(); j++) {
+        dl::Decoder::decoder_reg dest_reg = entry->uop->getMicroOp()->getDestinationRegister(j);
+        if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
+          registerDependencies->setOooDependency(dest_reg);
+        }
+      }
+      break;
+    }
+  }
+
+  if (should_inorder) {
+    entry->uop->setReserveInst();
   }
 }
 
@@ -333,7 +476,7 @@ void RobTimer::manageInstructionParOOO(RobEntry *entry)
 {
   UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
 
-  // 自分のエントリが優先命令さ削除対象キューに入っていれば、削除する
+  // 自分のエントリが優先命令の削除対象キューに入っていれば、削除する
   RemovePriorityQueue(entry);
 
   // RESERVE_DEBUG_PRINTF ("manageIsntructionPAROOO() PC=%08lx\n", entry_pc);
@@ -365,7 +508,7 @@ void RobTimer::manageInstructionParOOO(RobEntry *entry)
 
 
 /*
- * ParOOOの場合の優先度の伝搬などの制御を行う
+ * Staticモードの命令の伝搬処理
 */
 void RobTimer::manageInstructionStatic (RobEntry *entry)
 {

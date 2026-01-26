@@ -469,6 +469,8 @@ private:
    void manageInstructionReserveVecAll(RobEntry *entry);
    void manageInstructionRegisterFlowAnalysis(RobEntry *entry);
 
+   void manageInstructionParOOO2(RobEntry *entry);
+
    typedef struct {
       UInt64 pc;
       dl::Decoder::decoder_reg dest_reg;
@@ -506,6 +508,11 @@ private:
 
    // ReserveFlow: キャッシュミスベクトルロード命令のPCテーブル（PC -> 無視フラグ）
    std::map<UInt64, bool> m_regflow_ino_trigger_table;  // キャッシュミスベクトルロード命令のPCテーブル（最大8エントリ）。値がtrueの場合は無視フラグが立っている
+
+   // VecReserveHitFlow: キャッシュヒット率に応じたトリガと逆依存テーブル
+   const size_t m_PAROOO2_TRIGGER_TABLE_SIZE = 8;
+   std::deque<UInt64> m_parooo2_trigger_table;      // 高ヒット率トリガ命令のPCテーブル
+   std::deque<UInt64> m_parooo2_backward_dep_table; // 逆依存テーブル（高優先度伝搬用）
 
    void UpdateNWindowTriggerTable(UInt64 pc);
    void ClearNWindowTriggerTable(UInt64 pc) {

@@ -689,13 +689,6 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
          m_vector_issue_tracer->traceVectorIssue(entry->uop, now.getCycleCount());
       }
 
-      // ReserveFlow: 分岐命令時、すべてのベクトルレジスタのooo_dependencyフラグをクリア
-      if (m_vec_reserve_policy == VecReserveFlow && entry->uop->getMicroOp()->isBranch()) {
-         RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n", 
-            now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
-         registerDependencies->clearAllOooDependency();
-      }
-
       if (m_store_to_load_forwarding && entry->uop->getMicroOp()->isLoad() &&
           !entry->uop->getMicroOp()->isVector()) // In Vector, remove dependency for forwarding not support.
       {
@@ -1682,45 +1675,44 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
                      uop.getSequenceNumber(),
                      uop.getMemMaxLatency());
                bool vec_miss;
-               // bool update = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
-               m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
+               bool update = m_mem_stats->Update (uop.getMicroOp()->getInstruction()->getAddress(), uop.getMemMaxLatency(), vec_miss);
 
                if (entry->kanata_registered) {
                   KANATA_PRINTF ("L\t%ld\t%d\tMemMaxLatency=%ld\n", entry->global_sequence_id, 2, uop.getMemMaxLatency());
                }
 
-               // if (update) {
-               //    // 命令の属性を変更させるかどうかをチェックする
-               //    // Search any of dependent instruction is already High priority
-               //    bool high_priority_dependent = false;
-               //    for (size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
-               //       RobEntry *depEntry = entry->getDependant(idx);
-               //       auto pc = depEntry->uop->getMicroOp()->getInstruction()->getAddress();
-               //       if (m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::High ||
-               //           m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::HighOrigin) {
-               //          high_priority_dependent = true;
-               //          break;
-               //       }
-               //    }
-               //    if (vec_miss || (!vec_miss && !high_priority_dependent)) {
-               //       // Update case
-               //       //  1. Vector Miss: Update the table
-               //       //  2. Vector Hit(remove target) and dependent instruction doesn't include High priority
+               if ((m_vec_reserve_policy == VecReserveParOOO) && update) {
+                  // 命令の属性を変更させるかどうかをチェックする
+                  // Search any of dependent instruction is already High priority
+                  bool high_priority_dependent = false;
+                  for (size_t idx = 0; idx < entry->getNumDependants(); ++idx) {
+                     RobEntry *depEntry = entry->getDependant(idx);
+                     auto pc = depEntry->uop->getMicroOp()->getInstruction()->getAddress();
+                     if (m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::High ||
+                         m_priority_manager->getPriority(pc) == PriorityManager::inst_priority_t::HighOrigin) {
+                        high_priority_dependent = true;
+                        break;
+                     }
+                  }
+                  if (vec_miss || (!vec_miss && !high_priority_dependent)) {
+                     // Update case
+                     //  1. Vector Miss: Update the table
+                     //  2. Vector Hit(remove target) and dependent instruction doesn't include High priority
 
-               //       UInt64 replaced_pc = 0;
-               //       auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss, replaced_pc);
-               //       if (result == pri_upd_result_t::Added) {
-               //          m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
-               //          if (replaced_pc != 0) {
-               //             m_mem_stats->Remove(replaced_pc);
-               //          }
-               //       }
+                     UInt64 replaced_pc = 0;
+                     auto result = m_priority_manager->UpdateInstPriority (uop.getMicroOp(), vec_miss, replaced_pc);
+                     if (result == pri_upd_result_t::Added) {
+                        m_priority_manager->AddHighInst(uop.getMicroOp()->getInstruction()->getAddress());
+                        if (replaced_pc != 0) {
+                           m_mem_stats->Remove(replaced_pc);
+                        }
+                     }
 
-               //       if (entry->kanata_registered) {
-               //          KANATA_PRINTF ("L\t%ld\t%d\tMemStatus=%s\n", entry->global_sequence_id, 2, result == pri_upd_result_t::Added ? "Added" : "Removed");
-               //       }
-               //    }
-               // }
+                     if (entry->kanata_registered) {
+                        KANATA_PRINTF ("L\t%ld\t%d\tMemStatus=%s\n", entry->global_sequence_id, 2, result == pri_upd_result_t::Added ? "Added" : "Removed");
+                     }
+                  }
+               }
             }
          }
       }
