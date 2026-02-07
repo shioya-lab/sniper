@@ -21,6 +21,7 @@
 #include <set>
 #include <map>
 #include <vector>
+#include <string>
 
 // Maximum size for vector register history
 #define MAX_VECTOR_REG_HISTORY_SIZE 32
@@ -141,6 +142,11 @@ private:
    UInt64 rob_debug_seqnumber;
    bool enable_rob_debug_seqnumber = false;
    bool enable_gatherscatter_log;
+   bool m_gs_collecting = false;
+   UInt64 m_gs_pc = 0;
+   UInt64 m_gs_seq = 0;
+   std::string m_gs_type;
+   std::vector<UInt64> m_gs_addresses;
 
    RegisterDependencies* const registerDependencies;
    MemoryDependencies* const memoryDependencies;
@@ -342,29 +348,23 @@ private:
    inline bool is_vldq_assign (DynamicMicroOp *uop) {
       if (!uop->getMicroOp()->isVecLoad()) {
          return false;
-      } else {
+      } else if (m_cfg_bloom_filter) {
+         // Bloom Filter
          return uop->isFirst();
+      } else {
+         return true;
       }
-      // } else if (m_cfg_bloom_filter) {
-      //    // Bloom Filter
-      //    return uop->isFirst();
-      // } else {
-      //    return true;
-      // }
    }
 
    inline bool is_vldq_release (DynamicMicroOp *uop) {
       if (!uop->getMicroOp()->isVecLoad()) {
          return false;
-      } else {
+      } else if (m_cfg_bloom_filter) {
+         // Bloom Filter
          return uop->isLast();
+      } else {
+         return true;
       }
-      // } else if (m_cfg_bloom_filter) {
-      //    // Bloom Filter
-      //    return uop->isLast();
-      // } else {
-      //    return true;
-      // }
    }
 
    // inline bool IsInLPIQ (DynamicMicroOp *uop) {
@@ -455,6 +455,8 @@ private:
    uint64_t m_preload_count;
 
    ComponentTime m_last_committed_time;
+   UInt64 m_committed_instructions = 0;
+   UInt64 m_stop_icount = 0;
 
    const String m_app;
    const UInt64 m_pref_target_log;
@@ -470,6 +472,7 @@ private:
    void manageInstructionRegisterFlowAnalysis(RobEntry *entry);
 
    void manageInstructionParOOO2(RobEntry *entry);
+   void logMemAccessFootprintCsv(const DynamicMicroOp &uop, UInt64 address);
 
    typedef struct {
       UInt64 pc;
@@ -499,15 +502,23 @@ private:
 
    SInt8 m_reserve_nwindow_ordering_counter; // リオーダリング禁止カウンタ
    std::set<UInt64> m_nwindow_ino_trigger_table; // リオーダリングトリガーのPC集合. 最大で8エントリまでとする. 最初に挿入されたものを削除する.
-   std::set<UInt64> m_nwindow_forward_branch_table; // 前方向分岐命令のPC集合（次の命令で判定されたもの）
+   std::set<UInt64> m_backward_branch_table; // 前方向分岐命令のPC集合（次の命令で判定されたもの）
    bool m_pending_branch_check; // 分岐命令が待機中かどうか（次の命令で判定するために一時保存）
    UInt64 m_pending_branch_pc; // 分岐命令のPC（次の命令で判定するために一時保存）
    SInt8 m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT; // リオーダリング禁止カウンタの初期値
 
+   const bool m_mem_access_heatmap;
+   FILE *m_mem_access_fp = NULL;
+   bool m_mem_access_header_written = false;
    const bool m_enable_vector_trace;
 
-   // ReserveFlow: キャッシュミスベクトルロード命令のPCテーブル（PC -> 無視フラグ）
-   std::map<UInt64, bool> m_regflow_ino_trigger_table;  // キャッシュミスベクトルロード命令のPCテーブル（最大8エントリ）。値がtrueの場合は無視フラグが立っている
+  // ReserveFlow: キャッシュミスベクトルロード命令のPCテーブル（FIFO）
+  struct regflow_trigger_entry_t {
+     UInt64 pc;
+     bool ignore;
+     bool hit_history;
+  };
+  std::deque<regflow_trigger_entry_t> m_regflow_ino_trigger_table;  // 最大8エントリ。ignore=true の場合は無視フラグが立っている
 
    // VecReserveHitFlow: キャッシュヒット率に応じたトリガと逆依存テーブル
    const size_t m_PAROOO2_TRIGGER_TABLE_SIZE = 8;
@@ -527,21 +538,6 @@ private:
       m_nwindow_ino_trigger_table.clear();
    }
 
-
-   // Find First Instruction
-   uint64_t findFirstUopSeqNumber (DynamicMicroOp *uop) {
-      UInt64 seqnum = uop->getSequenceNumber();
-      if (uop->isFirst()) {
-         return seqnum;
-      }
-      seqnum --;
-      RobEntry *firstEntry = findEntryBySequenceNumber(seqnum);
-      while (!firstEntry->uop->isFirst()) {
-         seqnum--;
-         firstEntry = findEntryBySequenceNumber(seqnum);
-      }
-      return seqnum;
-   }
 
 public:
 

@@ -9,6 +9,7 @@
 #include "stats.h"
 #include "config.hpp"
 #include "core_manager.h"
+#include "simulator.h"
 #include "itostr.h"
 #include "rob_timer_vector_trace.h"
 #include "performance_model.h"
@@ -20,6 +21,7 @@
 #include <sstream>
 #include <iomanip>
 #include <cstdint>
+#include <cstdio>
 
 #define LPIQ_SIZE  (1024) * 8
 #define MAX_CACHE_MISS_TABLE_SIZE 8
@@ -93,6 +95,7 @@ RobTimer::RobTimer(
       , memoryDependencies(new MemoryDependencies())
       , vectorDependencies(new VectorDependencies())
       , m_enable_ooo_check(Sim()->getCfg()->getBoolArray("log/enable_mem_ooo_check", core->getId()))
+      , m_stop_icount(Sim()->getCfg()->getIntArray("perf_model/core/rob_timer/stop_icount", core->getId()))
       , m_ooo_check_region(Sim()->getCfg()->getIntArray("log/mem_ooo_check_region", core->getId()))
       , perf(_perf)
       , m_cpiCurrentFrontEndStall(NULL)
@@ -115,6 +118,9 @@ RobTimer::RobTimer(
       , m_pending_branch_check(false)
       , m_pending_branch_pc(0)
       , m_RESERVE_NWINDOW_ORDERING_COUNTER_INIT(Sim()->getCfg()->getInt("perf_model/core/rob_timer/reserve_nwindow_ordering_counter_init"))
+      , m_mem_access_heatmap(Sim()->getCfg()->getBoolArray("log/mem_access_heatmap", core->getId()))
+      , m_mem_access_fp(NULL)
+      , m_mem_access_header_written(false)
       , m_enable_vector_trace (Sim()->getCfg()->getBoolArray("log/enable_vector_trace", core->getId()))
 {
 
@@ -358,10 +364,52 @@ RobTimer::RobTimer(
    m_vector_issue_tracer = new VectorIssueTracer();
 }
 
+void RobTimer::logMemAccessFootprintCsv(const DynamicMicroOp &uop, UInt64 address)
+{
+   if (!m_mem_access_heatmap) {
+      return;
+   }
+
+   const MicroOp *microop = uop.getMicroOp();
+   if (!microop->isLoad() && !microop->isStore()) {
+      return;
+   }
+
+   const bool is_gather_scatter = microop->isVecMem() && !microop->canVecSquash();
+   const char *type = is_gather_scatter ? (microop->isLoad() ? "GA" : "SC")
+                                        : (microop->isLoad() ? "LD" : "ST");
+
+   UInt64 insn_id = uop.getInstructionSequenceNumber();
+   UInt64 size = microop->getMemoryAccessSize();
+   if (microop->isVector() && !is_gather_scatter) {
+      size *= (uop.getNumMergedInst() + 1);
+   }
+
+   if (!m_mem_access_fp) {
+      m_mem_access_fp = std::fopen("mem_access_footprint.csv", "w");
+      if (!m_mem_access_fp) return;
+   }
+
+   if (!m_mem_access_header_written) {
+      std::fseek(m_mem_access_fp, 0, SEEK_END);
+      if (std::ftell(m_mem_access_fp) == 0) {
+         std::fprintf(m_mem_access_fp, "insn_id,addr,type,size\n");
+      }
+      m_mem_access_header_written = true;
+   }
+
+   std::fprintf(m_mem_access_fp, "%lu,0x%lx,%s,%lu\n", insn_id, address, type, size);
+}
+
 RobTimer::~RobTimer()
 {
    for(Rob::iterator it = this->rob.begin(); it != this->rob.end(); ++it)
       it->free();
+
+   if (m_mem_access_fp) {
+      std::fclose(m_mem_access_fp);
+      m_mem_access_fp = NULL;
+   }
 
    // W-FIFOを使用した命令の頻度順でソートして出力する
    std::vector<std::pair<UInt64, std::pair<UInt64, String>>> v;
@@ -615,6 +663,7 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
    SubsecondTime totalLat = SubsecondTime::Zero();
 
 
+   UInt64 current_instruction_seqnum = INVALID_SEQNR;
    for (std::vector<DynamicMicroOp*>::const_iterator it = insts.begin(); it != insts.end(); it++ )
    {
       if ((*it)->isSquashed())
@@ -625,6 +674,11 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
 
       RobEntry *entry = &this->rob.next();
       entry->init(*it, nextSequenceNumber++);
+
+      if (entry->uop->isFirst()) {
+         current_instruction_seqnum = entry->uop->getSequenceNumber();
+      }
+      entry->uop->setInstructionSequenceNumber(current_instruction_seqnum);
 
       // Add = calculate dependencies, add yourself to list of depenants
       // If no dependants in window: set ready = now()
@@ -677,8 +731,8 @@ boost::tuple<uint64_t,SubsecondTime> RobTimer::simulate(const std::vector<Dynami
       }
 
       this->registerDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber);
-      UInt64 firstUopSeqNum = findFirstUopSeqNumber(entry->uop);
-      this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber, firstUopSeqNum);
+      this->memoryDependencies->setDependencies(*entry->uop, lowestValidSequenceNumber,
+                                                entry->uop->getInstructionSequenceNumber());
       this->vectorDependencies->setDependencies(*entry->uop);
 
       setVSETDependencies (*entry->uop, lowestValidSequenceNumber);
@@ -1033,8 +1087,7 @@ SubsecondTime RobTimer::doDispatch(SubsecondTime **cpiComponent)
             //    entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
          }
          if (!m_vec_store_inorder && uop.getMicroOp()->isVecStore() && uop.isFirst()) {
-            LOG_ASSERT_ERROR(vec_store_queue >= m_vlen / 64, "vec_store_queue is negative");
-            vec_store_queue -= m_vlen / 64;
+            vec_store_queue += m_vlen/64;
          }
          if (!uop.getMicroOp()->isVector() && uop.getMicroOp()->isLoad()) {
             --scalar_load_queue;
@@ -1613,9 +1666,14 @@ void RobTimer::issueInstruction(uint64_t idx, SubsecondTime &next_event)
           now.getElapsedTime(),
           false  // 通常アクセスでプリフェッチを発生させると、ProcessMemOpFromCoreがループしてLockを取得できない
       );
+      
       uint64_t latency = SubsecondTime::divideRounded(res.latency, now.getPeriod());
       m_previous_latency = latency;
       m_previous_hit_where = res.hit_where;
+
+      if (m_mem_access_heatmap) {
+         logMemAccessFootprintCsv(uop, uop.getAddress().address);
+      }
 
       if (uop.getMicroOp()->isVecLoad()) {
          UpdateVecDCacheStats(&uop, res.hit_where);
@@ -2338,6 +2396,14 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
 
       if (entry->uop->isLast())
          instructionsExecuted++;
+      if (entry->uop->isLast()) {
+         ++m_committed_instructions;
+         if (m_stop_icount > 0 && m_committed_instructions >= m_stop_icount) {
+            LOG_PRINT("[ROB_TIMER] stop_icount reached: %lu", m_committed_instructions);
+            Simulator::release();
+            exit(0);
+         }
+      }
 
       if (entry->uop->getSequenceNumber() != 0 && entry->uop->getSequenceNumber() % 10000 == 0) {
          fprintf (stderr, "inst exec %ld (now = %ld cycle)\n", entry->uop->getSequenceNumber(), now.getCycleCount());
@@ -2422,7 +2488,7 @@ SubsecondTime RobTimer::doCommit(uint64_t& instructionsExecuted)
          //          entry->uop->getMicroOp()->getInstruction()->getDisassembly().c_str());
       }
       if (!m_vec_store_inorder && entry->uop->getMicroOp()->isVecStore() && entry->uop->isLast()) {
-         vec_store_queue += m_vlen / 64;
+         vec_store_queue += m_vlen / 16;
       }
 
       releaseRegister (entry);
