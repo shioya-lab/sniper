@@ -22,6 +22,8 @@ class DynamicMicroOp
 
       /** The sequence number of the microOperation. Unique (per thread) ! */
       uint64_t sequenceNumber;
+   /** The sequence number of the first microOp of the instruction. */
+   uint64_t instructionSequenceNumber;
 
       /** The address is valid for UOP_LOAD and UOP_STORE, it contains the load or store address. */
       Memory::Access address;
@@ -206,6 +208,8 @@ class DynamicMicroOp
 
       uint64_t getSequenceNumber() const { return this->sequenceNumber; }
       void setSequenceNumber(uint64_t number) { this->sequenceNumber = number; }
+      uint64_t getInstructionSequenceNumber() const { return this->instructionSequenceNumber; }
+      void setInstructionSequenceNumber(uint64_t number) { this->instructionSequenceNumber = number; }
 
       HitWhere::where_t getDCacheHitWhere() const { return dCacheHitWhere; }
       void setDCacheHitWhere(HitWhere::where_t _hitWhere) { dCacheHitWhere = _hitWhere; }
@@ -244,7 +248,7 @@ class DynamicMicroOp
       uint8_t getVectorIssueMax() { return m_vector_issue_times_max; }
 
       void incrMergedInst() { this->mergedInstCount++; }
-      uint32_t getNumMergedInst() { return this->mergedInstCount; }
+      uint32_t getNumMergedInst() const { return this->mergedInstCount; }
 
       // More dynamic, architecture-dependent information to be defined by derived classes
       virtual const char* getType() const = 0; // Make this class pure virtual

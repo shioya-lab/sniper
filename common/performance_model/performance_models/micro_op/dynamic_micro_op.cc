@@ -25,6 +25,7 @@ DynamicMicroOp::DynamicMicroOp(const MicroOp *uop, const CoreModel *core_model, 
    this->execLatency = m_core_model->getInstructionLatency(uop);
 
    this->sequenceNumber = INVALID_SEQNR;
+   this->instructionSequenceNumber = INVALID_SEQNR;
 
    this->dCacheHitWhere = HitWhere::UNKNOWN;
    this->iCacheHitWhere = HitWhere::L1I; // Default to an icache hit
