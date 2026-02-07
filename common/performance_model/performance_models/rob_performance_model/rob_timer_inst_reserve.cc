@@ -1,6 +1,8 @@
 #include "rob_contention.h"
 #include "rob_timer.h"
+#include <algorithm>
 #include <cstdio>
+#include <iterator>
 
 void RobTimer::manageInstructionReserve (RobEntry *entry)
 {
@@ -76,11 +78,47 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
 {
   if (entry->uop->getMicroOp()->isBranch()) {
     if (entry->uop->isLast()) {
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n",
-              now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
-      registerDependencies->clearAllOooDependency();
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n",
+      //         now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
+
+      // Forward branch tracking (same as NWindow)
+      UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+      m_pending_branch_check = true;
+      m_pending_branch_pc = entry_pc;
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch detected %08lx, waiting for next instruction\n",
+      //         now.getCycleCount(), entry_pc);
+
+      bool is_backward_branch =
+          (m_backward_branch_table.find(entry_pc) != m_backward_branch_table.end());
+      if (is_backward_branch) {
+        registerDependencies->clearAllOooDependency();
+        // RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Forward branch executed %08lx\n",
+        //         now.getCycleCount(), entry_pc);
+      } else {
+        // RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch %08lx not confirmed as forward branch yet\n",
+        //         now.getCycleCount(), entry_pc);
+      }
+
+      for (auto &trigger_entry : m_regflow_ino_trigger_table) {
+        trigger_entry.hit_history = false;
+      }
     }
     return;
+  }
+
+  // Forward branch detection on next instruction (same as NWindow)
+  if (entry->uop->isFirst() && m_pending_branch_check) {
+    UInt64 branch_pc = m_pending_branch_pc;
+    UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+    if (entry_pc < branch_pc) {
+      m_backward_branch_table.insert(branch_pc);
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Confirmed forward branch %08lx -> %08lx\n",
+      //         now.getCycleCount(), branch_pc, entry_pc);
+    } else {
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Confirmed backward branch %08lx -> %08lx\n",
+      //         now.getCycleCount(), branch_pc, entry_pc);
+    }
+    m_pending_branch_check = false;
   }
 
   // キャッシュミス検出時にPCをテーブルに追加（dispatch付近）
@@ -88,8 +126,7 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
     UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
     SInt8 counter = m_mem_stats->getSaturationCounter(pc);
     // Saturation Counterが閾値以上の場合はキャッシュミスと判定
-    if (counter >= m_MISS_RATE_THRESHOLD &&
-        m_regflow_ino_trigger_table.find(pc) == m_regflow_ino_trigger_table.end()) {
+    if (counter >= m_MISS_RATE_THRESHOLD) {
       RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: High miss-rate detected at PC=%08lx(SeqID=%ld) (counter=%d, threshold=%d)\n",
               now.getCycleCount(), pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD);
 
@@ -104,31 +141,40 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
         }
       }
       if (depends_on_trigger) {
-        for (auto it = m_regflow_ino_trigger_table.begin(); it != m_regflow_ino_trigger_table.end(); ++it) {
-          UInt64 table_pc = it->first;
-          UInt64 diff = (table_pc > pc) ? (table_pc - pc) : (pc - table_pc);
-          if (diff <= 0x10) {
-            it->second = true;
-            RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx(SeqID=%ld) (descendant PC=%08lx(SeqID=%ld))\n",
-                    now.getCycleCount(), table_pc, entry->uop->getSequenceNumber(), pc, entry->uop->getSequenceNumber());
+        auto found_it = std::find_if(
+            m_regflow_ino_trigger_table.begin(),
+            m_regflow_ino_trigger_table.end(),
+            [pc](const regflow_trigger_entry_t &entry) { return entry.pc == pc; });
+        if (found_it != m_regflow_ino_trigger_table.end()) {
+          for (auto it = m_regflow_ino_trigger_table.begin(); it != found_it; ++it) {
+            if (it->hit_history) {
+              it->ignore = true;
+              RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx by PC=%08lx\n",
+                      now.getCycleCount(), it->pc, pc);
+            }
           }
         }
       }
+    }
 
+    if (counter >= m_MISS_RATE_THRESHOLD &&
+        std::none_of(m_regflow_ino_trigger_table.begin(),
+                     m_regflow_ino_trigger_table.end(),
+                     [pc](const regflow_trigger_entry_t &entry) { return entry.pc == pc; })) {
       // PCをテーブルに追加（OoO実行の条件開始のトリガとして、無視フラグはfalse）
       if (m_regflow_ino_trigger_table.size() >= 8) {
-        // テーブルが満杯の場合、古いPCを削除（最初の要素を削除）
-        UInt64 removed_pc = m_regflow_ino_trigger_table.begin()->first;
-        m_regflow_ino_trigger_table.erase(m_regflow_ino_trigger_table.begin());
+        // テーブルが満杯の場合、古いPCを削除（FIFOで先頭を削除）
+        UInt64 removed_pc = m_regflow_ino_trigger_table.front().pc;
+        m_regflow_ino_trigger_table.pop_front();
         RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Table full, removing oldest PC=%08lx(SeqID=%ld) (table size before removal: %zu)\n",
                 now.getCycleCount(), removed_pc, entry->uop->getSequenceNumber(), m_regflow_ino_trigger_table.size() + 1);
       }
-      m_regflow_ino_trigger_table[pc] = false;  // 新規追加時は無視フラグはfalse
+      m_regflow_ino_trigger_table.push_back({pc, false, false});  // 新規追加時は無視フラグ/履歴はfalse
       RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Added PC=%08lx(SeqID=%ld) to table (table size: %zu)\n",
               now.getCycleCount(), pc, entry->uop->getSequenceNumber(), m_regflow_ino_trigger_table.size());
       for (auto it = m_regflow_ino_trigger_table.begin(); it != m_regflow_ino_trigger_table.end(); ++it) {
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Table: PC=%08lx(IgnoreFlag=%d)\n",
-                now.getCycleCount(), it->first, it->second);
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Table: PC=%08lx(IgnoreFlag=%d, History=%d)\n",
+                now.getCycleCount(), it->pc, it->ignore, it->hit_history);
       }
     }
   }
@@ -136,11 +182,38 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
   // ReserveFlow: テーブルに含まれるPCの命令が発見された場合、レジスタフラグを設定（OoO実行の条件開始）
   UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
   // テーブルに含まれ、かつ無視フラグが立っていない場合のみ、レジスタフラグを設定
-  auto it = m_regflow_ino_trigger_table.find(pc);
+  auto it = std::find_if(
+      m_regflow_ino_trigger_table.begin(),
+      m_regflow_ino_trigger_table.end(),
+      [pc](const regflow_trigger_entry_t &entry) { return entry.pc == pc; });
   if (it != m_regflow_ino_trigger_table.end() &&
-      !it->second &&  // 無視フラグが立っていない（false）場合のみ
+      !it->ignore &&  // 無視フラグが立っていない（false）場合のみ
       entry->uop->getMicroOp()->getDestinationRegistersLength() > 0) {
+
+    bool has_ooo_dependency = false;
+    for (uint32_t i = 0; i < entry->uop->getMicroOp()->getSourceRegistersLength(); i++) {
+      dl::Decoder::decoder_reg source_reg = entry->uop->getMicroOp()->getSourceRegister(i);
+      if (Sim()->getDecoder()->is_reg_vector(source_reg) &&
+          registerDependencies->hasOooDependency(source_reg)) {
+        has_ooo_dependency = true;
+        break;
+      }
+    }
+
+    if (has_ooo_dependency) {
+      for (auto older = m_regflow_ino_trigger_table.begin(); older != m_regflow_ino_trigger_table.end(); ++older) {
+        if (older == it) {
+          continue;
+        }
+        if (older->hit_history) {
+          older->ignore = true;
+          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ignore flag for PC=%08lx(SeqID=%ld) (older entry)\n",
+                  now.getCycleCount(), older->pc, entry->uop->getSequenceNumber());
+        }
+      }
+    }
     
+    it->hit_history = true;
     RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ooo_dependency flag for PC=%08lx(SeqID=%ld) (trigger instruction)\n",
             now.getCycleCount(), pc, entry->uop->getSequenceNumber());
     
@@ -151,18 +224,20 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
         registerDependencies->setOooDependency(dest_reg);
         RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:   Set ooo_dependency for vector register v%02u\n",
                 now.getCycleCount(), dest_reg - 64);
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:    ooo_dependency: ", now.getCycleCount());
-        for (int j = 64; j < 96; j++) {
-          RESERVE_DEBUG_PRINTF("v%02u: %d ", j - 64, registerDependencies->hasOooDependency(j));
-          if ((j - 64) % 8 == 7) {
-            RESERVE_DEBUG_PRINTF("\n                          ");
+        if (entry->uop->isLast()) {
+          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow:    ooo_dependency: ", now.getCycleCount());
+          for (int j = 64; j < 96; j++) {
+            RESERVE_DEBUG_PRINTF("v%02u: %d ", j - 64, registerDependencies->hasOooDependency(j));
+            if ((j - 64) % 8 == 7) {
+              RESERVE_DEBUG_PRINTF("\n                              ");
+            }
           }
+          RESERVE_DEBUG_PRINTF("\n");
         }
-        RESERVE_DEBUG_PRINTF("\n");
       }
     }
     return;
-  } else if (it != m_regflow_ino_trigger_table.end() && it->second) {
+  } else if (it != m_regflow_ino_trigger_table.end() && it->ignore) {
     // デバッグ: 無視フラグが立っている場合
     RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) is in table but ignored (ignore flag is set)\n",
             now.getCycleCount(), pc, entry->uop->getSequenceNumber());
@@ -200,8 +275,10 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
 
   if (should_inorder) {
     entry->uop->setReserveInst();  // インオーダ実行を強制
-    RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) set to Reserve (in-order execution)\n",
-            now.getCycleCount(), pc_check, entry->uop->getSequenceNumber());
+    if (entry->uop->isLast()) {
+          RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) set to Reserve (in-order execution)\n",
+                  now.getCycleCount(), pc_check, entry->uop->getSequenceNumber());
+    }
   // } else {
   //   RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: PC=%08lx(SeqID=%ld) is OoO (out-of-order execution)\n",
   //           now.getCycleCount(), pc_check, entry->uop->getSequenceNumber());
@@ -216,11 +293,43 @@ void RobTimer::manageInstructionParOOO2(RobEntry *entry)
 {
   if (entry->uop->getMicroOp()->isBranch()) {
     if (entry->uop->isLast()) {
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n",
-              now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
-      registerDependencies->clearAllOooDependency();
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Branch executed %08lx: Clear all ooo_dependency flags for vector registers\n",
+      //         now.getCycleCount(), entry->uop->getMicroOp()->getInstruction()->getAddress());
+
+      // Forward branch tracking (same as NWindow)
+      UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+      m_pending_branch_check = true;
+      m_pending_branch_pc = entry_pc;
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Branch detected %08lx, waiting for next instruction\n",
+      //         now.getCycleCount(), entry_pc);
+
+      bool is_backward_branch =
+          (m_backward_branch_table.find(entry_pc) != m_backward_branch_table.end());
+      if (is_backward_branch) {
+        registerDependencies->clearAllOooDependency();
+        // RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Forward branch executed %08lx\n",
+        //         now.getCycleCount(), entry_pc);
+      } else {
+        // RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Branch %08lx not confirmed as forward branch yet\n",
+        //         now.getCycleCount(), entry_pc);
+      }
     }
     return;
+  }
+
+  // Forward branch detection on next instruction (same as NWindow)
+  if (entry->uop->isFirst() && m_pending_branch_check) {
+    UInt64 branch_pc = m_pending_branch_pc;
+    UInt64 entry_pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+    if (entry_pc < branch_pc) {
+      m_backward_branch_table.insert(branch_pc);
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Confirmed forward branch %08lx -> %08lx\n",
+      //         now.getCycleCount(), branch_pc, entry_pc);
+    } else {
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Confirmed backward branch %08lx -> %08lx\n",
+      //         now.getCycleCount(), branch_pc, entry_pc);
+    }
+    m_pending_branch_check = false;
   }
 
   UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
@@ -549,27 +658,27 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
       // 最後のuopの場合のみ、分岐命令として記録
       m_pending_branch_check = true;
       m_pending_branch_pc = entry_pc;
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch detected %08lx, waiting for next instruction\n",
-              now.getCycleCount(), entry_pc);
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch detected %08lx, waiting for next instruction\n",
+      //         now.getCycleCount(), entry_pc);
     }
     
     // 4. 以降の分岐命令で、テーブルに入っていれば前方向と判断する
-    bool is_forward_branch = (m_nwindow_forward_branch_table.find(entry_pc) != m_nwindow_forward_branch_table.end());
+    bool is_backward_branch = (m_backward_branch_table.find(entry_pc) != m_backward_branch_table.end());
     
-    if (is_forward_branch) {
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Forward branch executed %08lx: Trigger PC\n",
-              now.getCycleCount(), entry_pc);
+    if (is_backward_branch) {
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Forward branch executed %08lx: Trigger PC\n",
+      //         now.getCycleCount(), entry_pc);
       UInt64 trigger_pc = 0;
       trigger_pc = m_mem_stats->getMinRebuildDowncounterPC();
       if (trigger_pc != 0) {
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Trigger PC=%08lx (min_counter=%d)\n",
-                now.getCycleCount(), trigger_pc, m_mem_stats->getRebuildDowncounter(trigger_pc));
+        // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Trigger PC=%08lx (min_counter=%d)\n",
+        //         now.getCycleCount(), trigger_pc, m_mem_stats->getRebuildDowncounter(trigger_pc));
         UpdateNWindowTriggerTable(trigger_pc); // 新しいトリガ命令を追加
       }
       m_reserve_nwindow_ordering_counter = 0; // リオーダリングを有効にする
     } else {
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch %08lx not confirmed as forward branch yet\n",
-              now.getCycleCount(), entry_pc);
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch %08lx not confirmed as forward branch yet\n",
+      //         now.getCycleCount(), entry_pc);
     }
     return;
   }
@@ -582,12 +691,12 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
     
     // PCが前方向に戻っていれば（現在の命令のPC < 分岐命令のPC）、前方向分岐として登録
     if (entry_pc < branch_pc) {
-      m_nwindow_forward_branch_table.insert(branch_pc);
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Confirmed forward branch %08lx -> %08lx\n",
-              now.getCycleCount(), branch_pc, entry_pc);
+      m_backward_branch_table.insert(branch_pc);
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Confirmed forward branch %08lx -> %08lx\n",
+      //         now.getCycleCount(), branch_pc, entry_pc);
     } else {
-      RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Confirmed backward branch %08lx -> %08lx\n",
-              now.getCycleCount(), branch_pc, entry_pc);
+      // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Confirmed backward branch %08lx -> %08lx\n",
+      //         now.getCycleCount(), branch_pc, entry_pc);
     }
     // 判定が完了したので、クリア
     m_pending_branch_check = false;
