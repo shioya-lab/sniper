@@ -11,6 +11,7 @@ void RobTimer::manageInstructionReserve (RobEntry *entry)
                    "Priority must not allocate before execution");
   if (m_vec_reserve_policy == VecReserveParOOO) {
     manageInstructionParOOO2(entry);
+    updateParOOO2VecWriteFIFO(entry);
   } else if (m_vec_reserve_policy == VecReserveStatic) {
     manageInstructionStatic (entry);
   } else if (m_vec_reserve_policy == VecReserveNWindow) {
@@ -212,11 +213,11 @@ void RobTimer::manageInstructionRegisterFlowAnalysis(RobEntry *entry)
         }
       }
     }
-    
+
     it->hit_history = true;
     RESERVE_DEBUG_PRINTF("%ld: VecReserveFlow: Setting ooo_dependency flag for PC=%08lx(SeqID=%ld) (trigger instruction)\n",
             now.getCycleCount(), pc, entry->uop->getSequenceNumber());
-    
+
     // デスティネーションレジスタ（ベクトルレジスタのみ）にフラグを設定
     for (uint32_t i = 0; i < entry->uop->getMicroOp()->getDestinationRegistersLength(); i++) {
       dl::Decoder::decoder_reg dest_reg = entry->uop->getMicroOp()->getDestinationRegister(i);
@@ -307,8 +308,9 @@ void RobTimer::manageInstructionParOOO2(RobEntry *entry)
           (m_backward_branch_table.find(entry_pc) != m_backward_branch_table.end());
       if (is_backward_branch) {
         registerDependencies->clearAllOooDependency();
-        // RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Forward branch executed %08lx\n",
-        //         now.getCycleCount(), entry_pc);
+        m_parooo2_vec_write_fifo.clear();
+        RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Forward branch executed %08lx. Clear the vec_write_fifo\n",
+                now.getCycleCount(), entry_pc);
       } else {
         // RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Branch %08lx not confirmed as forward branch yet\n",
         //         now.getCycleCount(), entry_pc);
@@ -363,12 +365,17 @@ void RobTimer::manageInstructionParOOO2(RobEntry *entry)
   bool do_register_backward = false;
   if (is_backward) {
     do_register_backward = true;
+    // backward_dep_table に含まれる命令は trigger_table から無効化
+    m_parooo2_trigger_table.erase(
+        std::remove_if(m_parooo2_trigger_table.begin(),
+                       m_parooo2_trigger_table.end(),
+                       [this](UInt64 trigger_pc) {
+                         return std::find(m_parooo2_backward_dep_table.begin(),
+                                          m_parooo2_backward_dep_table.end(),
+                                          trigger_pc) != m_parooo2_backward_dep_table.end();
+                       }),
+        m_parooo2_trigger_table.end());
     if (is_trigger) {
-      m_parooo2_trigger_table.erase(
-          std::remove(m_parooo2_trigger_table.begin(),
-                      m_parooo2_trigger_table.end(),
-                      pc),
-          m_parooo2_trigger_table.end());
       RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Ignore trigger PC=%08lx(SeqID=%ld) (backward entry)\n",
               now.getCycleCount(), pc, entry->uop->getSequenceNumber());
       is_trigger = false;
@@ -396,27 +403,33 @@ void RobTimer::manageInstructionParOOO2(RobEntry *entry)
 
   // 逆依存テーブルへ依存元の命令を登録（トリガ/逆依存のどちらでも登録）
   if (do_register_backward) {
-    for (size_t idx = 0; idx < entry->uop->getDependenciesLength(); ++idx) {
-      RobEntry *waiting_entry =
-          this->findEntryBySequenceNumber(entry->uop->getDependency(idx));
-      bool is_waiting_entry_vector_dest_reg =
-          waiting_entry->uop->getMicroOp()->getDestinationRegistersLength() &&
-          Sim()->getDecoder()->is_reg_vector(
-              waiting_entry->uop->getMicroOp()->getDestinationRegister(0));
-      if (!is_waiting_entry_vector_dest_reg) {
+    for (uint32_t i = 0; i < entry->uop->getMicroOp()->getSourceRegistersLength(); ++i) {
+      dl::Decoder::decoder_reg src_reg = entry->uop->getMicroOp()->getSourceRegister(i);
+      if (!Sim()->getDecoder()->is_reg_vector(src_reg)) {
         continue;
       }
-      UInt64 dep_pc =
-          waiting_entry->uop->getMicroOp()->getInstruction()->getAddress();
-      if (std::find(m_parooo2_backward_dep_table.begin(),
-                    m_parooo2_backward_dep_table.end(),
-                    dep_pc) == m_parooo2_backward_dep_table.end()) {
-        if (m_parooo2_backward_dep_table.size() >= m_BACKWORD_DEP_TABLE_SIZE) {
-          m_parooo2_backward_dep_table.pop_front();
-        }
-        m_parooo2_backward_dep_table.push_back(dep_pc);
-        RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Backward dep registered PC=%08lx (from PC=%08lx)\n",
-                now.getCycleCount(), dep_pc, pc);
+      for (auto it = m_parooo2_vec_write_fifo.rbegin();
+          it != m_parooo2_vec_write_fifo.rend();
+          ++it) {
+          // vec_write_fifoの中身をとりあえずダンプしながらループする
+          RESERVE_DEBUG_PRINTF ("%ld:   VecWriteFIFO Entry: PC=%08lx, dest_regs=v%d\n",
+                               now.getCycleCount(), it->pc, it->dest_regs[0] - 64);
+          if (std::find(it->dest_regs.begin(), it->dest_regs.end(), src_reg) ==
+            it->dest_regs.end()) {
+            continue;
+          }
+         UInt64 dep_pc = it->pc;
+         if (std::find(m_parooo2_backward_dep_table.begin(),
+                       m_parooo2_backward_dep_table.end(),
+                       dep_pc) == m_parooo2_backward_dep_table.end()) {
+            if (m_parooo2_backward_dep_table.size() >= m_BACKWORD_DEP_TABLE_SIZE) {
+               m_parooo2_backward_dep_table.pop_front();
+            }
+            m_parooo2_backward_dep_table.push_back(dep_pc);
+            RESERVE_DEBUG_PRINTF("%ld: VecReserveParOOO2: Backward dep registered PC=%08lx (from PC=%08lx)\n",
+                                 now.getCycleCount(), dep_pc, pc);
+         }
+         break;
       }
     }
     if (is_trigger) {
@@ -443,6 +456,38 @@ void RobTimer::manageInstructionParOOO2(RobEntry *entry)
 
   if (should_inorder) {
     entry->uop->setReserveInst();
+  }
+}
+
+void RobTimer::updateParOOO2VecWriteFIFO(RobEntry *entry)
+{
+  UInt64 pc = entry->uop->getMicroOp()->getInstruction()->getAddress();
+
+  // 命令が完了したらVecWriteFIFOに登録
+  if (entry->uop->isLast()) {
+    std::vector<dl::Decoder::decoder_reg> dest_regs;
+    for (uint32_t i = 0;
+        i < entry->uop->getMicroOp()->getDestinationRegistersLength(); ++i) {
+      dl::Decoder::decoder_reg dest_reg =
+          entry->uop->getMicroOp()->getDestinationRegister(i);
+      if (Sim()->getDecoder()->is_reg_vector(dest_reg)) {
+        dest_regs.push_back(dest_reg);
+      }
+    }
+    if (!dest_regs.empty()) {
+      if (m_parooo2_vec_write_fifo.size() >= m_PAROOO2_VEC_WRITE_FIFO_SIZE) {
+        m_parooo2_vec_write_fifo.pop_front();
+      }
+      m_parooo2_vec_write_fifo.push_back({pc, std::move(dest_regs)});
+      RESERVE_DEBUG_PRINTF(
+          "%ld: VecReserveParOOO2: Added to VecWriteFIFO PC=%08lx\n",
+          now.getCycleCount(), pc);
+      for (auto it = m_parooo2_vec_write_fifo.begin();
+          it != m_parooo2_vec_write_fifo.end(); ++it) {
+        RESERVE_DEBUG_PRINTF("%ld:   VecWriteFIFO Entry: PC=%08lx\n",
+                            now.getCycleCount(), it->pc);
+      }
+    }
   }
 }
 
@@ -661,10 +706,10 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
       // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Branch detected %08lx, waiting for next instruction\n",
       //         now.getCycleCount(), entry_pc);
     }
-    
+
     // 4. 以降の分岐命令で、テーブルに入っていれば前方向と判断する
     bool is_backward_branch = (m_backward_branch_table.find(entry_pc) != m_backward_branch_table.end());
-    
+
     if (is_backward_branch) {
       // RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Forward branch executed %08lx: Trigger PC\n",
       //         now.getCycleCount(), entry_pc);
@@ -688,7 +733,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   if (entry->uop->isFirst() && m_pending_branch_check) {
     // 待機中の分岐命令がある場合、PCを比較
     UInt64 branch_pc = m_pending_branch_pc;
-    
+
     // PCが前方向に戻っていれば（現在の命令のPC < 分岐命令のPC）、前方向分岐として登録
     if (entry_pc < branch_pc) {
       m_backward_branch_table.insert(branch_pc);
@@ -708,7 +753,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
     RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx(%ld) counter=%d, threshold=%d\n",
       now.getCycleCount(), entry_pc, entry->uop->getSequenceNumber(), counter, m_MISS_RATE_THRESHOLD);
     // 飽和カウンタが閾値以上の場合、そのPCのダウンカウンタを初期化（すぐには再構築しない）
-    if (counter >= m_MISS_RATE_THRESHOLD && 
+    if (counter >= m_MISS_RATE_THRESHOLD &&
       m_nwindow_ino_trigger_table.find(entry_pc) == m_nwindow_ino_trigger_table.end()) {
       // 自分以外のダウンカウンタをクリア
       m_mem_stats->clearAllRebuildDowncounters();
@@ -731,9 +776,9 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
     std::pair<bool, UInt64> result = m_mem_stats->decrementAllRebuildDowncounters();
     bool any_reached_zero = result.first;
     UInt64 trigger_pc = result.second;
-    
+
     // いずれかのPCのダウンカウンタが0になったら、リオーダリングリストを再構築
-    if (any_reached_zero) { 
+    if (any_reached_zero) {
       RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Downcounter reached zero for some PC, triggering rebuild at PC=%08lx\n",
               now.getCycleCount(), trigger_pc);
       UpdateNWindowTriggerTable(trigger_pc); // 新しいトリガ命令を追加
@@ -755,7 +800,7 @@ void RobTimer::manageInstructionNWindow (RobEntry *entry)
   }
 }
 
-void RobTimer::UpdateNWindowTriggerTable(UInt64 pc) 
+void RobTimer::UpdateNWindowTriggerTable(UInt64 pc)
 {
   // 自分の近い範囲で、自分よりもPCの大きい命令が既に存在している場合には更新しない
   std::set<UInt64>::iterator it = m_nwindow_ino_trigger_table.begin();
@@ -765,7 +810,7 @@ void RobTimer::UpdateNWindowTriggerTable(UInt64 pc)
       RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: PC=%08lx is already in trigger table, skip update\n",
                 now.getCycleCount(), table_pc);
       return;
-    }                
+    }
   }
 
   // 自分の近い範囲で、自分よりもPCの小さい命令が存在している場合には、その命令を削除する
@@ -794,7 +839,7 @@ void RobTimer::UpdateNWindowTriggerTable(UInt64 pc)
   }
 }
 
-void RobTimer::printNWindowTriggerTable() 
+void RobTimer::printNWindowTriggerTable()
 {
   RESERVE_DEBUG_PRINTF("%ld: VecReserveNWindow: Trigger Table contents (size=%zu): ",
           now.getCycleCount(), m_nwindow_ino_trigger_table.size());

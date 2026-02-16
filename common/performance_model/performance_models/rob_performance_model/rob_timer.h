@@ -472,6 +472,7 @@ private:
    void manageInstructionRegisterFlowAnalysis(RobEntry *entry);
 
    void manageInstructionParOOO2(RobEntry *entry);
+   void updateParOOO2VecWriteFIFO(RobEntry *entry);
    void logMemAccessFootprintCsv(const DynamicMicroOp &uop, UInt64 address);
 
    typedef struct {
@@ -524,6 +525,12 @@ private:
    const size_t m_PAROOO2_TRIGGER_TABLE_SIZE = 8;
    std::deque<UInt64> m_parooo2_trigger_table;      // 高ヒット率トリガ命令のPCテーブル
    std::deque<UInt64> m_parooo2_backward_dep_table; // 逆依存テーブル（高優先度伝搬用）
+  struct parooo2_vec_write_entry_t {
+     UInt64 pc;
+     std::vector<dl::Decoder::decoder_reg> dest_regs;
+  };
+  const size_t m_PAROOO2_VEC_WRITE_FIFO_SIZE = 64;
+  std::deque<parooo2_vec_write_entry_t> m_parooo2_vec_write_fifo;
 
    void UpdateNWindowTriggerTable(UInt64 pc);
    void ClearNWindowTriggerTable(UInt64 pc) {
