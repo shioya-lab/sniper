@@ -13,116 +13,7 @@
 namespace frontend
 {
 
-class QemuFrontend final : public Frontend<QemuFrontend>
-{
-   public:
-   std::unique_ptr<dl::DecodedInst>* allocateTb(size_t size)
-   {
-      auto& ptr = m_tbs.emplace_front();
-      auto tb = new std::unique_ptr<dl::DecodedInst>[size];
-      ptr.reset(tb);
-      return tb;
-   }
-
-   std::unique_ptr<dl::DecodedInst> decode(const void* data, size_t size,
-                                           uint64_t addr)
-   {
-      std::unique_ptr<dl::DecodedInst> decoded(
-         m_decoder_factory.CreateInstruction(
-            m_decoder.get(), static_cast<const uint8_t*>(data), size, addr));
-
-      m_decoder->decode(decoded.get());
-
-      return decoded;
-   }
-
-   inline void init();
-
-   void sendInstruction(unsigned int threadid, dl::DecodedInst* inst)
-   {
-      auto& execution = m_executions[threadid];
-
-      if (m_control->get_any_thread_in_detail())
-      {
-         if (execution.inst)
-         {
-            auto inst_num_id = execution.inst->inst_num_id();
-            auto addr = execution.inst->get_address();
-            auto size = execution.inst->get_size();
-            auto is_branch = execution.inst->is_conditional_branch();
-            auto is_pause = m_decoder->is_pause_opcode(inst_num_id);
-            auto taken = addr + size != inst->get_address();
-
-            FrontendCallbacks<QemuFrontend>::sendInstruction(
-               threadid, addr, size, execution.num_addresses, is_branch, taken,
-               false, true, false, is_pause);
-         }
-
-         if (inst)
-         {
-            execution.num_addresses =
-               execution.memory->handle(threadid, execution.regs.get(), inst);
-         }
-      }
-      else if (execution.inst)
-      {
-         FrontendCallbacks<QemuFrontend>::countInsns(threadid, 1);
-      }
-
-      // const uint8_t *code = inst->get_code();
-      // const uint32_t code_32 = static_cast<uint32_t>((code[3] << 24) | (code[2] << 16) | (code[1] << 8) | (code[0]));
-      // if (!m_in_roi && code_32 == 0x00100013) {
-      //    std::cout << "[FRONTEND] ROI start\n";
-      //    m_control->beginROI(threadid);
-      //    roi_inst_count = 0;
-      //    m_in_roi = true;
-      // }
-      // if (m_in_roi && code_32 == 0x00200013) {
-      //    std::cout << "[FRONTEND] ROI end\n";
-      //    m_control->endROI(threadid);
-      //    m_in_roi = false;
-      // }
-      if (m_in_roi && roi_inst_count == m_fast_forward_target) {
-         std::cout << "[FRONTEND] Detail Mode Start\n";
-         FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_START, 0, 0);
-      }
-      if (m_in_roi && roi_inst_count == m_fast_forward_target + m_detailed_target) {
-         std::cout << "[FRONTEND] Detail Mode End\n";
-         FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_END, 0, 0);
-         m_control->endROI(threadid);
-         m_in_roi = false;
-      }
-
-      roi_inst_count++;
-      execution.inst = inst;
-   }
-
-   inline void threadStart(unsigned int threadid);
-
-   void threadFinish(unsigned int threadid)
-   {
-      sendInstruction(threadid, nullptr);
-   }
-
-   private:
-   struct Execution final
-   {
-      dl::DecodedInst *inst = nullptr;
-      std::unique_ptr<Memory> memory;
-      std::unique_ptr<void*[]> regs;
-      uint32_t num_addresses = 0;
-   };
-
-   dl::DecoderFactory m_decoder_factory;
-   std::unique_ptr<dl::Decoder> m_decoder;
-   std::forward_list<std::unique_ptr<std::unique_ptr<dl::DecodedInst>[]>> m_tbs;
-   Execution m_executions[MAX_NUM_THREADS];
-   uint64_t roi_inst_count = 0;
-   bool m_in_roi = false;
-
-   uint64_t m_fast_forward_target;
-   uint64_t m_detailed_target;
-};
+class QemuFrontend;
 
 template <>
 class FrontendOptions<QemuFrontend> : public OptionsBase<QemuFrontend>
@@ -289,6 +180,131 @@ class FrontendOptions<QemuFrontend> : public OptionsBase<QemuFrontend>
    }
 };
 
+class QemuFrontend final : public Frontend<QemuFrontend>
+{
+   public:
+   std::unique_ptr<dl::DecodedInst>* allocateTb(size_t size)
+   {
+      auto& ptr = m_tbs.emplace_front();
+      auto tb = new std::unique_ptr<dl::DecodedInst>[size];
+      ptr.reset(tb);
+      return tb;
+   }
+
+   std::unique_ptr<dl::DecodedInst> decode(const void* data, size_t size,
+                                           uint64_t addr)
+   {
+      std::unique_ptr<dl::DecodedInst> decoded(
+         m_decoder_factory.CreateInstruction(
+            m_decoder.get(), static_cast<const uint8_t*>(data), size, addr));
+
+      m_decoder->decode(decoded.get());
+
+      return decoded;
+   }
+
+   inline void init();
+
+   void sendInstruction(unsigned int threadid, dl::DecodedInst* inst)
+   {
+      auto& execution = m_executions[threadid];
+
+      if (m_control->get_any_thread_in_detail())
+      {
+         if (execution.inst)
+         {
+            auto inst_num_id = execution.inst->inst_num_id();
+            auto addr = execution.inst->get_address();
+            auto size = execution.inst->get_size();
+            auto is_branch = execution.inst->is_conditional_branch();
+            auto is_pause = m_decoder->is_pause_opcode(inst_num_id);
+            auto taken = addr + size != inst->get_address();
+
+            FrontendCallbacks<QemuFrontend>::sendInstruction(
+               threadid, addr, size, execution.num_addresses, is_branch, taken,
+               false, true, false, is_pause);   
+         }
+
+         if (inst)
+         {
+            execution.num_addresses =
+               execution.memory->handle(threadid, execution.regs.get(), inst);
+         }
+      }
+      else if (execution.inst)
+      {
+         FrontendCallbacks<QemuFrontend>::countInsns(threadid, 1);
+      }
+
+      const bool use_roi = m_options->get_use_roi();
+      const uint8_t *code = inst->get_code();
+      const uint32_t code_32 = static_cast<uint32_t>((code[3] << 24) | (code[2] << 16) | (code[1] << 8) | (code[0]));
+
+      if (code_32 == 0x00100013) {
+         std::cout << "[FRONTEND] ROI start\n";
+         std::cout << "use_roi: " << use_roi << "\n";
+         std::cout << "m_in_roi: " << m_in_roi << "\n";
+         std::cout << "roi_inst_count: " << roi_inst_count << "\n";
+         std::cout << "m_fast_forward_target: " << m_fast_forward_target << "\n";
+         std::cout << "m_detailed_target: " << m_detailed_target << "\n";
+         std::cout << "m_control->get_any_thread_in_detail(): " << m_control->get_any_thread_in_detail() << "\n";
+      }
+      if (use_roi) {
+         if (!m_in_roi && code_32 == 0x00100013) {
+            std::cout << "[FRONTEND] ROI start\n";
+            m_control->beginROI(threadid);
+            roi_inst_count = 0;
+            m_in_roi = true;
+         }
+         if (m_in_roi && code_32 == 0x00200013) {
+            std::cout << "[FRONTEND] ROI end\n";   
+            m_control->endROI(threadid);
+            m_in_roi = false;
+         }
+      } else {
+         if (m_in_roi && roi_inst_count == m_fast_forward_target) {
+            std::cout << "[FRONTEND] Detail Mode Start\n";
+            FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_START, 0, 0);
+         }
+         if (m_in_roi && roi_inst_count == m_fast_forward_target + m_detailed_target) {
+            std::cout << "[FRONTEND] Detail Mode End\n";
+            FrontendCallbacks<QemuFrontend>::handleMagic (threadid, SIM_CMD_ROI_END, 0, 0);
+            m_control->endROI(threadid);
+            m_in_roi = false;
+         }
+      }
+
+      roi_inst_count++;
+      execution.inst = inst;
+   }
+
+   inline void threadStart(unsigned int threadid);
+
+   void threadFinish(unsigned int threadid)
+   {
+      sendInstruction(threadid, nullptr);
+   }
+
+   private:
+   struct Execution final
+   {
+      dl::DecodedInst *inst = nullptr;
+      std::unique_ptr<Memory> memory;
+      std::unique_ptr<void*[]> regs;
+      uint32_t num_addresses = 0;
+   };
+
+   dl::DecoderFactory m_decoder_factory;
+   std::unique_ptr<dl::Decoder> m_decoder;
+   std::forward_list<std::unique_ptr<std::unique_ptr<dl::DecodedInst>[]>> m_tbs;
+   Execution m_executions[MAX_NUM_THREADS];
+   uint64_t roi_inst_count = 0;
+   bool m_in_roi = false;
+
+   uint64_t m_fast_forward_target;
+   uint64_t m_detailed_target;
+};
+
 template <> class FrontendSyscallModel<QemuFrontend>
    : public FrontendSyscallModelBase<QemuFrontend>
 {
@@ -304,7 +320,7 @@ template <> class FrontendSyscallModel<QemuFrontend>
    }
 };
 
-FrontendISA FrontendOptions<QemuFrontend>::s_isa;
+template <> FrontendISA FrontendOptions<QemuFrontend>::s_isa;
 static QemuFrontend* s_frontend;
 
 void QemuFrontend::init()
