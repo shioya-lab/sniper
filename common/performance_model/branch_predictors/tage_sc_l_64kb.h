@@ -17,7 +17,7 @@ public:
 
     virtual void update(bool predicted, bool actual, bool indirect, IntPtr ip, IntPtr target) override
     {
-        auto optype = indirect ? OPTYPE_JMP_INDIRECT_COND :
+        auto optype = indirect ? OPTYPE_JMP_INDIRECT_UNCOND :
                                  OPTYPE_JMP_DIRECT_COND;
 
         updateCounters(predicted, actual);
