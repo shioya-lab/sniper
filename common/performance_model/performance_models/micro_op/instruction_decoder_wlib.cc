@@ -197,7 +197,7 @@ const std::vector<const MicroOp*>* InstructionDecoder::decode(IntPtr address,  c
              , numLoads
              , ins->inst_num_id()
              , dec->inst_name(ins->inst_num_id())
-             , ins->is_conditional_branch() /* is conditional branch? */
+             , dec->is_branch_opcode(ins->inst_num_id()) /* is branch? */
              , is_vector,
              totalMicroOps,
              index);

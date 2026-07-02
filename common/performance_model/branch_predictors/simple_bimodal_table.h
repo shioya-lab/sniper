@@ -29,8 +29,13 @@ public:
       return (m_table[index].predict());
    }
 
-   void update(bool predicted, bool actual, bool indirect, IntPtr ip, IntPtr target)
+   void update(bool predicted, bool actual, bool indirect, bool conditional, IntPtr ip, IntPtr target) override
    {
+      if (!indirect && !conditional)
+      {
+         return;
+      }
+
       UInt32 index = ip & m_mask;
       if (actual)
       {

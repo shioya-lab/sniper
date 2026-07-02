@@ -419,8 +419,9 @@ Instruction* TraceThread::decode(Sift::Instruction &inst)
      }
    }
 
+   const bool is_branch = Sim()->getDecoder()->is_branch_opcode(dec_inst.inst_num_id());
    Instruction *instruction;
-   if (inst.is_branch)
+   if (is_branch)
      instruction = new BranchInstruction(list);
 
    else
@@ -505,7 +506,7 @@ void TraceThread::handleCacheOnlyFunc(uint8_t icount, Sift::CacheOnlyType type, 
       case Sift::CacheOnlyBranchNotTaken:
       {
          bool taken = (type == Sift::CacheOnlyBranchTaken);
-         bool mispredict = core->accessBranchPredictor(eip, taken, false, address);
+         bool mispredict = core->accessBranchPredictor(eip, taken, false, true, address);
          if (mispredict)
             core->getPerformanceModel()->handleBranchMispredict();
          break;
@@ -556,9 +557,12 @@ void TraceThread::handleInstructionWarmup(Sift::Instruction &inst, Sift::Instruc
 
    // Warmup branch predictor
 
-   if (inst.is_branch)
+   const bool is_branch = Sim()->getDecoder()->is_branch_opcode(dec_inst.inst_num_id());
+   if (is_branch)
    {
-      bool mispredict = core->accessBranchPredictor(inst.sinst->addr, inst.taken, dec_inst.is_indirect_branch(), next_inst.sinst->addr);
+      const bool is_conditional = dec_inst.is_conditional_branch();
+      const bool taken = is_conditional ? inst.taken : true;
+      bool mispredict = core->accessBranchPredictor(inst.sinst->addr, taken, dec_inst.is_indirect_branch(), is_conditional, next_inst.sinst->addr);
       if (mispredict)
          core->getPerformanceModel()->handleBranchMispredict();
    }
@@ -694,9 +698,12 @@ void TraceThread::handleInstructionDetailed(Sift::Instruction &inst, Sift::Instr
 
    // Add dynamic instruction info
 
-   if (inst.is_branch)
+   const bool is_branch = Sim()->getDecoder()->is_branch_opcode(dec_inst.inst_num_id());
+   if (is_branch)
    {
-      dynins->addBranch(inst.taken, next_inst.sinst->addr, dec_inst.is_indirect_branch());
+      const bool is_conditional = dec_inst.is_conditional_branch();
+      const bool taken = is_conditional ? inst.taken : true;
+      dynins->addBranch(taken, next_inst.sinst->addr, dec_inst.is_indirect_branch(), is_conditional);
    }
 
    // Ignore memory-referencing operands in NOP instructions

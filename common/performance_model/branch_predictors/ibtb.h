@@ -40,8 +40,12 @@ class IndirectBranchTargetBuffer : BranchPredictor
     return false;
   }
 
-  void update(bool predicted, bool actual, bool indirect, IntPtr ip, IntPtr target)
+  void update(bool predicted, bool actual, bool indirect, bool conditional, IntPtr ip, IntPtr target) override
   {
+    if (!indirect && !conditional)
+    {
+      return;
+    }
 
     UInt32 index;
 

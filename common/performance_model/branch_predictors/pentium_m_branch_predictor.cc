@@ -49,14 +49,19 @@ bool PentiumMBranchPredictor::predict(bool indirect, IntPtr ip, IntPtr target)
    return result;
 }
 
-void PentiumMBranchPredictor::update(bool predicted, bool actual, bool indirect, IntPtr ip, IntPtr target)
+void PentiumMBranchPredictor::update(bool predicted, bool actual, bool indirect, bool conditional, IntPtr ip, IntPtr target)
 {
+   if (!indirect && !conditional)
+   {
+      return;
+   }
+
    updateCounters(predicted, actual);
-   ibtb.update(predicted,actual,indirect,ip,target);
-   m_btb.update(predicted, actual, indirect, ip, target);
+   ibtb.update(predicted,actual,indirect,conditional,ip,target);
+   m_btb.update(predicted, actual, indirect, conditional, ip, target);
    m_lpb.update(predicted, actual, ip, target);
    if (!m_last_gp_hit && !m_last_lpb_hit) // Update bimodal predictor only when global and loop predictors missed
-      m_bimodal_table.update(predicted, actual, indirect, ip, target);
+      m_bimodal_table.update(predicted, actual, indirect, conditional, ip, target);
    bool lpb_or_bm_hit = m_last_lpb_hit || m_last_bm_pred == actual; // Global should only allocate when no loop predictor hit and bimodal was wrong
    if (m_last_gp_hit)
    {

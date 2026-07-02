@@ -191,15 +191,15 @@ Core::hookPeriodicInsCall()
 }
 
 bool
-Core::accessBranchPredictor(IntPtr eip, bool taken, bool indirect, IntPtr target)
+Core::accessBranchPredictor(IntPtr eip, bool taken, bool indirect, bool conditional, IntPtr target)
 {
    PerformanceModel *prfmdl = getPerformanceModel();
    BranchPredictor *bp = prfmdl->getBranchPredictor();
 
    if (bp)
    {
-      bool prediction = bp->predict(indirect, eip, target);
-      bp->update(prediction, taken, indirect, eip, target);
+      bool prediction = indirect || conditional ? bp->predict(indirect, eip, target) : taken;
+      bp->update(prediction, taken, indirect, conditional, eip, target);
       return (prediction != taken);
    }
    else

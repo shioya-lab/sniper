@@ -12,7 +12,7 @@ public:
    ~OneBitBranchPredictor();
 
    bool predict(bool indirect, IntPtr ip, IntPtr target);
-   void update(bool predicted, bool actual, bool indirect, IntPtr ip, IntPtr target);
+   void update(bool predicted, bool actual, bool indirect, bool conditional, IntPtr ip, IntPtr target);
 
 private:
    std::vector<bool> m_bits;

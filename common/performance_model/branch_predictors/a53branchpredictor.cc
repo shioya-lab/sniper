@@ -35,11 +35,15 @@ A53BranchPredictor::A53BranchPredictor(String name, core_id_t core_id)
 {
 }
 
-void A53BranchPredictor::update(bool predicted, bool actual, bool indirect, IntPtr ip, IntPtr target) {
+void A53BranchPredictor::update(bool predicted, bool actual, bool indirect, bool conditional, IntPtr ip, IntPtr target) {
+   if (!indirect && !conditional) {
+      return;
+   }
+
    updateCounters(predicted, actual);
 
    if (indirect) {
-      ibtb.update(predicted, actual, indirect, ip, target);
+      ibtb.update(predicted, actual, indirect, conditional, ip, target);
       return;
    }
 
