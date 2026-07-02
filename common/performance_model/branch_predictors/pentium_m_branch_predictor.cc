@@ -40,7 +40,7 @@ bool PentiumMBranchPredictor::predict(bool indirect, IntPtr ip, IntPtr target)
    {
       result = bimodal_out;
    }
-   if (result == true)
+   if (indirect && result == true)
    {
       result = ibtb.predict(indirect,ip,target);
    }
@@ -57,7 +57,12 @@ void PentiumMBranchPredictor::update(bool predicted, bool actual, bool indirect,
    }
 
    updateCounters(predicted, actual);
-   ibtb.update(predicted,actual,indirect,conditional,ip,target);
+
+   if (indirect)
+   {
+      ibtb.update(predicted,actual,indirect,conditional,ip,target);
+   }
+
    m_btb.update(predicted, actual, indirect, conditional, ip, target);
    m_lpb.update(predicted, actual, ip, target);
    if (!m_last_gp_hit && !m_last_lpb_hit) // Update bimodal predictor only when global and loop predictors missed
